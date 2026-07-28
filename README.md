@@ -1,4 +1,4 @@
-# LiberCube Level Studio
+# cube-level-generator
 
 桌面端关卡内容工厂：关卡/章节管理 + 3D 起始/目标态预览 + 旋转与指引公式编辑 + LLM（通义千问 DashScope）公式候选助手。
 
