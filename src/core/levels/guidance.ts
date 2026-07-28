@@ -1,0 +1,122 @@
+import { deriveLevelFormulaPreset } from './formulaPreset';
+import type {
+    LevelDefinition,
+    LevelGuidanceFailureThreshold,
+} from './types';
+import { applyTokensToState, parseFormulaTokens } from '../formula/moves';
+import { notationToFace } from '../formula/notationToFace';
+import { INITIAL_COLOR_MATRIX } from '../cube';
+import { isLevelGoalReached } from './goalEvaluation';
+import { resolveLevelGuidanceFailureThreshold } from './utils';
+
+export type LevelGuidanceStatus = 'ready' | 'missing' | 'invalid';
+
+export type LevelGuidanceSummary = {
+    status: LevelGuidanceStatus;
+    formula: string | null;
+    steps: string[];
+    stepCount: number;
+    message: string;
+};
+
+export const getLevelGuidanceFailureThreshold = (
+    level: Pick<LevelDefinition, 'guidanceFailureThreshold'>,
+): LevelGuidanceFailureThreshold => (
+    resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
+);
+
+/** 需要连续失败几次才解锁：1→0(即开) / 2→1 / 3→2；0 表示永久关闭 */
+export const getGuidanceFailuresRequiredToUnlock = (
+    threshold: LevelGuidanceFailureThreshold,
+): number | null => (
+    threshold === 0 ? null : threshold - 1
+);
+
+const expandGuidanceSteps = (tokens: string[]): string[] => tokens.flatMap((token) => {
+    if (!token.endsWith('2')) return [token];
+    const base = token.slice(0, -1);
+    return [base, base];
+});
+
+/** 列表首屏用：只看有没有公式，不做矩阵推演（大批量关卡时避免卡死） */
+export const peekLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceSummary => {
+    const formula = level.guidanceFormula?.trim() || level.rotationFormula?.trim() || null;
+    if (!formula) {
+        return {
+            status: 'missing',
+            formula: null,
+            steps: [],
+            stepCount: 0,
+            message: '缺少推荐解法',
+        };
+    }
+
+    return {
+        status: 'ready',
+        formula,
+        steps: [],
+        stepCount: 0,
+        message: '解法校验中…',
+    };
+};
+
+export const getLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceSummary => {
+    const guidanceFormula = level.guidanceFormula?.trim();
+    const formula = guidanceFormula || level.rotationFormula?.trim();
+    if (!formula) {
+        return {
+            status: 'missing',
+            formula: null,
+            steps: [],
+            stepCount: 0,
+            message: '缺少推荐解法',
+        };
+    }
+
+    try {
+        const mappedTokens = guidanceFormula
+            ? (() => {
+                const parsed = parseFormulaTokens(guidanceFormula);
+                if (parsed.invalidTokens.length > 0) {
+                    throw new Error(`无效动作：${parsed.invalidTokens.join(', ')}`);
+                }
+                return parsed.tokens;
+            })()
+            : deriveLevelFormulaPreset(formula, level.rotationTarget ?? 'f2l').mappedTokens;
+        const steps = expandGuidanceSteps(mappedTokens);
+        if (steps.length === 0) {
+            throw new Error('推荐解法没有可执行步骤');
+        }
+
+        const unsupportedStep = steps.find((step) => notationToFace(step) === null);
+        if (unsupportedStep) {
+            throw new Error(`步骤 ${unsupportedStep} 无法映射到硬件外层面`);
+        }
+
+        const result = applyTokensToState(level.startStateMatrix, mappedTokens);
+        if (!isLevelGoalReached(
+            result,
+            level.goalStateMatrix,
+            level.brightnessMatrix,
+            INITIAL_COLOR_MATRIX,
+        )) {
+            throw new Error('推荐解法无法从当前起始状态完成点亮区域目标');
+        }
+
+        return {
+            status: 'ready',
+            formula,
+            steps,
+            stepCount: steps.length,
+            message: `推荐解法 ${steps.length} 步`,
+        };
+    } catch (error) {
+        return {
+            status: 'invalid',
+            formula,
+            steps: [],
+            stepCount: 0,
+            message: error instanceof Error ? error.message : '解法校验失败',
+        };
+    }
+};
