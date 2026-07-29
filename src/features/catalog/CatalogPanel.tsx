@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCatalogStore, type LevelMoveDirection } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import {
@@ -23,10 +23,100 @@ const FILTERS: { key: LevelManagerFilter; label: string }[] = [
   { key: 'hidden', label: '隐藏' },
 ];
 
+type ActionIconName = 'copy' | 'show' | 'hide' | 'up' | 'down' | 'edit' | 'delete';
+
+type ActionMenuItemDefinition = {
+  label: string;
+  icon: ActionIconName;
+  disabled?: boolean;
+  danger?: boolean;
+  onSelect: () => void;
+};
+
+function ActionIcon({ name }: { name: ActionIconName }) {
+  const paths: Record<ActionIconName, React.ReactNode> = {
+    copy: <><rect x="8" y="8" width="10" height="10" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>,
+    show: <><path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z" /><circle cx="12" cy="12" r="2.5" /></>,
+    hide: <><path d="m3 3 18 18" /><path d="M10.6 7.2A10 10 0 0 1 12 7c6 0 9.5 5 9.5 5a15 15 0 0 1-2.2 2.5M6.5 6.6A15 15 0 0 0 2.5 12s3.5 5 9.5 5a10 10 0 0 0 3-.4" /></>,
+    up: <><path d="m6 11 6-6 6 6" /><path d="M12 5v14" /></>,
+    down: <><path d="m6 13 6 6 6-6" /><path d="M12 5v14" /></>,
+    edit: <><path d="M4 20h4l11-11-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
+    delete: <><path d="M4 7h16" /><path d="m9 7 .5-3h5l.5 3M7 7l1 13h8l1-13" /></>,
+  };
+  return <svg viewBox="0 0 24 24" fill="none" aria-hidden>{paths[name]}</svg>;
+}
+
+function ActionMenu({
+  label,
+  className,
+  items,
+}: {
+  label: string;
+  className: string;
+  items: ActionMenuItemDefinition[];
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={menuRef} className={`actions-menu ${className} ${open ? 'is-open' : ''}`} onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        className="icon-btn actions-menu-trigger"
+        title={label}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <circle cx="5" cy="12" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="19" cy="12" r="1.7" />
+        </svg>
+      </button>
+      <div className="actions-menu-popover" role="menu" aria-hidden={!open}>
+        {items.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            role="menuitem"
+            className={`action-menu-item ${item.danger ? 'action-menu-danger' : ''}`}
+            disabled={item.disabled}
+            onClick={() => {
+              setOpen(false);
+              item.onSelect();
+            }}
+          >
+            <ActionIcon name={item.icon} />
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function CatalogPanel() {
   const {
     levels, chapters, isLoaded, isLoading, loadError, hasUnsavedChanges, runtimeFilePath,
-    refreshCatalog, saveCatalog, discardChanges, resetToDefault, importFromDisk, exportToDisk,
+    refreshCatalog, discardChanges, resetToDefault, importFromDisk, exportToDisk,
     createChapter, updateChapter, moveChapter, deleteChapter,
     createLevelForChapter, duplicateLevel, moveLevel, deleteLevel, updateLevel,
   } = useCatalogStore();
@@ -136,15 +226,16 @@ export function CatalogPanel() {
     <div className="panel panel--sidebar catalog-panel">
       <div className="panel-scroll">
         <div className="panel-top">
-          <div className="panel-heading">
-            <span className="panel-label">目录</span>
-            <h2>关卡管理</h2>
+          <div className="panel-top-row">
+            <div className="panel-heading">
+              <h2>关卡管理</h2>
+              <p>浏览与组织教学关卡</p>
+            </div>
+            <span className="count-badge">{viewModel.summary.configuredCount}</span>
           </div>
           <div className="stat-line">
-            <span><strong>{viewModel.summary.configuredCount}</strong> 个关卡</span>
-            <span>·</span>
             <span><strong>{viewModel.summary.hiddenCount}</strong> 个隐藏</span>
-            {hasUnsavedChanges && <span className="badge badge-warn">未保存</span>}
+            {hasUnsavedChanges && <span className="save-state save-state-small"><i />未保存</span>}
           </div>
         </div>
 
@@ -152,12 +243,24 @@ export function CatalogPanel() {
         {banner && <div className="banner banner-error">{banner}</div>}
 
         <div className="panel-section">
-          <input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="搜索关卡标题 / ID / 章节"
-            className="text-input"
-          />
+          <div className="search-field">
+            <svg className="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="m16 16 4 4" />
+            </svg>
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="搜索关卡、ID 或章节"
+              className="text-input"
+              aria-label="搜索关卡"
+            />
+            {searchTerm && (
+              <button type="button" className="search-clear" onClick={() => setSearchTerm('')} aria-label="清除搜索">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden><path d="m7 7 10 10M17 7 7 17" /></svg>
+              </button>
+            )}
+          </div>
           <div className="segmented filter-chips">
             {FILTERS.map((f) => (
               <button
@@ -172,10 +275,11 @@ export function CatalogPanel() {
         </div>
 
         <div className="chapter-list">
-          {viewModel.sections.map((section) => (
+          {viewModel.sections.map((section, index) => (
             <ChapterSection
               key={section.chapterId}
               section={section}
+              tone={index % 6}
               expanded={expanded[section.chapterId] ?? false}
               onToggle={() => setExpanded((prev) => ({ ...prev, [section.chapterId]: !prev[section.chapterId] }))}
               onEditChapter={() => {
@@ -215,23 +319,21 @@ export function CatalogPanel() {
       </div>
 
       <div className="panel-footer">
-        <p className="section-title">关卡文件</p>
-        <p className="hint-text">
-          导入 / 恢复默认会覆盖草稿；保存后写入运行文件；导出用于同步 App。
-        </p>
-        <p className="file-path" title={runtimeFilePath ?? ''}>{runtimeFilePath}</p>
+        <div className="file-summary">
+          <div>
+            <p className="section-title">关卡文件</p>
+            <p className="file-path" title={runtimeFilePath ?? ''}>{runtimeFilePath}</p>
+          </div>
+        </div>
         <div className="btn-grid">
-          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('import', () => importFromDisk())}>导入</button>
-          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('export', () => exportToDisk())}>导出</button>
+          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('import', () => importFromDisk())}>导入配置</button>
+          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('export', () => exportToDisk())}>导出配置</button>
           <button className="btn btn-sm" disabled={busy !== null || !hasUnsavedChanges} onClick={() => run('discard', () => discardChanges())}>放弃草稿</button>
           <button className="btn btn-sm btn-danger" disabled={busy !== null} onClick={() => {
             if (!window.confirm('确定要恢复默认关卡吗？这会覆盖当前草稿。')) return;
             void run('reset', () => resetToDefault());
           }}>恢复默认</button>
         </div>
-        <button className="btn btn-primary btn-block" disabled={busy !== null || !hasUnsavedChanges} onClick={() => run('save', () => saveCatalog())}>
-          保存到文件
-        </button>
       </div>
 
       {chapterDraft && (
@@ -265,6 +367,7 @@ export function CatalogPanel() {
 
 type ChapterSectionProps = {
   section: LevelManagerSection;
+  tone: number;
   expanded: boolean;
   onToggle: () => void;
   onEditChapter: () => void;
@@ -282,28 +385,36 @@ type ChapterSectionProps = {
 };
 
 function ChapterSection({
-  section, expanded, onToggle, onEditChapter, onMoveChapter, onDeleteChapter, onAppend,
+  section, tone, expanded, onToggle, onEditChapter, onMoveChapter, onDeleteChapter, onAppend,
   selectedLevelId, busy, guidanceByLevelId, onSelect, onDuplicate, onToggleHidden, onMove, onDelete,
 }: ChapterSectionProps) {
   return (
-    <div className="chapter-section">
+    <div className={`chapter-section chapter-tone-${tone}`}>
       <div className="chapter-header">
         <button className="chapter-header-toggle" onClick={onToggle}>
-          <span className={`chevron ${expanded ? 'chevron-down' : ''}`}>▸</span>
-          <div>
+          <span className={`chevron ${expanded ? 'chevron-down' : ''}`} aria-hidden>
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </span>
+          <div className="chapter-copy">
             <div className="chapter-eyebrow">{section.partName}</div>
-            <div className="chapter-title">{section.chapterLabel}</div>
+            <div className="chapter-title" title={section.chapterLabel}>{section.chapterLabel}</div>
             <div className="chapter-subtitle">
               {section.configuredCount} 个关卡 · 容量 {section.capacity} · {section.hiddenCount} 个隐藏
             </div>
           </div>
         </button>
-        <div className="chapter-actions">
-          <button className="icon-btn" disabled={!section.canMoveUp} onClick={() => onMoveChapter('up')}>↑</button>
-          <button className="icon-btn" disabled={!section.canMoveDown} onClick={() => onMoveChapter('down')}>↓</button>
-          <button className="icon-btn" onClick={onEditChapter}>✎</button>
-          <button className="icon-btn" disabled={section.configuredCount > 0} onClick={onDeleteChapter}>🗑</button>
-        </div>
+        <ActionMenu
+          label="章节操作"
+          className="chapter-actions-menu"
+          items={[
+            { label: '上移章节', icon: 'up', disabled: !section.canMoveUp, onSelect: () => onMoveChapter('up') },
+            { label: '下移章节', icon: 'down', disabled: !section.canMoveDown, onSelect: () => onMoveChapter('down') },
+            { label: '编辑章节', icon: 'edit', onSelect: onEditChapter },
+            { label: '删除章节', icon: 'delete', danger: true, disabled: section.configuredCount > 0, onSelect: onDeleteChapter },
+          ]}
+        />
       </div>
 
       {expanded && (
@@ -352,26 +463,26 @@ function LevelRow({ item, selected, busy, guidance, onSelect, onDuplicate, onTog
     <div className={`level-row ${selected ? 'level-row-selected' : ''}`} onClick={() => onSelect(level.id)}>
       <div className="level-row-content">
         <div className="level-row-top">
-          <span className="level-order">{item.orderLabel}</span>
-          <span className="level-title">{level.title}</span>
+          <span className="level-title" title={`${item.orderLabel} ${level.title}`}><span className="level-order">{item.orderLabel}</span>{level.title}</span>
         </div>
         <div className="level-row-meta">
-          {item.isHidden && <span className="badge badge-hidden">隐藏</span>}
-          <span className={`badge ${guidance?.status === 'ready' ? 'badge-ready' : guidance?.status === 'invalid' ? 'badge-error' : 'badge-muted'}`}>
-            {guidance?.status === 'ready' ? `${guidance.stepCount} 步` : guidance?.status === 'invalid' ? '解法无效' : '缺解法'}
-          </span>
-          <span className="badge badge-muted">失败{failureThreshold}次解锁</span>
+          {item.isHidden && <span className="level-meta-warning">隐藏 · </span>}
+          <span>{guidance?.status === 'ready' ? `${guidance.stepCount} 步` : guidance?.status === 'invalid' ? '解法无效' : '缺少解法'}</span>
+          <span>·</span>
+          <span>失败 {failureThreshold} 次解锁</span>
         </div>
       </div>
-      <div className="level-row-actions" onClick={(e) => e.stopPropagation()}>
-        <button className="icon-btn" disabled={disabled} onClick={() => onDuplicate(level.id)}>⧉</button>
-        <button className="icon-btn" disabled={disabled} onClick={() => onToggleHidden(level.id, !item.isHidden)}>
-          {item.isHidden ? '👁' : '🙈'}
-        </button>
-        <button className="icon-btn" disabled={disabled || !item.canMoveUp} onClick={() => onMove(level.id, 'up')}>↑</button>
-        <button className="icon-btn" disabled={disabled || !item.canMoveDown} onClick={() => onMove(level.id, 'down')}>↓</button>
-        <button className="icon-btn icon-btn-danger" disabled={disabled} onClick={() => onDelete(item)}>🗑</button>
-      </div>
+      <ActionMenu
+        label="关卡操作"
+        className="level-actions-menu"
+        items={[
+          { label: '复制关卡', icon: 'copy', disabled, onSelect: () => onDuplicate(level.id) },
+          { label: item.isHidden ? '显示关卡' : '隐藏关卡', icon: item.isHidden ? 'show' : 'hide', disabled, onSelect: () => onToggleHidden(level.id, !item.isHidden) },
+          { label: '上移关卡', icon: 'up', disabled: disabled || !item.canMoveUp, onSelect: () => onMove(level.id, 'up') },
+          { label: '下移关卡', icon: 'down', disabled: disabled || !item.canMoveDown, onSelect: () => onMove(level.id, 'down') },
+          { label: '删除关卡', icon: 'delete', danger: true, disabled, onSelect: () => onDelete(item) },
+        ]}
+      />
     </div>
   );
 }

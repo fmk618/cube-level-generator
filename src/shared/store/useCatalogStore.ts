@@ -362,7 +362,9 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
                         id: currentLevel.id,
                         chapterId: currentLevel.chapterId,
                         order: currentLevel.order,
-                        hint: partial.hint === '' ? undefined : (partial.hint ?? level.hint),
+                        hint: Object.prototype.hasOwnProperty.call(partial, 'hint')
+                            ? (partial.hint?.trim() || undefined)
+                            : level.hint,
                     }
                     : level
             )));
