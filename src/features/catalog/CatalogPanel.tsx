@@ -23,6 +23,17 @@ const FILTERS: { key: LevelManagerFilter; label: string }[] = [
   { key: 'hidden', label: '隐藏' },
 ];
 
+function AddButtonLabel({ children }: { children: string }) {
+  return (
+    <>
+      <svg className="btn-leading-icon" viewBox="0 0 20 20" fill="none" aria-hidden>
+        <path d="M10 4v12M4 10h12" />
+      </svg>
+      <span>{children}</span>
+    </>
+  );
+}
+
 type ActionIconName = 'copy' | 'show' | 'hide' | 'up' | 'down' | 'edit' | 'delete';
 
 type ActionMenuItemDefinition = {
@@ -309,11 +320,11 @@ export function CatalogPanel() {
             />
           ))}
           <button
-            className="btn btn-ghost btn-block"
+            className="btn btn-ghost btn-block catalog-add-button"
             disabled={busy !== null}
             onClick={() => setChapterDraft({ id: null, partName: `Part${chapters.length + 1}`, title: '', description: '', capacity: '6' })}
           >
-            + 新增章节
+            <AddButtonLabel>新增章节</AddButtonLabel>
           </button>
         </div>
       </div>
@@ -434,7 +445,9 @@ function ChapterSection({
               onDelete={onDelete}
             />
           ))}
-          <button className="btn btn-ghost btn-block" onClick={onAppend}>+ 新增关卡</button>
+          <button className="btn btn-ghost btn-block catalog-add-button" onClick={onAppend}>
+            <AddButtonLabel>新增关卡</AddButtonLabel>
+          </button>
         </div>
       )}
     </div>

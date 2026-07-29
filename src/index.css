@@ -786,6 +786,24 @@ textarea.text-input {
   border-color: var(--border-strong);
 }
 
+.catalog-add-button {
+  gap: 6px;
+  line-height: 1;
+}
+
+.catalog-add-button .btn-leading-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.catalog-add-button span {
+  line-height: 14px;
+}
+
 .btn-sm {
   height: 32px;
   padding: 0 10px;
