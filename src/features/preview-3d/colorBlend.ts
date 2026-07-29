@@ -1,4 +1,4 @@
-const DIM_BASE = { r: 0x22, g: 0x24, b: 0x28 };
+const DIM_BASE = { r: 0x33, g: 0x38, b: 0x42 };
 
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
   const clean = hex.replace('#', '');

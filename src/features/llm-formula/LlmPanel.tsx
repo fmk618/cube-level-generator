@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUiStore } from '@/shared/store/useUiStore';
 import { deriveLevelFormulaPreset, type LevelFormulaTarget } from '@/core/levels';
 
 const API_KEY_STORAGE_KEY = 'dashscope-api-key';
-const MODEL_OPTIONS = ['qwen-turbo', 'qwen-plus', 'qwen-max'];
+const MODEL_PRESETS = ['qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-long', 'qwen-vl-plus'];
 const DIFFICULTY_OPTIONS: { key: 'short' | 'medium' | 'long'; label: string; hint: string }[] = [
   { key: 'short', label: '短', hint: '4-6 步，适合入门关卡' },
   { key: 'medium', label: '中', hint: '7-12 步，适合中期关卡' },
@@ -30,6 +30,44 @@ const buildSystemPrompt = (target: LevelFormulaTarget, difficulty: string): stri
 - 每行一个候选，格式固定为：<序号>. <公式> :: <一句话说明这个公式训练的技能点>
 - 不要输出任何其他文字、前后缀说明或 markdown 代码块`;
 
+function ModelComboInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <label>
+      模型
+      <div className="combo-input" ref={ref}>
+        <input
+          className="text-input combo-input-field"
+          placeholder="输入或选择模型名称"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setOpen(true)}
+        />
+        <button type="button" className="combo-input-arrow" onClick={() => setOpen((v) => !v)} aria-label="展开模型列表">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        {open && (
+          <ul className="combo-input-list">
+            {MODEL_PRESETS.map((m) => (
+              <li key={m} className={`combo-input-item ${m === value ? 'is-active' : ''}`} onMouseDown={() => { onChange(m); setOpen(false); }}>{m}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </label>
+  );
+}
+
 export function LlmPanel() {
   const requestFormulaAdoption = useUiStore((s) => s.requestFormulaAdoption);
   const selectedLevelId = useUiStore((s) => s.selectedLevelId);
@@ -37,7 +75,7 @@ export function LlmPanel() {
   const [hasStoredKey, setHasStoredKey] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
-  const [model, setModel] = useState(MODEL_OPTIONS[1]);
+  const [model, setModel] = useState('qwen-plus');
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
 
   const [goalDescription, setGoalDescription] = useState('');
@@ -152,7 +190,9 @@ export function LlmPanel() {
         {showSettings && (
           <div className="ai-settings">
             <p className="hint-text">
-              {hasStoredKey ? 'API Key 已加密保存在本机。' : '尚未配置 DashScope API Key。'}
+              {hasStoredKey
+                ? 'API Key 已加密保存在本机。'
+                : <>请填入 DashScope API Key（<a href="https://bailian.console.aliyun.com/" target="_blank" rel="noopener noreferrer">前往阿里云百炼获取</a>）</>}
             </p>
             <input
               className="text-input"
@@ -165,11 +205,7 @@ export function LlmPanel() {
               <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleSaveKey()}>保存</button>
               <button type="button" className="btn btn-danger btn-sm" disabled={!hasStoredKey} onClick={() => void handleClearKey()}>清除</button>
             </div>
-            <label>模型
-              <select className="text-input" value={model} onChange={(e) => setModel(e.target.value)}>
-                {MODEL_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </label>
+            <ModelComboInput value={model} onChange={setModel} />
             {settingsNotice && <div className="banner banner-ok">{settingsNotice}</div>}
           </div>
         )}
