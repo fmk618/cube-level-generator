@@ -1,8 +1,8 @@
 {
-  "name": "mofang-tool",
+  "name": "cube-level-generator",
   "private": true,
   "version": "0.1.0",
-  "description": "LiberCube Level Studio — desktop level/formula authoring tool",
+  "description": "Desktop authoring tool for Rubik's cube levels — chapters, formulas, 3D preview, and LLM-assisted formula generation",
   "author": "LiberCube",
   "main": "dist-electron/main.js",
   "type": "module",
@@ -41,8 +41,8 @@
     "vite-plugin-electron-renderer": "^1.0.0"
   },
   "build": {
-    "appId": "com.libercube.levelstudio",
-    "productName": "LiberCube Level Studio",
+    "appId": "com.libercube.cube-level-generator",
+    "productName": "cube-level-generator",
     "files": [
       "dist/**/*",
       "dist-electron/**/*"

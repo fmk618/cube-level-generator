@@ -30,8 +30,8 @@ function createWindow() {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    title: 'LiberCube Level Studio',
-    backgroundColor: '#f7f8fb',
+    title: 'cube-level-generator',
+    backgroundColor: '#f4f2ee',
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 15 } }
       : {}),

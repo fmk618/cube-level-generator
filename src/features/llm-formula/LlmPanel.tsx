@@ -19,7 +19,7 @@ type Candidate = {
     | { ok: false; message: string };
 };
 
-const buildSystemPrompt = (target: LevelFormulaTarget, difficulty: string): string => `你是魔方公式设计助手，服务于 LiberCube 智能魔方关卡工厂。
+const buildSystemPrompt = (target: LevelFormulaTarget, difficulty: string): string => `你是魔方公式设计助手，服务于 cube-level-generator 关卡编辑工具。
 用户会描述一个教学目标（例如某个 skill 点、某类贴纸识别）。你需要给出候选魔方公式（记谱），用于生成关卡的旋转/指引公式。
 
 严格要求：
