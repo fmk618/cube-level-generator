@@ -5,9 +5,9 @@ import { deriveLevelFormulaPreset, type LevelFormulaTarget } from '@/core/levels
 const API_KEY_STORAGE_KEY = 'dashscope-api-key';
 const MODEL_OPTIONS = ['qwen-turbo', 'qwen-plus', 'qwen-max'];
 const DIFFICULTY_OPTIONS: { key: 'short' | 'medium' | 'long'; label: string; hint: string }[] = [
-  { key: 'short', label: '短公式', hint: '4-6 步，适合入门关卡' },
-  { key: 'medium', label: '中等', hint: '7-12 步，适合中期关卡' },
-  { key: 'long', label: '长公式', hint: '13-20 步，适合挑战关卡' },
+  { key: 'short', label: '短', hint: '4-6 步，适合入门关卡' },
+  { key: 'medium', label: '中', hint: '7-12 步，适合中期关卡' },
+  { key: 'long', label: '长', hint: '13-20 步，适合挑战关卡' },
 ];
 
 type Candidate = {
@@ -102,7 +102,7 @@ export function LlmPanel() {
       return;
     }
     if (!goalDescription.trim()) {
-      setError('请描述这个关卡想训练的目标 / skill。');
+      setError('请描述训练目标。');
       return;
     }
 
@@ -129,40 +129,41 @@ export function LlmPanel() {
 
   const adopt = (candidate: Candidate, kind: 'rotation' | 'guidance') => {
     if (!selectedLevelId) {
-      setError('请先在左侧选择一个关卡，再采纳候选公式。');
+      setError('请先在左侧选择一个关卡。');
       return;
     }
     requestFormulaAdoption({ kind, formula: candidate.formula, target });
   };
 
   return (
-    <div className="panel llm-panel">
+    <div className="panel panel--assistant llm-panel">
       <div className="panel-scroll">
-        <div className="panel-top panel-top-row">
-          <div className="panel-heading">
-            <span className="panel-label">助手</span>
-            <h2>LLM 公式</h2>
+        <div className="ai-header">
+          <div className="ai-avatar" aria-hidden>✦</div>
+          <div className="ai-header-text">
+            <h2>公式助手</h2>
+            <p>描述训练目标，AI 生成候选公式</p>
           </div>
-          <button className="btn btn-sm" onClick={() => setShowSettings((v) => !v)}>
+          <button type="button" className="ai-settings-toggle" onClick={() => setShowSettings((v) => !v)}>
             {showSettings ? '收起' : '设置'}
           </button>
         </div>
 
         {showSettings && (
-          <div className="llm-settings">
+          <div className="ai-settings">
             <p className="hint-text">
-              {hasStoredKey ? 'DashScope API Key 已加密保存在本机。' : '尚未配置 DashScope API Key。'}
+              {hasStoredKey ? 'API Key 已加密保存在本机。' : '尚未配置 DashScope API Key。'}
             </p>
             <input
               className="text-input"
               type="password"
-              placeholder="输入 DashScope API Key"
+              placeholder="DashScope API Key"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
             />
             <div className="btn-grid">
-              <button className="btn btn-primary btn-sm" onClick={() => void handleSaveKey()}>保存 Key</button>
-              <button className="btn btn-danger btn-sm" disabled={!hasStoredKey} onClick={() => void handleClearKey()}>清除</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleSaveKey()}>保存</button>
+              <button type="button" className="btn btn-danger btn-sm" disabled={!hasStoredKey} onClick={() => void handleClearKey()}>清除</button>
             </div>
             <label>模型
               <select className="text-input" value={model} onChange={(e) => setModel(e.target.value)}>
@@ -173,46 +174,48 @@ export function LlmPanel() {
           </div>
         )}
 
-        <div className="llm-form">
-          <label>教学目标 / 训练点
-            <textarea
-              className="text-input"
-              placeholder="例如：训练识别顶层十字的边块位置"
-              value={goalDescription}
-              onChange={(e) => setGoalDescription(e.target.value)}
-            />
-          </label>
+        <div className="ai-prompt-card">
+          <textarea
+            className="ai-prompt-input"
+            placeholder="例如：训练识别顶层十字的边块位置，只需处理一个错位边块…"
+            value={goalDescription}
+            onChange={(e) => setGoalDescription(e.target.value)}
+            rows={4}
+          />
 
-          <div className="chip-group">
-            <span className="chip-group-label">目标类型</span>
-            <div className="chip-row">
-              {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((t) => (
-                <button key={t} className={`chip ${target === t ? 'chip-active' : ''}`} onClick={() => setTarget(t)}>{t.toUpperCase()}</button>
-              ))}
+          <div className="ai-options">
+            <div className="ai-option-row">
+              <span className="ai-option-label">类型</span>
+              <div className="segmented">
+                {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((t) => (
+                  <button key={t} type="button" className={`chip ${target === t ? 'chip-active' : ''}`} onClick={() => setTarget(t)}>{t.toUpperCase()}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="ai-option-row">
+              <span className="ai-option-label">长度</span>
+              <div className="segmented">
+                {DIFFICULTY_OPTIONS.map((d) => (
+                  <button key={d.key} type="button" className={`chip ${difficulty === d.key ? 'chip-active' : ''}`} onClick={() => setDifficulty(d.key)}>{d.label}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="ai-option-row">
+              <span className="ai-option-label">数量</span>
+              <input
+                className="ai-count-input"
+                type="number"
+                min={1}
+                max={6}
+                value={candidateCount}
+                onChange={(e) => setCandidateCount(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
+              />
             </div>
           </div>
 
-          <div className="chip-group">
-            <span className="chip-group-label">公式长度</span>
-            <div className="chip-row">
-              {DIFFICULTY_OPTIONS.map((d) => (
-                <button key={d.key} className={`chip ${difficulty === d.key ? 'chip-active' : ''}`} onClick={() => setDifficulty(d.key)}>{d.label}</button>
-              ))}
-            </div>
-          </div>
-
-          <label>候选数量
-            <input
-              className="text-input"
-              type="number"
-              min={1}
-              max={6}
-              value={candidateCount}
-              onChange={(e) => setCandidateCount(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
-            />
-          </label>
-
-          <button className="btn btn-primary btn-block" disabled={loading} onClick={() => void handleGenerate()}>
+          <button type="button" className="btn btn-primary btn-block ai-generate-btn" disabled={loading} onClick={() => void handleGenerate()}>
             {loading ? '生成中…' : '生成候选公式'}
           </button>
         </div>
@@ -221,18 +224,18 @@ export function LlmPanel() {
 
         {candidates.length > 0 && (
           <div className="panel-section">
-            <p className="section-title">生成结果 · {candidates.length} 条</p>
+            <p className="ai-results-header">生成结果 · {candidates.length}</p>
             <div className="llm-results">
               {candidates.map((candidate, index) => (
                 <div key={`${candidate.formula}-${index}`} className="llm-candidate">
                   <div className="llm-candidate-formula">{candidate.formula}</div>
                   {candidate.note && <div className="llm-candidate-note">{candidate.note}</div>}
                   <span className={`badge ${candidate.validation.ok ? 'badge-ready' : 'badge-error'}`}>
-                    {candidate.validation.ok ? `可解析 · ${candidate.validation.stepCount} 步` : `解析失败：${candidate.validation.message}`}
+                    {candidate.validation.ok ? `${candidate.validation.stepCount} 步 · 可解析` : '解析失败'}
                   </span>
                   <div className="llm-candidate-actions">
-                    <button className="btn btn-sm btn-block" disabled={!candidate.validation.ok} onClick={() => adopt(candidate, 'rotation')}>采纳为旋转公式</button>
-                    <button className="btn btn-sm btn-block" disabled={!candidate.validation.ok} onClick={() => adopt(candidate, 'guidance')}>采纳为指引公式</button>
+                    <button type="button" className="btn btn-sm" disabled={!candidate.validation.ok} onClick={() => adopt(candidate, 'rotation')}>旋转公式</button>
+                    <button type="button" className="btn btn-sm" disabled={!candidate.validation.ok} onClick={() => adopt(candidate, 'guidance')}>指引公式</button>
                   </div>
                 </div>
               ))}
