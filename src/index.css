@@ -283,6 +283,66 @@ select.text-input {
   padding-right: 36px;
 }
 
+.combo-input {
+  position: relative;
+}
+
+.combo-input-field {
+  padding-right: 36px !important;
+}
+
+.combo-input-arrow {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 36px;
+  height: var(--control-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}
+
+.combo-input-arrow:hover {
+  color: var(--text);
+}
+
+.combo-input-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.combo-input-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.combo-input-item:hover {
+  background: var(--accent-soft);
+}
+
+.combo-input-item.is-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -712,6 +772,11 @@ label {
   display: flex;
   flex-direction: column;
   gap: var(--field-gap);
+  padding: var(--card-pad);
+  background: var(--card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 
 .preview-hero-header {
@@ -721,18 +786,24 @@ label {
 }
 
 .preview-hero-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .cube-preview {
   width: 100%;
-  height: 320px;
-  border-radius: var(--radius-control);
+  height: 360px;
+  border-radius: var(--radius-card);
   overflow: hidden;
-  background: var(--bg);
-  box-shadow: var(--shadow-md);
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+}
+
+.cube-preview canvas {
+  border-radius: var(--radius-card);
 }
 
 .editor-workspace {
@@ -1022,6 +1093,26 @@ label {
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   padding-top: 4px;
+}
+
+@media (max-width: 1199px) {
+  .studio-columns { gap: 12px; padding: 12px; }
+  .llm-column { width: 280px; }
+  .cube-preview { height: 300px; }
+}
+
+@media (max-width: 767px) {
+  .studio-columns {
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .studio-column { width: 100% !important; }
+  .catalog-column { max-height: 200px; overflow-y: auto; }
+  .llm-column { width: 100% !important; }
+  .column-resizer { display: none; }
+  .cube-preview { height: 260px; }
+  .preview-hero { padding: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
