@@ -225,7 +225,7 @@ export function EditorPanel() {
 
   if (!level || !startStateMatrix || !goalStateMatrix) {
     return (
-      <div className="panel editor-panel">
+      <div className="panel panel--main editor-panel">
         <div className="panel-scroll editor-panel-empty">
           <div className="empty-icon">◻</div>
           <p>从左侧选择一个关卡开始编辑<br />或新增一个关卡</p>
@@ -235,7 +235,7 @@ export function EditorPanel() {
   }
 
   return (
-    <div className="panel editor-panel">
+    <div className="panel panel--main editor-panel">
       <div className="panel-scroll">
         <div className="editor-header">
           <div>
@@ -251,12 +251,12 @@ export function EditorPanel() {
         {saveError && <div className="banner banner-error">{saveError}</div>}
         {saveNotice && <div className="banner banner-ok">{saveNotice}</div>}
 
-        <div className="preview-card-wrap">
-          <div className="preview-card-header">
-            <span className="section-title">3D 预览</span>
-            <div className="preview-toggle">
-              <button className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('start')}>初始态</button>
-              <button className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('goal')}>目标态</button>
+        <div className="preview-hero">
+          <div className="preview-hero-header">
+            <span className="preview-hero-title">3D 预览</span>
+            <div className="segmented">
+              <button type="button" className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('start')}>初始态</button>
+              <button type="button" className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('goal')}>目标态</button>
             </div>
           </div>
           <CubePreview
@@ -296,9 +296,9 @@ export function EditorPanel() {
         <div className="tab-content">
           <div className="chip-group">
             <span className="chip-group-label">目标类型</span>
-            <div className="chip-row">
+            <div className="segmented">
               {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((target) => (
-                <button key={target} className={`chip ${formulaTarget === target ? 'chip-active' : ''}`} onClick={() => setFormulaTarget(target)}>
+                <button key={target} type="button" className={`chip ${formulaTarget === target ? 'chip-active' : ''}`} onClick={() => setFormulaTarget(target)}>
                   {target.toUpperCase()}
                 </button>
               ))}

@@ -126,14 +126,14 @@ export function CatalogPanel() {
 
   if (!isLoaded && isLoading) {
     return (
-      <div className="panel catalog-panel">
+      <div className="panel panel--sidebar catalog-panel">
         <div className="panel-scroll panel-loading">加载关卡目录中…</div>
       </div>
     );
   }
 
   return (
-    <div className="panel catalog-panel">
+    <div className="panel panel--sidebar catalog-panel">
       <div className="panel-scroll">
         <div className="panel-top">
           <div className="panel-heading">
@@ -158,7 +158,7 @@ export function CatalogPanel() {
             placeholder="搜索关卡标题 / ID / 章节"
             className="text-input"
           />
-          <div className="filter-chips">
+          <div className="segmented filter-chips">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
