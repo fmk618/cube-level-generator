@@ -137,86 +137,108 @@ export function LlmPanel() {
 
   return (
     <div className="panel llm-panel">
-      <div className="panel-header">
-        <h2>LLM 公式助手</h2>
-        <button className="icon-btn" onClick={() => setShowSettings((v) => !v)}>⚙</button>
-      </div>
-
-      {showSettings && (
-        <div className="llm-settings">
-          <p className="hint-text">
-            {hasStoredKey ? 'DashScope API Key 已保存（加密存储在本机）。' : '尚未配置 DashScope API Key。'}
-          </p>
-          <input
-            className="text-input"
-            type="password"
-            placeholder="输入通义千问 DashScope API Key"
-            value={apiKeyInput}
-            onChange={(e) => setApiKeyInput(e.target.value)}
-          />
-          <div className="field-row">
-            <button className="btn btn-primary" onClick={() => void handleSaveKey()}>保存 Key</button>
-            <button className="btn btn-danger" disabled={!hasStoredKey} onClick={() => void handleClearKey()}>清除 Key</button>
+      <div className="panel-scroll">
+        <div className="panel-top panel-top-row">
+          <div className="panel-heading">
+            <span className="panel-label">助手</span>
+            <h2>LLM 公式</h2>
           </div>
-          <label>模型
-            <select className="text-input" value={model} onChange={(e) => setModel(e.target.value)}>
-              {MODEL_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+          <button className="btn btn-sm" onClick={() => setShowSettings((v) => !v)}>
+            {showSettings ? '收起' : '设置'}
+          </button>
+        </div>
+
+        {showSettings && (
+          <div className="llm-settings">
+            <p className="hint-text">
+              {hasStoredKey ? 'DashScope API Key 已加密保存在本机。' : '尚未配置 DashScope API Key。'}
+            </p>
+            <input
+              className="text-input"
+              type="password"
+              placeholder="输入 DashScope API Key"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+            />
+            <div className="btn-grid">
+              <button className="btn btn-primary btn-sm" onClick={() => void handleSaveKey()}>保存 Key</button>
+              <button className="btn btn-danger btn-sm" disabled={!hasStoredKey} onClick={() => void handleClearKey()}>清除</button>
+            </div>
+            <label>模型
+              <select className="text-input" value={model} onChange={(e) => setModel(e.target.value)}>
+                {MODEL_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </label>
+            {settingsNotice && <div className="banner banner-ok">{settingsNotice}</div>}
+          </div>
+        )}
+
+        <div className="llm-form">
+          <label>教学目标 / 训练点
+            <textarea
+              className="text-input"
+              placeholder="例如：训练识别顶层十字的边块位置"
+              value={goalDescription}
+              onChange={(e) => setGoalDescription(e.target.value)}
+            />
           </label>
-          {settingsNotice && <div className="banner banner-ok">{settingsNotice}</div>}
-        </div>
-      )}
 
-      <div className="llm-form">
-        <label>教学目标 / 训练点描述
-          <textarea
-            className="text-input"
-            placeholder="例如：训练识别顶层十字的边块位置，只需要处理一个错位的边块"
-            value={goalDescription}
-            onChange={(e) => setGoalDescription(e.target.value)}
-          />
-        </label>
-        <div className="field-row">
-          {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((t) => (
-            <button key={t} className={`chip ${target === t ? 'chip-active' : ''}`} onClick={() => setTarget(t)}>{t.toUpperCase()}</button>
-          ))}
-        </div>
-        <div className="field-row">
-          {DIFFICULTY_OPTIONS.map((d) => (
-            <button key={d.key} className={`chip ${difficulty === d.key ? 'chip-active' : ''}`} onClick={() => setDifficulty(d.key)}>{d.label}</button>
-          ))}
-        </div>
-        <label>候选数量
-          <input
-            className="text-input"
-            type="number"
-            min={1}
-            max={6}
-            value={candidateCount}
-            onChange={(e) => setCandidateCount(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
-          />
-        </label>
-        <button className="btn btn-primary btn-block" disabled={loading} onClick={() => void handleGenerate()}>
-          {loading ? '生成中…' : '生成候选公式'}
-        </button>
-      </div>
-
-      {error && <div className="banner banner-error">{error}</div>}
-
-      <div className="llm-results">
-        {candidates.map((candidate, index) => (
-          <div key={`${candidate.formula}-${index}`} className="llm-candidate">
-            <div className="llm-candidate-formula">{candidate.formula}</div>
-            {candidate.note && <div className="llm-candidate-note">{candidate.note}</div>}
-            <div className={`badge ${candidate.validation.ok ? 'badge-ready' : 'badge-error'}`}>
-              {candidate.validation.ok ? `可解析 · ${candidate.validation.stepCount} 步` : `解析失败：${candidate.validation.message}`}
-            </div>
-            <div className="field-row">
-              <button className="btn" disabled={!candidate.validation.ok} onClick={() => adopt(candidate, 'rotation')}>作为旋转公式采纳</button>
-              <button className="btn" disabled={!candidate.validation.ok} onClick={() => adopt(candidate, 'guidance')}>作为指引公式采纳</button>
+          <div className="chip-group">
+            <span className="chip-group-label">目标类型</span>
+            <div className="chip-row">
+              {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((t) => (
+                <button key={t} className={`chip ${target === t ? 'chip-active' : ''}`} onClick={() => setTarget(t)}>{t.toUpperCase()}</button>
+              ))}
             </div>
           </div>
-        ))}
+
+          <div className="chip-group">
+            <span className="chip-group-label">公式长度</span>
+            <div className="chip-row">
+              {DIFFICULTY_OPTIONS.map((d) => (
+                <button key={d.key} className={`chip ${difficulty === d.key ? 'chip-active' : ''}`} onClick={() => setDifficulty(d.key)}>{d.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <label>候选数量
+            <input
+              className="text-input"
+              type="number"
+              min={1}
+              max={6}
+              value={candidateCount}
+              onChange={(e) => setCandidateCount(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
+            />
+          </label>
+
+          <button className="btn btn-primary btn-block" disabled={loading} onClick={() => void handleGenerate()}>
+            {loading ? '生成中…' : '生成候选公式'}
+          </button>
+        </div>
+
+        {error && <div className="banner banner-error">{error}</div>}
+
+        {candidates.length > 0 && (
+          <div className="panel-section">
+            <p className="section-title">生成结果 · {candidates.length} 条</p>
+            <div className="llm-results">
+              {candidates.map((candidate, index) => (
+                <div key={`${candidate.formula}-${index}`} className="llm-candidate">
+                  <div className="llm-candidate-formula">{candidate.formula}</div>
+                  {candidate.note && <div className="llm-candidate-note">{candidate.note}</div>}
+                  <span className={`badge ${candidate.validation.ok ? 'badge-ready' : 'badge-error'}`}>
+                    {candidate.validation.ok ? `可解析 · ${candidate.validation.stepCount} 步` : `解析失败：${candidate.validation.message}`}
+                  </span>
+                  <div className="llm-candidate-actions">
+                    <button className="btn btn-sm btn-block" disabled={!candidate.validation.ok} onClick={() => adopt(candidate, 'rotation')}>采纳为旋转公式</button>
+                    <button className="btn btn-sm btn-block" disabled={!candidate.validation.ok} onClick={() => adopt(candidate, 'guidance')}>采纳为指引公式</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
