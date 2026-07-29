@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import {
@@ -33,7 +34,7 @@ export function EditorPanel() {
   const selectLevel = useUiStore((s) => s.selectLevel);
   const formulaAdoptionRequest = useUiStore((s) => s.formulaAdoptionRequest);
   const clearFormulaAdoptionRequest = useUiStore((s) => s.clearFormulaAdoptionRequest);
-  const { levels, chapters, updateLevel, deleteLevel } = useCatalogStore();
+  const { levels, chapters, hasUnsavedChanges, updateLevel, deleteLevel, saveCatalog } = useCatalogStore();
   const level = useMemo(() => levels.find((l) => l.id === selectedLevelId) ?? null, [levels, selectedLevelId]);
 
   const [activeTab, setActiveTab] = useState<Tab>('meta');
@@ -55,6 +56,11 @@ export function EditorPanel() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [headerActionsHost, setHeaderActionsHost] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setHeaderActionsHost(document.getElementById('global-editor-actions'));
+  }, []);
 
   useEffect(() => {
     if (!level) return;
@@ -75,6 +81,8 @@ export function EditorPanel() {
     setActiveTab('meta');
     setSaveError(null);
     setSaveNotice(null);
+    // 只在切换关卡时重置表单，避免目录状态更新覆盖尚未保存的编辑内容。
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [level?.id]);
 
   useEffect(() => {
@@ -153,7 +161,30 @@ export function EditorPanel() {
   const parsedMaxMoves = parsePositiveInteger(maxMovesText);
   const minimumStarThresholds = parsedMaxMoves ? getMinimumStarThresholds(parsedMaxMoves) : null;
 
-  const handleSave = () => {
+  const hasEditorChanges = useMemo(() => {
+    if (!level || !startStateMatrix || !goalStateMatrix) return false;
+    return (
+      titleText !== level.title
+      || descriptionText !== level.description
+      || hintText !== (level.hint ?? '')
+      || maxMovesText !== String(level.maxMoves)
+      || star3Text !== String(level.starThresholds[0])
+      || star2Text !== String(level.starThresholds[1])
+      || formulaText !== (level.rotationFormula ?? '')
+      || formulaTarget !== (level.rotationTarget ?? 'f2l')
+      || guidanceFormulaText !== (level.guidanceFormula ?? '')
+      || guidanceFailureThreshold !== resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
+      || JSON.stringify(startStateMatrix) !== JSON.stringify(level.startStateMatrix)
+      || JSON.stringify(goalStateMatrix) !== JSON.stringify(level.goalStateMatrix)
+      || JSON.stringify(brightnessMatrix) !== JSON.stringify(level.brightnessMatrix)
+    );
+  }, [
+    level, titleText, descriptionText, hintText, maxMovesText, star3Text, star2Text,
+    formulaText, formulaTarget, guidanceFormulaText, guidanceFailureThreshold,
+    startStateMatrix, goalStateMatrix, brightnessMatrix,
+  ]);
+
+  const handleSave = async () => {
     if (!level) return;
     setSaveError(null);
     setSaveNotice(null);
@@ -207,8 +238,23 @@ export function EditorPanel() {
 
     setSaving(true);
     try {
-      updateLevel(level.id, patch);
-      setSaveNotice('已保存到当前草稿，记得在左侧点击"保存到文件"落盘。');
+      const updatedLevel = updateLevel(level.id, patch);
+      if (!updatedLevel) throw new Error(`找不到要保存的关卡：${level.id}`);
+      await saveCatalog();
+      setTitleText(updatedLevel.title);
+      setDescriptionText(updatedLevel.description);
+      setHintText(updatedLevel.hint ?? '');
+      setMaxMovesText(String(updatedLevel.maxMoves));
+      setStar3Text(String(updatedLevel.starThresholds[0]));
+      setStar2Text(String(updatedLevel.starThresholds[1]));
+      setFormulaText(updatedLevel.rotationFormula ?? '');
+      setFormulaTarget(updatedLevel.rotationTarget ?? 'f2l');
+      setGuidanceFormulaText(updatedLevel.guidanceFormula ?? '');
+      setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(updatedLevel.guidanceFailureThreshold));
+      setStartStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
+      setGoalStateMatrix(cloneStateMatrix(updatedLevel.goalStateMatrix));
+      setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
+      setSaveNotice('关卡已保存到运行文件。');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -241,17 +287,30 @@ export function EditorPanel() {
   }
 
   return (
-    <div className="panel panel--main editor-panel">
-      <div className="panel-scroll">
+    <>
+      {headerActionsHost && createPortal(
+        <>
+          {(hasEditorChanges || hasUnsavedChanges) && <span className="save-state"><i />未保存</span>}
+          <button
+            type="button"
+            className="btn btn-primary titlebar-save"
+            disabled={saving || (!hasEditorChanges && !hasUnsavedChanges)}
+            onClick={() => void handleSave()}
+          >
+            {saving ? <><span className="spinner" />保存中</> : '保存关卡'}
+          </button>
+        </>,
+        headerActionsHost,
+      )}
+      <div className="panel panel--main editor-panel">
+      <div className="panel-scroll editor-scroll">
         <div className="editor-header">
           <div>
-            <span className="panel-label">编辑</span>
             <h2>{titleText || level.title}</h2>
             <p className="editor-subtitle">
               {chapter?.title ?? level.chapterId} · {formatChapterLevelOrder(level.chapterId, level.order, chapters)}
             </p>
           </div>
-          <button className="btn btn-primary" disabled={saving} onClick={handleSave}>保存</button>
         </div>
 
         {saveError && <div className="banner banner-error">{saveError}</div>}
@@ -260,7 +319,7 @@ export function EditorPanel() {
         <div className="preview-hero">
           <div className="preview-hero-header">
             <span className="preview-hero-title">3D 预览</span>
-            <div className="segmented">
+            <div className="segmented preview-segmented">
               <button type="button" className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('start')}>初始态</button>
               <button type="button" className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('goal')}>目标态</button>
             </div>
@@ -275,14 +334,14 @@ export function EditorPanel() {
         <div className="editor-workspace">
           <div className="tab-bar">
             {(['meta', 'formula', 'brightness', 'guidance'] as Tab[]).map((tab) => (
-              <button key={tab} className={`tab ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>
+              <button key={tab} className={`tab tab-${tab} ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>
                 {tab === 'meta' ? '基础信息' : tab === 'formula' ? '旋转公式' : tab === 'brightness' ? '点亮控制' : '指引校验'}
               </button>
             ))}
           </div>
 
       {activeTab === 'meta' && (
-        <div className="tab-content">
+        <div className="tab-content tab-content-meta">
           <label>标题<input className="text-input" value={titleText} onChange={(e) => setTitleText(e.target.value)} /></label>
           <label>描述<textarea className="text-input" value={descriptionText} onChange={(e) => setDescriptionText(e.target.value)} /></label>
           <label>提示（可选）<textarea className="text-input" value={hintText} onChange={(e) => setHintText(e.target.value)} /></label>
@@ -294,15 +353,15 @@ export function EditorPanel() {
           {minimumStarThresholds && (
             <p className="hint-text">评分保障：{minimumStarThresholds[0]} 步内 3 星，{minimumStarThresholds[1]} 步内至少 2 星；配置只能放宽奖励。</p>
           )}
-          <button className="btn btn-danger" onClick={handleDelete}>删除当前关卡</button>
+          <div><button className="btn btn-danger" onClick={handleDelete}>删除当前关卡</button></div>
         </div>
       )}
 
       {activeTab === 'formula' && (
-        <div className="tab-content">
+        <div className="tab-content tab-content-formula">
           <div className="chip-group">
             <span className="chip-group-label">目标类型</span>
-            <div className="segmented">
+            <div className="segmented formula-segmented">
               {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((target) => (
                 <button key={target} type="button" className={`chip ${formulaTarget === target ? 'chip-active' : ''}`} onClick={() => setFormulaTarget(target)}>
                   {target.toUpperCase()}
@@ -311,13 +370,13 @@ export function EditorPanel() {
             </div>
           </div>
           <FormulaKeyboard value={formulaText} onChange={setFormulaText} />
-          <button className="btn btn-primary" onClick={applyFormula}>应用公式</button>
+          <div><button className="btn" onClick={applyFormula}>应用公式</button></div>
           <div className="preview-card">{formulaPreviewText}</div>
         </div>
       )}
 
       {activeTab === 'brightness' && (
-        <div className="tab-content">
+        <div className="tab-content tab-content-brightness">
           <div className="chip-group">
             <span className="chip-group-label">选择面</span>
             <div className="face-selector">
@@ -352,7 +411,7 @@ export function EditorPanel() {
       )}
 
       {activeTab === 'guidance' && (
-        <div className="tab-content">
+        <div className="tab-content tab-content-guidance">
           <p className="hint-text">配置推荐解法，系统会校验公式能否从初始态到达目标点亮区域。</p>
           <div className="chip-group">
             <span className="chip-group-label">指引解锁失败次数</span>
@@ -378,5 +437,6 @@ export function EditorPanel() {
         </div>
       </div>
     </div>
+    </>
   );
 }
