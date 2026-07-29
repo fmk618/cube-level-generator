@@ -116,7 +116,7 @@ cube-level-generator/
 
 ## LLM 公式助手
 
-1. 右侧面板点击 ⚙ 打开设置
+1. 右侧面板点击「设置」
 2. 填入 [DashScope API Key](https://help.aliyun.com/zh/model-studio/) 并保存
 3. 描述教学目标，选择目标类型（F2L / OLL / PLL）与难度后生成候选
 
@@ -146,23 +146,6 @@ cube-level-generator/
 │              纯函数 · 可独立测试 · 无 Electron 依赖       │
 └─────────────────────────────────────────────────────────┘
 ```
-
-`core/` 模块自 LiberCube 移动端共享逻辑移植，保证关卡 JSON 格式与 App 端一致。
-
----
-
-## 路线图
-
-- [ ] 应用图标与代码签名 / 公证
-- [ ] 自动更新（electron-updater）
-- [ ] Skill / 难度标签与批量校验工具
-
----
-
-## 相关项目
-
-- **LiberCube App** — 移动端魔方学习 App；本工具产出的 JSON 为正式关卡数据源
-- 产品方案文档（若在同 monorepo 内）：`../LiberCube-App-RN/docs/LEVEL_DESKTOP_STUDIO.md`
 
 ---
 
