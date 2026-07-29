@@ -36,12 +36,12 @@ export const findInitialPositionByStateId = (stateId: number): FaceRowCol | null
 /** 颜色索引 (0-15) → 十六进制颜色 */
 export const colorIndexToHex = (index: number): string => {
     const colors = [
-        '#000000', '#FF2D2D', '#FF8C1A', '#FFE033', '#66E830',
-        '#33CC33', '#20D9A0', '#33E5E5', '#339BFF', '#3377FF',
+        '#1E293B', '#EF4444', '#F97316', '#FACC15', '#22C55E',
+        '#16A34A', '#20D9A0', '#33E5E5', '#60A5FA', '#2563EB',
         '#9944FF', '#FF44FF', '#FF3388', '#FF99CC', '#99CCFF',
-        '#FFFFFF'
+        '#F8FAFC'
     ];
-    return colors[index] || '#ffffff';
+    return colors[index] || '#F8FAFC';
 };
 
 /** 根据 stateId 从 colorMatrix 查找颜色索引 (O(1) 查找) */

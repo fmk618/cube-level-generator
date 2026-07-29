@@ -227,8 +227,14 @@ export function EditorPanel() {
     return (
       <div className="panel panel--main editor-panel">
         <div className="panel-scroll editor-panel-empty">
-          <div className="empty-icon">◻</div>
-          <p>从左侧选择一个关卡开始编辑<br />或新增一个关卡</p>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)' }}>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M9 3v18M3 9h6M3 15h6" />
+          </svg>
+          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.6 }}>
+            从左侧选择一个关卡开始编辑<br />
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>或点击「新增关卡」创建</span>
+          </p>
         </div>
       </div>
     );
