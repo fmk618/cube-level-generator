@@ -12,6 +12,14 @@ const api = {
     exportToDisk: (json: string, suggestedName: string): Promise<string | null> =>
       ipcRenderer.invoke('catalog:exportToDisk', json, suggestedName),
   },
+  skillGraph: {
+    loadDefault: (): Promise<string> => ipcRenderer.invoke('skillGraph:loadDefault'),
+    loadRuntime: (): Promise<ImportResult> => ipcRenderer.invoke('skillGraph:loadRuntime'),
+    saveRuntime: (json: string): Promise<string> => ipcRenderer.invoke('skillGraph:saveRuntime', json),
+    importFromDisk: (): Promise<ImportResult> => ipcRenderer.invoke('skillGraph:importFromDisk'),
+    exportToDisk: (json: string, suggestedName: string): Promise<string | null> =>
+      ipcRenderer.invoke('skillGraph:exportToDisk', json, suggestedName),
+  },
   secrets: {
     has: (key: string): Promise<boolean> => ipcRenderer.invoke('secrets:has', key),
     get: (key: string): Promise<string | null> => ipcRenderer.invoke('secrets:get', key),

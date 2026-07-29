@@ -196,6 +196,38 @@ button {
   border-color: #b91c1c;
 }
 
+.editor-mode-tabs {
+  display: flex;
+  gap: 4px;
+  margin-right: 12px;
+  border-radius: 4px;
+  background: var(--background-secondary);
+  padding: 2px;
+}
+
+.mode-tab {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+  -webkit-app-region: no-drag;
+}
+
+.mode-tab:hover {
+  color: var(--text-primary);
+}
+
+.mode-tab.active {
+  background: white;
+  color: var(--primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
 .titlebar-save:disabled {
   color: var(--text-muted);
   background: var(--surface-secondary);
