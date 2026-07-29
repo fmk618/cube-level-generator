@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Desktop authoring tool for Rubik's cube levels — chapters, formulas, 3D preview, and LLM-assisted formula generation",
-  "author": "LiberCube",
+  "author": "飞马客, fmk",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {

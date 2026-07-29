@@ -225,46 +225,55 @@ export function EditorPanel() {
 
   if (!level || !startStateMatrix || !goalStateMatrix) {
     return (
-      <div className="panel editor-panel editor-panel-empty">
-        <p>从左侧选择一个关卡开始编辑，或新增一个关卡。</p>
+      <div className="panel editor-panel">
+        <div className="panel-scroll editor-panel-empty">
+          <div className="empty-icon">◻</div>
+          <p>从左侧选择一个关卡开始编辑<br />或新增一个关卡</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="panel editor-panel">
-      <div className="panel-header">
-        <div>
-          <h2>{titleText || level.title}</h2>
-          <p className="editor-subtitle">
-            {chapter?.title ?? level.chapterId} · {formatChapterLevelOrder(level.chapterId, level.order, chapters)}
-          </p>
+      <div className="panel-scroll">
+        <div className="editor-header">
+          <div>
+            <span className="panel-label">编辑</span>
+            <h2>{titleText || level.title}</h2>
+            <p className="editor-subtitle">
+              {chapter?.title ?? level.chapterId} · {formatChapterLevelOrder(level.chapterId, level.order, chapters)}
+            </p>
+          </div>
+          <button className="btn btn-primary" disabled={saving} onClick={handleSave}>保存</button>
         </div>
-        <button className="btn btn-primary" disabled={saving} onClick={handleSave}>保存关卡</button>
-      </div>
 
-      {saveError && <div className="banner banner-error">{saveError}</div>}
-      {saveNotice && <div className="banner banner-ok">{saveNotice}</div>}
+        {saveError && <div className="banner banner-error">{saveError}</div>}
+        {saveNotice && <div className="banner banner-ok">{saveNotice}</div>}
 
-      <div className="preview-row">
-        <div className="preview-toggle">
-          <button className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('start')}>初始态</button>
-          <button className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('goal')}>目标态</button>
+        <div className="preview-card-wrap">
+          <div className="preview-card-header">
+            <span className="section-title">3D 预览</span>
+            <div className="preview-toggle">
+              <button className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('start')}>初始态</button>
+              <button className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('goal')}>目标态</button>
+            </div>
+          </div>
+          <CubePreview
+            className="cube-preview cube-preview-editor"
+            stateMatrix={previewMode === 'start' ? startStateMatrix : goalStateMatrix}
+            brightnessMatrix={brightnessMatrix}
+          />
         </div>
-        <CubePreview
-          className="cube-preview cube-preview-editor"
-          stateMatrix={previewMode === 'start' ? startStateMatrix : goalStateMatrix}
-          brightnessMatrix={brightnessMatrix}
-        />
-      </div>
 
-      <div className="tab-bar">
-        {(['meta', 'formula', 'brightness', 'guidance'] as Tab[]).map((tab) => (
-          <button key={tab} className={`tab ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>
-            {tab === 'meta' ? '基础信息' : tab === 'formula' ? '旋转公式' : tab === 'brightness' ? '点亮控制' : '指引校验'}
-          </button>
-        ))}
-      </div>
+        <div className="editor-workspace">
+          <div className="tab-bar">
+            {(['meta', 'formula', 'brightness', 'guidance'] as Tab[]).map((tab) => (
+              <button key={tab} className={`tab ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>
+                {tab === 'meta' ? '基础信息' : tab === 'formula' ? '旋转公式' : tab === 'brightness' ? '点亮控制' : '指引校验'}
+              </button>
+            ))}
+          </div>
 
       {activeTab === 'meta' && (
         <div className="tab-content">
@@ -285,25 +294,31 @@ export function EditorPanel() {
 
       {activeTab === 'formula' && (
         <div className="tab-content">
-          <div className="field-row">
-            {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((target) => (
-              <button key={target} className={`chip ${formulaTarget === target ? 'chip-active' : ''}`} onClick={() => setFormulaTarget(target)}>
-                {target.toUpperCase()}
-              </button>
-            ))}
+          <div className="chip-group">
+            <span className="chip-group-label">目标类型</span>
+            <div className="chip-row">
+              {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((target) => (
+                <button key={target} className={`chip ${formulaTarget === target ? 'chip-active' : ''}`} onClick={() => setFormulaTarget(target)}>
+                  {target.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
           <FormulaKeyboard value={formulaText} onChange={setFormulaText} />
-          <button className="btn btn-primary" onClick={applyFormula}>应用公式（重新生成起始/目标态）</button>
+          <button className="btn btn-primary" onClick={applyFormula}>应用公式</button>
           <div className="preview-card">{formulaPreviewText}</div>
         </div>
       )}
 
       {activeTab === 'brightness' && (
         <div className="tab-content">
-          <div className="face-selector">
-            {FACE_NAMES.map((name, index) => (
-              <button key={name} className={`chip ${selectedFace === index ? 'chip-active' : ''}`} onClick={() => setSelectedFace(index)}>{name}</button>
-            ))}
+          <div className="chip-group">
+            <span className="chip-group-label">选择面</span>
+            <div className="face-selector">
+              {FACE_NAMES.map((name, index) => (
+                <button key={name} className={`chip ${selectedFace === index ? 'chip-active' : ''}`} onClick={() => setSelectedFace(index)}>{name}</button>
+              ))}
+            </div>
           </div>
           <div className="brightness-grid">
             {[0, 1, 2].map((row) => (
@@ -332,14 +347,16 @@ export function EditorPanel() {
 
       {activeTab === 'guidance' && (
         <div className="tab-content">
-          <p className="hint-text">为关卡配置推荐解法。系统会校验公式能否从当前初始态到达目标点亮区域。</p>
-          <label>指引解锁失败次数</label>
-          <div className="field-row">
-            {([0, 1, 2, 3] as LevelGuidanceFailureThreshold[]).map((threshold) => (
-              <button key={threshold} className={`chip ${guidanceFailureThreshold === threshold ? 'chip-active' : ''}`} onClick={() => setGuidanceFailureThreshold(threshold)}>
-                {threshold} 次
-              </button>
-            ))}
+          <p className="hint-text">配置推荐解法，系统会校验公式能否从初始态到达目标点亮区域。</p>
+          <div className="chip-group">
+            <span className="chip-group-label">指引解锁失败次数</span>
+            <div className="chip-row">
+              {([0, 1, 2, 3] as LevelGuidanceFailureThreshold[]).map((threshold) => (
+                <button key={threshold} className={`chip ${guidanceFailureThreshold === threshold ? 'chip-active' : ''}`} onClick={() => setGuidanceFailureThreshold(threshold)}>
+                  {threshold} 次
+                </button>
+              ))}
+            </div>
           </div>
           <p className="hint-text">
             {guidanceFailureThreshold === 0
@@ -352,6 +369,8 @@ export function EditorPanel() {
           <div className="preview-card">{guidancePreviewText}</div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }
