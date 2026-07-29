@@ -28,10 +28,10 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 1100,
-    minHeight: 700,
+    minWidth: 900,
+    minHeight: 640,
     title: 'cube-level-generator',
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f5f5f4',
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 15 } }
       : {}),

@@ -68,7 +68,12 @@ function ModelComboInput({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
-export function LlmPanel() {
+type LlmPanelProps = {
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+};
+
+export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps) {
   const requestFormulaAdoption = useUiStore((s) => s.requestFormulaAdoption);
   const selectedLevelId = useUiStore((s) => s.selectedLevelId);
 
@@ -105,6 +110,7 @@ export function LlmPanel() {
   };
 
   const handleClearKey = async () => {
+    if (!window.confirm('确定要清除本机保存的 API Key 吗？')) return;
     await window.api.secrets.delete(API_KEY_STORAGE_KEY);
     setHasStoredKey(false);
     setSettingsNotice('已清除本机保存的 API Key。');
@@ -173,19 +179,50 @@ export function LlmPanel() {
     requestFormulaAdoption({ kind, formula: candidate.formula, target });
   };
 
+  if (collapsed) {
+    return (
+      <div className="panel panel--assistant llm-panel llm-panel-collapsed">
+        <button type="button" className="ai-rail-button" onClick={onToggleCollapsed} title="展开公式助手" aria-label="展开公式助手">
+          <span aria-hidden>✦</span>
+          <span>AI</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="panel panel--assistant llm-panel">
       <div className="panel-scroll">
         <div className="ai-header">
-          <div className="ai-avatar" aria-hidden>✦</div>
           <div className="ai-header-text">
             <h2>公式助手</h2>
             <p>描述训练目标，AI 生成候选公式</p>
           </div>
-          <button type="button" className="ai-settings-toggle" onClick={() => setShowSettings((v) => !v)}>
-            {showSettings ? '收起' : '设置'}
+          <button type="button" className="icon-btn ai-collapse-button" onClick={onToggleCollapsed} title="折叠公式助手" aria-label="折叠公式助手">
+            →
           </button>
         </div>
+
+        <div className="ai-model-status">
+          <div>
+            <span>当前模型</span>
+            <strong>{model}</strong>
+          </div>
+          <span className={`api-status ${hasStoredKey ? 'is-ready' : ''}`}>
+            <i />
+            {hasStoredKey ? '已配置' : '未配置'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="model-settings-toggle"
+          onClick={() => setShowSettings((value) => !value)}
+          aria-expanded={showSettings}
+        >
+          <span>模型设置</span>
+          <span className={showSettings ? 'is-open' : ''}>⌄</span>
+        </button>
 
         {showSettings && (
           <div className="ai-settings">
@@ -202,7 +239,7 @@ export function LlmPanel() {
               onChange={(e) => setApiKeyInput(e.target.value)}
             />
             <div className="btn-grid">
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleSaveKey()}>保存</button>
+              <button type="button" className="btn btn-sm" disabled={!apiKeyInput.trim()} onClick={() => void handleSaveKey()}>保存 API Key</button>
               <button type="button" className="btn btn-danger btn-sm" disabled={!hasStoredKey} onClick={() => void handleClearKey()}>清除</button>
             </div>
             <ModelComboInput value={model} onChange={setModel} />
@@ -211,7 +248,9 @@ export function LlmPanel() {
         )}
 
         <div className="ai-prompt-card">
+          <label className="ai-prompt-label" htmlFor="training-goal">训练目标</label>
           <textarea
+            id="training-goal"
             className="ai-prompt-input"
             placeholder="例如：训练识别顶层十字的边块位置，只需处理一个错位边块…"
             value={goalDescription}
@@ -240,19 +279,16 @@ export function LlmPanel() {
 
             <div className="ai-option-row">
               <span className="ai-option-label">数量</span>
-              <input
-                className="ai-count-input"
-                type="number"
-                min={1}
-                max={6}
-                value={candidateCount}
-                onChange={(e) => setCandidateCount(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
-              />
+              <div className="count-stepper">
+                <button type="button" disabled={candidateCount <= 1} onClick={() => setCandidateCount((value) => Math.max(1, value - 1))} aria-label="减少生成数量">−</button>
+                <span>{candidateCount}</span>
+                <button type="button" disabled={candidateCount >= 6} onClick={() => setCandidateCount((value) => Math.min(6, value + 1))} aria-label="增加生成数量">＋</button>
+              </div>
             </div>
           </div>
 
           <button type="button" className="btn btn-primary btn-block ai-generate-btn" disabled={loading} onClick={() => void handleGenerate()}>
-            {loading ? '生成中…' : '生成候选公式'}
+            {loading ? <><span className="spinner" />生成中</> : '生成候选公式'}
           </button>
         </div>
 
