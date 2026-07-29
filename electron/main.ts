@@ -31,7 +31,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     title: 'cube-level-generator',
-    backgroundColor: '#f4f2ee',
+    backgroundColor: '#ffffff',
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 15 } }
       : {}),

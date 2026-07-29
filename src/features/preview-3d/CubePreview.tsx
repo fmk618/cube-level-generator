@@ -14,7 +14,7 @@ export function CubePreview({ stateMatrix, brightnessMatrix, colorMatrix, classN
   return (
     <div className={className ?? 'cube-preview'}>
       <Canvas camera={{ position: [3.2, 3.0, 3.6], fov: 38 }}>
-        <color attach="background" args={['#f0ede8']} />
+        <color attach="background" args={['#fafafa']} />
         <ambientLight intensity={0.75} />
         <directionalLight position={[4, 6, 5]} intensity={1.1} />
         <directionalLight position={[-4, -3, -5]} intensity={0.35} />

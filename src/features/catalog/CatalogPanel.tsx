@@ -125,103 +125,113 @@ export function CatalogPanel() {
   };
 
   if (!isLoaded && isLoading) {
-    return <div className="panel catalog-panel"><div className="panel-loading">加载关卡目录中…</div></div>;
+    return (
+      <div className="panel catalog-panel">
+        <div className="panel-scroll panel-loading">加载关卡目录中…</div>
+      </div>
+    );
   }
 
   return (
     <div className="panel catalog-panel">
-      <div className="panel-header">
-        <h2>关卡管理</h2>
-        <div className="summary-row">
-          <span>{viewModel.summary.configuredCount} 个关卡</span>
-          <span>{viewModel.summary.hiddenCount} 个隐藏</span>
-          {hasUnsavedChanges && <span className="badge badge-warn">未保存</span>}
+      <div className="panel-scroll">
+        <div className="panel-top">
+          <div className="panel-heading">
+            <span className="panel-label">目录</span>
+            <h2>关卡管理</h2>
+          </div>
+          <div className="stat-line">
+            <span><strong>{viewModel.summary.configuredCount}</strong> 个关卡</span>
+            <span>·</span>
+            <span><strong>{viewModel.summary.hiddenCount}</strong> 个隐藏</span>
+            {hasUnsavedChanges && <span className="badge badge-warn">未保存</span>}
+          </div>
         </div>
-      </div>
 
-      {loadError && <div className="banner banner-error">{loadError}</div>}
-      {banner && <div className="banner banner-error">{banner}</div>}
+        {loadError && <div className="banner banner-error">{loadError}</div>}
+        {banner && <div className="banner banner-error">{banner}</div>}
 
-      <div className="search-row">
-        <input
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="搜索关卡标题 / ID / 章节"
-          className="text-input"
-        />
-        <div className="filter-chips">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              className={`chip ${filter === f.key ? 'chip-active' : ''}`}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="chapter-list">
-        {viewModel.sections.map((section) => (
-          <ChapterSection
-            key={section.chapterId}
-            section={section}
-            expanded={expanded[section.chapterId] ?? false}
-            onToggle={() => setExpanded((prev) => ({ ...prev, [section.chapterId]: !prev[section.chapterId] }))}
-            onEditChapter={() => {
-              const chapter = chapters.find((c) => c.id === section.chapterId);
-              setChapterDraft({
-                id: section.chapterId,
-                partName: section.partName,
-                title: section.chapterLabel,
-                description: chapter?.description ?? '',
-                capacity: String(section.capacity),
-              });
-            }}
-            onMoveChapter={(direction) => run(`chapter-move:${section.chapterId}`, () => moveChapter(section.chapterId, direction))}
-            onDeleteChapter={() => {
-              if (!window.confirm(`确定要删除章节「${section.chapterLabel}」吗？`)) return;
-              void run(`chapter-delete:${section.chapterId}`, () => deleteChapter(section.chapterId));
-            }}
-            onAppend={() => handleAppend(section.chapterId)}
-            selectedLevelId={selectedLevelId}
-            busy={busy}
-            guidanceByLevelId={guidanceByLevelId}
-            onSelect={(id) => selectLevel(id)}
-            onDuplicate={(id) => run(`duplicate:${id}`, () => { const l = duplicateLevel(id); selectLevel(l.id); })}
-            onToggleHidden={handleToggleHidden}
-            onMove={handleMoveLevel}
-            onDelete={handleDelete}
+        <div className="panel-section">
+          <input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="搜索关卡标题 / ID / 章节"
+            className="text-input"
           />
-        ))}
-        <button
-          className="btn btn-ghost btn-block"
-          disabled={busy !== null}
-          onClick={() => setChapterDraft({ id: null, partName: `Part${chapters.length + 1}`, title: '', description: '', capacity: '6' })}
-        >
-          + 新增章节
-        </button>
+          <div className="filter-chips">
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                className={`chip ${filter === f.key ? 'chip-active' : ''}`}
+                onClick={() => setFilter(f.key)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="chapter-list">
+          {viewModel.sections.map((section) => (
+            <ChapterSection
+              key={section.chapterId}
+              section={section}
+              expanded={expanded[section.chapterId] ?? false}
+              onToggle={() => setExpanded((prev) => ({ ...prev, [section.chapterId]: !prev[section.chapterId] }))}
+              onEditChapter={() => {
+                const chapter = chapters.find((c) => c.id === section.chapterId);
+                setChapterDraft({
+                  id: section.chapterId,
+                  partName: section.partName,
+                  title: section.chapterLabel,
+                  description: chapter?.description ?? '',
+                  capacity: String(section.capacity),
+                });
+              }}
+              onMoveChapter={(direction) => run(`chapter-move:${section.chapterId}`, () => moveChapter(section.chapterId, direction))}
+              onDeleteChapter={() => {
+                if (!window.confirm(`确定要删除章节「${section.chapterLabel}」吗？`)) return;
+                void run(`chapter-delete:${section.chapterId}`, () => deleteChapter(section.chapterId));
+              }}
+              onAppend={() => handleAppend(section.chapterId)}
+              selectedLevelId={selectedLevelId}
+              busy={busy}
+              guidanceByLevelId={guidanceByLevelId}
+              onSelect={(id) => selectLevel(id)}
+              onDuplicate={(id) => run(`duplicate:${id}`, () => { const l = duplicateLevel(id); selectLevel(l.id); })}
+              onToggleHidden={handleToggleHidden}
+              onMove={handleMoveLevel}
+              onDelete={handleDelete}
+            />
+          ))}
+          <button
+            className="btn btn-ghost btn-block"
+            disabled={busy !== null}
+            onClick={() => setChapterDraft({ id: null, partName: `Part${chapters.length + 1}`, title: '', description: '', capacity: '6' })}
+          >
+            + 新增章节
+          </button>
+        </div>
       </div>
 
-      <div className="danger-zone">
-        <h3>关卡文件</h3>
-        <p className="danger-zone-hint">
-          导入 / 恢复默认会立即覆盖草稿；保存到文件才会写入运行文件；导出用于分享给 App 仓库。
+      <div className="panel-footer">
+        <p className="section-title">关卡文件</p>
+        <p className="hint-text">
+          导入 / 恢复默认会覆盖草稿；保存后写入运行文件；导出用于同步 App。
         </p>
         <p className="file-path" title={runtimeFilePath ?? ''}>{runtimeFilePath}</p>
-        <div className="danger-actions">
-          <button className="btn" disabled={busy !== null} onClick={() => run('import', () => importFromDisk())}>导入</button>
-          <button className="btn" disabled={busy !== null} onClick={() => run('export', () => exportToDisk())}>导出</button>
-          <button className="btn" disabled={busy !== null || !hasUnsavedChanges} onClick={() => run('discard', () => discardChanges())}>放弃草稿</button>
-          <button className="btn btn-danger" disabled={busy !== null} onClick={() => {
+        <div className="btn-grid">
+          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('import', () => importFromDisk())}>导入</button>
+          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('export', () => exportToDisk())}>导出</button>
+          <button className="btn btn-sm" disabled={busy !== null || !hasUnsavedChanges} onClick={() => run('discard', () => discardChanges())}>放弃草稿</button>
+          <button className="btn btn-sm btn-danger" disabled={busy !== null} onClick={() => {
             if (!window.confirm('确定要恢复默认关卡吗？这会覆盖当前草稿。')) return;
             void run('reset', () => resetToDefault());
           }}>恢复默认</button>
-          <button className="btn btn-primary" disabled={busy !== null || !hasUnsavedChanges} onClick={() => run('save', () => saveCatalog())}>
-            保存到文件
-          </button>
         </div>
+        <button className="btn btn-primary btn-block" disabled={busy !== null || !hasUnsavedChanges} onClick={() => run('save', () => saveCatalog())}>
+          保存到文件
+        </button>
       </div>
 
       {chapterDraft && (
@@ -340,14 +350,18 @@ function LevelRow({ item, selected, busy, guidance, onSelect, onDuplicate, onTog
 
   return (
     <div className={`level-row ${selected ? 'level-row-selected' : ''}`} onClick={() => onSelect(level.id)}>
-      <div className="level-row-main">
-        <span className="level-order">{item.orderLabel}</span>
-        <span className="level-title">{level.title}</span>
-        {item.isHidden && <span className="badge badge-hidden">隐藏</span>}
-        <span className={`badge ${guidance?.status === 'ready' ? 'badge-ready' : guidance?.status === 'invalid' ? 'badge-error' : 'badge-muted'}`}>
-          {guidance?.status === 'ready' ? `${guidance.stepCount} 步` : guidance?.status === 'invalid' ? '解法无效' : '缺解法'}
-        </span>
-        <span className="badge badge-muted">失败{failureThreshold}次解锁</span>
+      <div className="level-row-content">
+        <div className="level-row-top">
+          <span className="level-order">{item.orderLabel}</span>
+          <span className="level-title">{level.title}</span>
+        </div>
+        <div className="level-row-meta">
+          {item.isHidden && <span className="badge badge-hidden">隐藏</span>}
+          <span className={`badge ${guidance?.status === 'ready' ? 'badge-ready' : guidance?.status === 'invalid' ? 'badge-error' : 'badge-muted'}`}>
+            {guidance?.status === 'ready' ? `${guidance.stepCount} 步` : guidance?.status === 'invalid' ? '解法无效' : '缺解法'}
+          </span>
+          <span className="badge badge-muted">失败{failureThreshold}次解锁</span>
+        </div>
       </div>
       <div className="level-row-actions" onClick={(e) => e.stopPropagation()}>
         <button className="icon-btn" disabled={disabled} onClick={() => onDuplicate(level.id)}>⧉</button>

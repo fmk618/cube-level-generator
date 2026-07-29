@@ -11,11 +11,7 @@ export default function App() {
   return (
     <div className="studio-shell">
       <header className="studio-titlebar">
-        <div className="studio-brand">
-          <span className="studio-brand-mark" aria-hidden />
-          <span className="studio-title">cube-level-generator</span>
-        </div>
-        <span className="studio-tagline">关卡 · 公式 · 指引</span>
+        <span className="studio-title">cube-level-generator</span>
       </header>
       <main className="studio-columns">
         <CatalogPanel />

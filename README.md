@@ -174,4 +174,4 @@ cube-level-generator/
 
 ## 作者
 
-[LiberCube](https://github.com/libercube)
+**飞马客** · fmk
