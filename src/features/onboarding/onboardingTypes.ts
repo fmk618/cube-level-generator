@@ -1,5 +1,5 @@
-export const ONBOARDING_STORAGE_KEY = 'onboarding.basic.v2';
-export const ONBOARDING_VERSION = 2;
+export const ONBOARDING_STORAGE_KEY = 'onboarding.basic.v3';
+export const ONBOARDING_VERSION = 3;
 
 export type OnboardingStatus = 'completed' | 'skipped';
 

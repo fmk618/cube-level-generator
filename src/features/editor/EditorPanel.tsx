@@ -271,7 +271,7 @@ export function EditorPanel() {
 
   if (!level || !startStateMatrix || !goalStateMatrix) {
     return (
-      <div className="panel panel--main editor-panel">
+      <div className="panel panel--main editor-panel" data-tour="level-editor">
         <div className="panel-scroll editor-panel-empty">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)' }}>
             <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -302,7 +302,7 @@ export function EditorPanel() {
         </>,
         headerActionsHost,
       )}
-      <div className="panel panel--main editor-panel">
+      <div className="panel panel--main editor-panel" data-tour="level-editor">
       <div className="panel-scroll editor-scroll">
         <div className="editor-header">
           <div>

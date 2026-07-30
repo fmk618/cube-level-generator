@@ -39,7 +39,9 @@ export function SelectDropdown({
   const [query, setQuery] = useState('');
   const [pos, setPos] = useState<MenuPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const listId = useId();
 
   const selected = options.find((o) => o.value === value);
@@ -51,17 +53,24 @@ export function SelectDropdown({
     : options;
 
   const updatePos = () => {
-    const el = rootRef.current;
+    const el = triggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const spaceAbove = rect.top - 8;
+    const gap = 4;
+    const spaceBelow = window.innerHeight - rect.bottom - gap;
+    const spaceAbove = rect.top - gap;
     const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
-    const maxHeight = Math.min(240, Math.max(120, openUp ? spaceAbove : spaceBelow));
+    const available = openUp ? spaceAbove : spaceBelow;
+    const maxHeight = Math.min(260, Math.max(140, available));
+    // Exact trigger box — never min-widen (that made the panel look shifted right).
+    const width = rect.width;
+    let left = rect.left;
+    const overflowRight = left + width - (window.innerWidth - 8);
+    if (overflowRight > 0) left = Math.max(8, left - overflowRight);
     setPos({
-      top: openUp ? rect.top - 4 : rect.bottom + 4,
-      left: rect.left,
-      width: Math.max(rect.width, 160),
+      top: openUp ? rect.top - gap : rect.bottom + gap,
+      left,
+      width,
       maxHeight,
       openUp,
     });
@@ -73,14 +82,26 @@ export function SelectDropdown({
       return;
     }
     updatePos();
-    const onScroll = () => updatePos();
-    window.addEventListener('resize', onScroll);
-    window.addEventListener('scroll', onScroll, true);
+    // Remeasure after paint — autofocus/layout can shift scroll containers.
+    const raf = window.requestAnimationFrame(() => {
+      updatePos();
+      window.requestAnimationFrame(updatePos);
+    });
+    const onScrollOrResize = () => updatePos();
+    window.addEventListener('resize', onScrollOrResize);
+    window.addEventListener('scroll', onScrollOrResize, true);
     return () => {
-      window.removeEventListener('resize', onScroll);
-      window.removeEventListener('scroll', onScroll, true);
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onScrollOrResize);
+      window.removeEventListener('scroll', onScrollOrResize, true);
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !searchable) return;
+    // preventScroll avoids shifting the trigger while the fixed menu stays put.
+    searchRef.current?.focus({ preventScroll: true });
+  }, [open, searchable]);
 
   useEffect(() => {
     if (!open) return;
@@ -125,8 +146,8 @@ export function SelectDropdown({
           {searchable && (
             <div className="ui-select-search">
               <input
+                ref={searchRef}
                 className="ui-select-search-input"
-                autoFocus
                 placeholder="搜索..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -134,7 +155,10 @@ export function SelectDropdown({
               />
             </div>
           )}
-          <ul className="ui-select-list" style={{ maxHeight: searchable ? pos.maxHeight - 46 : pos.maxHeight }}>
+          <ul
+            className="ui-select-list"
+            style={{ maxHeight: searchable ? Math.max(80, pos.maxHeight - 52) : pos.maxHeight }}
+          >
             {filtered.length === 0 ? (
               <li className="ui-select-empty">无匹配项</li>
             ) : (
@@ -151,9 +175,9 @@ export function SelectDropdown({
                     setQuery('');
                   }}
                 >
-                  <span>{opt.label}</span>
+                  <span className="ui-select-option-label">{opt.label}</span>
                   {opt.value === value && (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
                       <path d="M5 12l5 5L20 7" />
                     </svg>
                   )}
@@ -172,6 +196,7 @@ export function SelectDropdown({
       className={`ui-select ${size === 'sm' ? 'ui-select--sm' : ''} ${open ? 'is-open' : ''} ${disabled ? 'is-disabled' : ''} ${className}`}
     >
       <button
+        ref={triggerRef}
         type="button"
         className={`ui-select-trigger ${isPlaceholder ? 'is-placeholder' : ''}`}
         disabled={disabled}
@@ -185,7 +210,7 @@ export function SelectDropdown({
         }}
       >
         <span className="ui-select-label">{displayLabel}</span>
-        <svg className="ui-select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg className="ui-select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>

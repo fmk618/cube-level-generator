@@ -67,8 +67,22 @@ export function OnboardingTour({
       startedRef.current = false;
     });
 
-    const offNotFound = on(EVENTS.TARGET_NOT_FOUND, (_data, tourControls) => {
-      tourControls.next();
+    // Retry briefly before skipping — mode switches can lag one frame.
+    const offNotFound = on(EVENTS.TARGET_NOT_FOUND, (data, tourControls) => {
+      const raw = typeof data.step?.target === 'string' ? data.step.target : '';
+      const match = raw.match(/data-tour="([^"]+)"/);
+      const tourId = match?.[1];
+      void (async () => {
+        if (tourId) {
+          const el = await waitForTourTarget(tourId, 2500);
+          if (el) {
+            tourControls.replay();
+            return;
+          }
+        }
+        console.warn('[onboarding] skip missing target', raw || data.step?.id);
+        tourControls.next();
+      })();
     });
 
     return () => {

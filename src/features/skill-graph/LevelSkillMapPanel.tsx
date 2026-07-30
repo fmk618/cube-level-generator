@@ -149,7 +149,7 @@ export function LevelSkillMapPanel() {
           <h2>关卡映射</h2>
           <span className="map-badge">{mappedCount} / {levels.length}</span>
         </div>
-        <div className="map-header-actions" id="map-export">
+        <div className="map-header-actions" id="map-export" data-tour="map-save">
           <button className="btn btn-sm" onClick={() => void handleExport()}>导出</button>
           {hasUnsavedChanges && (
             <button className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存</button>
@@ -197,7 +197,7 @@ export function LevelSkillMapPanel() {
         </div>
       </div>
 
-      <div className="map-list" id="map-list">
+      <div className="map-list" id="map-list" data-tour="map-list">
         {filteredLevels.length === 0 ? (
           <div className="map-empty">该章节无关卡</div>
         ) : (
