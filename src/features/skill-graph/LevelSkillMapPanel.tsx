@@ -89,8 +89,6 @@ export function LevelSkillMapPanel() {
     ? skillLabelById.get(quickAssignSkillId) ?? quickAssignSkillId
     : '';
 
-  const canBulkAssign = Boolean(quickAssignSkillId) && selectedLevelIds.size > 0;
-
   const handleExport = async () => {
     try {
       setError(null);
@@ -226,40 +224,48 @@ export function LevelSkillMapPanel() {
             >{chapter.partName}</button>
           ))}
         </div>
+        <p className="map-toolbar-hint">单关在卡片内添加技能；勾选多个关卡后可批量追加</p>
+      </div>
 
-        <div className="map-bulk-actions">
-          <div data-tour="skill-select" className="map-bulk-skill">
-            <SelectDropdown
-              size="sm"
-              className="map-bulk-select"
-              value={quickAssignSkillId}
-              options={skillOptions}
-              placeholder="选择技能..."
-              searchable
-              disabled={skills.length === 0}
-              onChange={setQuickAssignSkillId}
-            />
-            {quickAssignSkillName && (
-              <span className="map-bulk-skill-hint">已选：{quickAssignSkillName}</span>
-            )}
-          </div>
+      {selectedLevelIds.size > 0 && (
+        <div className="map-bulk-bar" data-tour="skill-select">
+          <span className="map-bulk-bar-label">
+            已勾选 <strong>{selectedLevelIds.size}</strong> 个关卡，批量追加同一技能：
+          </span>
+          <SelectDropdown
+            size="sm"
+            className="map-bulk-select"
+            value={quickAssignSkillId}
+            options={skillOptions}
+            placeholder="选择要追加的技能..."
+            searchable
+            disabled={skills.length === 0}
+            onChange={setQuickAssignSkillId}
+          />
           <button
+            type="button"
             className="btn btn-sm btn-primary"
             data-tour="assign-button"
             onClick={handleQuickAssign}
-            disabled={!canBulkAssign}
-            title={
-              !quickAssignSkillId
-                ? '请先选择技能'
-                : selectedLevelIds.size === 0
-                  ? '请先勾选关卡'
-                  : `向 ${selectedLevelIds.size} 个关卡追加技能`
-            }
+            disabled={!quickAssignSkillId || skills.length === 0}
           >
-            分配 ({selectedLevelIds.size})
+            追加到已选关卡
           </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              setSelectedLevelIds(new Set());
+              setQuickAssignSkillId('');
+            }}
+          >
+            取消勾选
+          </button>
+          {quickAssignSkillName && (
+            <span className="map-bulk-skill-hint">将追加：{quickAssignSkillName}</span>
+          )}
         </div>
-      </div>
+      )}
 
       <div className="map-list" id="map-list" data-tour="map-list">
         {filteredLevels.length === 0 ? (
