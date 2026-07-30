@@ -212,6 +212,38 @@
   border-color: var(--border-strong);
 }
 
+.level-card.ai-touched {
+  background: #fff7ed;
+  border-color: #fb923c;
+  box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.35);
+}
+
+.level-card.ai-touched.selected {
+  border-color: #ea580c;
+}
+
+.ai-touched-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-tag);
+  background: #ea580c;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.banner.banner-ai {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #9a3412;
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+}
+
 .level-card.unmapped {
   background: var(--surface-secondary);
 }

@@ -88,12 +88,29 @@ export function EditorPanel() {
   useEffect(() => {
     if (!formulaAdoptionRequest || !level) return;
     if (formulaAdoptionRequest.kind === 'rotation') {
-      setFormulaText(formulaAdoptionRequest.formula);
-      setFormulaTarget(formulaAdoptionRequest.target);
+      const formula = formulaAdoptionRequest.formula;
+      const target = formulaAdoptionRequest.target;
+      setFormulaText(formula);
+      setFormulaTarget(target);
       setActiveTab('formula');
+      if (formulaAdoptionRequest.autoApply !== false) {
+        try {
+          const derived = deriveLevelFormulaPreset(formula, target);
+          setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+          setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+          setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
+          setPreviewMode('start');
+          setSaveError(null);
+          setSaveNotice(`AI 已应用旋转公式（${target.toUpperCase()}），起始/目标态已生成。请检查后保存关卡。`);
+        } catch (error) {
+          setSaveError(error instanceof Error ? error.message : String(error));
+          setSaveNotice('公式已写入编辑器，但自动应用失败，请手动点「应用公式」。');
+        }
+      }
     } else {
       setGuidanceFormulaText(formulaAdoptionRequest.formula);
       setActiveTab('guidance');
+      setSaveNotice('AI 已写入指引公式，请检查后保存关卡。');
     }
     clearFormulaAdoptionRequest();
   }, [formulaAdoptionRequest, level, clearFormulaAdoptionRequest]);
@@ -254,6 +271,7 @@ export function EditorPanel() {
       setStartStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(updatedLevel.goalStateMatrix));
       setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
+      useUiStore.getState().clearAiTouched();
       setSaveNotice('关卡已保存并同步到云端。');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));

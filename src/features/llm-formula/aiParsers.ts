@@ -1,3 +1,4 @@
+import type { LevelFormulaTarget } from '@/core/levels';
 import type {
   LevelSkillBinding,
   MasteryStandard,
@@ -26,8 +27,29 @@ export type AiMappingProposal = {
   skills: Array<LevelSkillBinding & { reason?: string }>;
 };
 
+export type AiLevelProposal = {
+  title: string;
+  description: string;
+  hint?: string;
+  rotationFormula: string;
+  rotationTarget: LevelFormulaTarget;
+  guidanceFormula?: string;
+  maxMoves: number;
+  reason?: string;
+};
+
+export type AiChapterProposal = {
+  partName: string;
+  title: string;
+  description: string;
+  capacity: number;
+  reason?: string;
+  levels?: AiLevelProposal[];
+};
+
 const MASTERY_VALUES: MasteryStandard[] = ['guided_only', 'guided_and_one_star', 'two_stars'];
 const TEACH_VALUES: TeachMode[] = ['guided', 'challenge', 'demo'];
+const FORMULA_TARGETS: LevelFormulaTarget[] = ['f2l', 'oll', 'pll'];
 
 export function extractJsonFromLlmText(text: string): unknown {
   const trimmed = text.trim();
@@ -168,5 +190,97 @@ export function parseMappingProposals(
   }
 
   if (results.length === 0) throw new Error('未解析到有效映射提案');
+  return results;
+}
+
+function parseLevelProposalItem(raw: unknown): AiLevelProposal | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const item = raw as Record<string, unknown>;
+  const title = typeof item.title === 'string' ? item.title.trim() : '';
+  const description = typeof item.description === 'string' ? item.description.trim() : '';
+  const rotationFormula = typeof item.rotationFormula === 'string' ? item.rotationFormula.trim() : '';
+  if (!title || !description || !rotationFormula) {
+    throw new Error('关卡提案缺少 title / description / rotationFormula');
+  }
+
+  const targetRaw = typeof item.rotationTarget === 'string' ? item.rotationTarget.trim().toLowerCase() : 'f2l';
+  const rotationTarget = FORMULA_TARGETS.includes(targetRaw as LevelFormulaTarget)
+    ? (targetRaw as LevelFormulaTarget)
+    : 'f2l';
+
+  const maxMovesRaw = typeof item.maxMoves === 'number' ? item.maxMoves : Number(item.maxMoves);
+  const maxMoves = Number.isFinite(maxMovesRaw) ? Math.min(40, Math.max(3, Math.round(maxMovesRaw))) : 8;
+
+  return {
+    title,
+    description,
+    hint: typeof item.hint === 'string' ? item.hint.trim() : undefined,
+    rotationFormula,
+    rotationTarget,
+    guidanceFormula:
+      typeof item.guidanceFormula === 'string' && item.guidanceFormula.trim()
+        ? item.guidanceFormula.trim()
+        : rotationFormula,
+    maxMoves,
+    reason: typeof item.reason === 'string' ? item.reason : undefined,
+  };
+}
+
+export function parseLevelProposals(text: string): AiLevelProposal[] {
+  const parsed = extractJsonFromLlmText(text) as { levels?: unknown[] };
+  if (!parsed || !Array.isArray(parsed.levels)) {
+    throw new Error('响应缺少 levels 数组');
+  }
+
+  const results: AiLevelProposal[] = [];
+  for (const raw of parsed.levels) {
+    const item = parseLevelProposalItem(raw);
+    if (item) results.push(item);
+  }
+
+  if (results.length === 0) throw new Error('未解析到有效关卡提案');
+  return results;
+}
+
+export function parseChapterProposals(text: string): AiChapterProposal[] {
+  const parsed = extractJsonFromLlmText(text) as { chapters?: unknown[] };
+  if (!parsed || !Array.isArray(parsed.chapters)) {
+    throw new Error('响应缺少 chapters 数组');
+  }
+
+  const results: AiChapterProposal[] = [];
+  for (const raw of parsed.chapters) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Record<string, unknown>;
+    const partName = typeof item.partName === 'string' ? item.partName.trim() : '';
+    const title = typeof item.title === 'string' ? item.title.trim() : '';
+    const description = typeof item.description === 'string' ? item.description.trim() : '';
+    if (!partName || !title) {
+      throw new Error('章节提案缺少 partName / title');
+    }
+
+    const capacityRaw = typeof item.capacity === 'number' ? item.capacity : Number(item.capacity);
+    const capacity = Number.isFinite(capacityRaw) ? Math.min(20, Math.max(1, Math.round(capacityRaw))) : 6;
+
+    let levels: AiLevelProposal[] | undefined;
+    if (Array.isArray(item.levels) && item.levels.length > 0) {
+      levels = [];
+      for (const levelRaw of item.levels.slice(0, capacity)) {
+        const level = parseLevelProposalItem(levelRaw);
+        if (level) levels.push(level);
+      }
+    }
+
+    results.push({
+      partName,
+      title,
+      description: description || title,
+      capacity,
+      reason: typeof item.reason === 'string' ? item.reason : undefined,
+      levels,
+    });
+  }
+
+  if (results.length === 0) throw new Error('未解析到有效章节提案');
   return results;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
+import { useUiStore } from '@/shared/store/useUiStore';
 import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import type { MasteryStandard, SkillDefinition, SkillStage } from '@/core/skill-graph/types';
 import '../../styles/skill-graph-panel.css';
@@ -39,6 +40,8 @@ export function SkillGraphPanel() {
   const exportToDisk = useSkillGraphStore((state) => state.exportToDisk);
   const saveSkillGraph = useSkillGraphStore((state) => state.saveSkillGraph);
   const resetToDefault = useSkillGraphStore((state) => state.resetToDefault);
+  const aiTouchedSkillIds = useUiStore((state) => state.aiTouchedSkillIds);
+  const clearAiTouched = useUiStore((state) => state.clearAiTouched);
 
   useEffect(() => {
     if (!skillGraph && !isLoading) {
@@ -53,6 +56,13 @@ export function SkillGraphPanel() {
     }, 6000);
     return () => window.clearTimeout(timer);
   }, [skillGraph, isLoading]);
+
+  useEffect(() => {
+    if (aiTouchedSkillIds.length === 0) return;
+    const firstId = aiTouchedSkillIds[0];
+    const el = document.querySelector(`[data-skill-id="${CSS.escape(firstId)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [aiTouchedSkillIds]);
 
   const filteredSkills =
     filterStage === 'all' ? skills : skills.filter((skill) => skill.stage === filterStage);
@@ -72,6 +82,7 @@ export function SkillGraphPanel() {
     try {
       setError(null);
       await saveSkillGraph();
+      clearAiTouched();
       setError('✓ 已保存并同步到云端');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
@@ -180,6 +191,13 @@ export function SkillGraphPanel() {
         <div className={`banner ${error.startsWith('✓') ? 'banner-ok' : 'banner-error'}`}>{error}</div>
       )}
 
+      {aiTouchedSkillIds.length > 0 && (
+        <div className="banner banner-ai">
+          AI 刚改动了 {aiTouchedSkillIds.length} 个技能（橙色高亮）。核对后点保存。
+          <button type="button" className="btn btn-sm" onClick={() => clearAiTouched()}>清除高亮</button>
+        </div>
+      )}
+
       <div className="skill-toolbar" id="skill-filter" data-tour="skill-editor">
         <div className="skill-filter-chips">
           <button
@@ -225,6 +243,7 @@ export function SkillGraphPanel() {
               key={skill.id}
               skill={skill}
               isEditing={editingSkillId === skill.id}
+              isAiTouched={aiTouchedSkillIds.includes(skill.id)}
               onEdit={() => setEditingSkillId(skill.id)}
               onClose={() => setEditingSkillId(null)}
               onUpdate={handleUpdateSkill}
@@ -240,13 +259,14 @@ export function SkillGraphPanel() {
 interface SkillCardProps {
   skill: SkillDefinition;
   isEditing: boolean;
+  isAiTouched: boolean;
   onEdit: () => void;
   onClose: () => void;
   onUpdate: (skillId: string, partial: Partial<SkillDefinition>) => void;
   onDelete: () => void;
 }
 
-function SkillCard({ skill, isEditing, onEdit, onClose, onUpdate, onDelete }: SkillCardProps) {
+function SkillCard({ skill, isEditing, isAiTouched, onEdit, onClose, onUpdate, onDelete }: SkillCardProps) {
   const [displayNameZh, setDisplayNameZh] = useState(skill.displayNameZh);
   const [displayNameEn, setDisplayNameEn] = useState(skill.displayNameEn);
   const [goal, setGoal] = useState(skill.goal);
@@ -258,10 +278,14 @@ function SkillCard({ skill, isEditing, onEdit, onClose, onUpdate, onDelete }: Sk
   };
 
   return (
-    <div className={`skill-card ${isEditing ? 'editing' : ''}`}>
+    <div
+      data-skill-id={skill.id}
+      className={`skill-card ${isEditing ? 'editing' : ''} ${isAiTouched ? 'ai-touched' : ''}`}
+    >
       <div className="skill-card-top">
         <span className="skill-stage-badge">{skill.stage}</span>
         <span className="skill-card-name">{skill.displayNameZh}</span>
+        {isAiTouched && <span className="ai-touched-badge">AI</span>}
         <div className="skill-card-actions">
           {!isEditing && (
             <>

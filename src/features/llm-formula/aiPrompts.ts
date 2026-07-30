@@ -19,6 +19,11 @@ export type MapScope = 'unmapped' | 'selected' | 'all';
 const STAGE_LIST = 'cross | f2l | oll | pll | full';
 const MASTERY_LIST = 'guided_only | guided_and_one_star | two_stars';
 const TEACH_LIST = 'guided | challenge | demo';
+const VALID_STAGES: SkillStage[] = ['cross', 'f2l', 'oll', 'pll', 'full'];
+
+export function isValidSkillStage(value: string): value is SkillStage {
+  return VALID_STAGES.includes(value as SkillStage);
+}
 
 export function buildLevelSummaries(
   levels: LevelDefinition[],
@@ -169,6 +174,81 @@ export function filterLevelsForMapScope(
   return summaries;
 }
 
-export function isValidSkillStage(value: string): value is SkillStage {
-  return ['cross', 'f2l', 'oll', 'pll', 'full'].includes(value);
+export function buildChapterLevelsSystemPrompt(
+  chapter: { id: string; partName: string; title: string; description?: string; capacity: number },
+  existingLevelTitles: string[],
+): string {
+  return `你是魔方教学关卡设计助手，服务于 cube-level-generator。
+请为指定章节生成若干新关卡草案（含旋转公式），供作者审核后应用。
+
+目标章节：
+${JSON.stringify(chapter, null, 2)}
+
+该章节已有关卡标题（避免重复）：
+${JSON.stringify(existingLevelTitles, null, 2)}
+
+输出要求：
+- 只输出一个 JSON 对象，不要 markdown 代码块，不要额外说明
+- 格式：
+{
+  "levels": [
+    {
+      "title": "关卡标题",
+      "description": "教学目标描述",
+      "hint": "提示文案",
+      "rotationFormula": "R U R' U'",
+      "rotationTarget": "f2l",
+      "guidanceFormula": "R U R' U'",
+      "maxMoves": 8,
+      "reason": "一句话说明关卡设计意图"
+    }
+  ]
+}
+- rotationTarget 只能是 f2l | oll | pll
+- rotationFormula / guidanceFormula 只能使用标准 WCA 记号
+- 关卡数量建议 2-6，不超过章节剩余容量（capacity=${chapter.capacity}）
+- 从易到难排列`;
+}
+
+export function buildChaptersSystemPrompt(
+  existingChapters: Array<{ partName: string; title: string; capacity: number }>,
+): string {
+  return `你是魔方教学课程设计助手，服务于 cube-level-generator。
+请生成若干新章节草案，供作者审核后应用。可选地为每个章节附带初始关卡（含旋转公式）。
+
+现有章节（避免 partName/标题重复）：
+${JSON.stringify(existingChapters, null, 2)}
+
+输出要求：
+- 只输出一个 JSON 对象，不要 markdown 代码块，不要额外说明
+- 格式：
+{
+  "chapters": [
+    {
+      "partName": "Part7",
+      "title": "章节中文标题",
+      "description": "本章教学目标",
+      "capacity": 6,
+      "reason": "一句话说明章节定位",
+      "levels": [
+        {
+          "title": "关卡标题",
+          "description": "教学目标描述",
+          "hint": "提示文案",
+          "rotationFormula": "R U R' U'",
+          "rotationTarget": "f2l",
+          "guidanceFormula": "R U R' U'",
+          "maxMoves": 8,
+          "reason": "一句话说明关卡设计意图"
+        }
+      ]
+    }
+  ]
+}
+- partName 建议 PartN 形式，与现有不冲突
+- capacity 建议 4-8 的正整数
+- levels 可选；若提供，数量不超过 capacity，并从易到难
+- rotationTarget 只能是 f2l | oll | pll
+- rotationFormula / guidanceFormula 只能使用标准 WCA 记号
+- 章节数量建议 1-3`;
 }

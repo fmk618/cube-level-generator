@@ -25,6 +25,8 @@ export function LevelSkillMapPanel() {
   const [quickAssignSkillId, setQuickAssignSkillId] = useState<string>('');
   const [addingForLevelId, setAddingForLevelId] = useState<string | null>(null);
   const setAiMapLevelIds = useUiStore((state) => state.setAiMapLevelIds);
+  const aiTouchedLevelIds = useUiStore((state) => state.aiTouchedLevelIds);
+  const clearAiTouched = useUiStore((state) => state.clearAiTouched);
 
   const levels = useCatalogStore((state) => state.levels);
   const chapters = useCatalogStore((state) => state.chapters);
@@ -51,6 +53,13 @@ export function LevelSkillMapPanel() {
   useEffect(() => {
     setAiMapLevelIds(Array.from(selectedLevelIds));
   }, [selectedLevelIds, setAiMapLevelIds]);
+
+  useEffect(() => {
+    if (aiTouchedLevelIds.length === 0) return;
+    const firstId = aiTouchedLevelIds[0];
+    const el = document.querySelector(`[data-level-id="${CSS.escape(firstId)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [aiTouchedLevelIds]);
 
   useEffect(() => {
     if (!isCatalogLoaded && !isCatalogLoading) {
@@ -132,6 +141,7 @@ export function LevelSkillMapPanel() {
     try {
       setError(null);
       await saveMap();
+      clearAiTouched();
       setError('✓ 已保存并同步到云端');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
@@ -233,6 +243,13 @@ export function LevelSkillMapPanel() {
         <div className={`banner ${error.startsWith('✓') ? 'banner-ok' : 'banner-error'}`}>{error}</div>
       )}
 
+      {aiTouchedLevelIds.length > 0 && (
+        <div className="banner banner-ai">
+          AI 刚改动了 {aiTouchedLevelIds.length} 个关卡映射（橙色高亮）。核对后点保存。
+          <button type="button" className="btn btn-sm" onClick={() => clearAiTouched()}>清除高亮</button>
+        </div>
+      )}
+
       {skills.length === 0 && (
         <div className="banner banner-error">
           {isSkillLoading ? '正在加载技能树…' : '尚未加载技能。请打开「技能编辑」或等待自动加载后再分配。'}
@@ -312,7 +329,8 @@ export function LevelSkillMapPanel() {
               return (
                 <div
                   key={level.id}
-                  className={`level-card ${isSelected ? 'selected' : ''} ${bindings.length ? '' : 'unmapped'}`}
+                  data-level-id={level.id}
+                  className={`level-card ${isSelected ? 'selected' : ''} ${bindings.length ? '' : 'unmapped'} ${aiTouchedLevelIds.includes(level.id) ? 'ai-touched' : ''}`}
                 >
                   <div className="level-card-header">
                     <label className="map-check">
@@ -330,6 +348,9 @@ export function LevelSkillMapPanel() {
                     </label>
                     <span className="level-card-order">{level.order}</span>
                     <span className="level-card-name">{level.title}</span>
+                    {aiTouchedLevelIds.includes(level.id) && (
+                      <span className="ai-touched-badge">AI</span>
+                    )}
                     {bindings.length > 0 && (
                       <span className="level-card-bind-count">{bindings.length} 技能</span>
                     )}
