@@ -77,8 +77,25 @@
   flex-shrink: 0;
 }
 
+.map-bulk-skill {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .map-bulk-select {
   width: 200px;
+}
+
+.map-bulk-skill-hint {
+  max-width: 220px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Custom checkbox */
@@ -141,8 +158,21 @@
 
 .level-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
+  /* Wider cards → auto-fill drops column count so labels stay readable */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 1400px) {
+  .level-cards {
+    grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+  }
+}
+
+@media (min-width: 1800px) {
+  .level-cards {
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+  }
 }
 
 /* Level Card */
@@ -193,9 +223,20 @@
   color: var(--text-primary);
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.level-card-bind-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tag);
+  padding: 1px 6px;
 }
 
 .level-card-body {
@@ -294,7 +335,15 @@
   flex-wrap: wrap;
 }
 
+.mapped-skill-chip {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: 100%;
+}
+
 .mapped-stage-badge {
+  flex-shrink: 0;
   font-size: 10px;
   font-weight: 700;
   color: #fff;
@@ -308,6 +357,108 @@
   font-size: 11px;
   color: var(--text-secondary);
   font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.level-binding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Skill on its own row; mode / difficulty / remove share the second row */
+.level-binding-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px auto;
+  grid-template-areas:
+    "skill skill skill"
+    "mode diff remove";
+  gap: 6px 8px;
+  align-items: end;
+  padding: 8px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.level-binding-row > .level-card-field:nth-child(1) {
+  grid-area: skill;
+}
+
+.level-binding-row > .level-card-field:nth-child(2) {
+  grid-area: mode;
+}
+
+.level-binding-row > .level-card-field--diff {
+  grid-area: diff;
+  max-width: none;
+}
+
+.level-binding-row > .level-binding-remove {
+  grid-area: remove;
+}
+
+/* Show full skill / mode labels inside map cards (no ellipsis) */
+.level-card .ui-select-trigger {
+  height: auto;
+  min-height: 32px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  align-items: flex-start;
+}
+
+.level-card .ui-select-label {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.level-card-field--diff {
+  max-width: none;
+}
+
+.level-binding-remove {
+  height: 32px;
+  padding: 0 6px;
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.level-binding-remove:hover {
+  text-decoration: underline;
+}
+
+.level-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.level-card-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.level-card-add-row .ui-select {
+  flex: 1;
+  min-width: 0;
 }
 
 .level-card-clear {
@@ -339,9 +490,9 @@
   margin: 8px var(--panel-pad) 0;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .level-cards {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   }
 }
 

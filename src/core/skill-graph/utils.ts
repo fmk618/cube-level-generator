@@ -1,4 +1,13 @@
-import type { SkillGraphDocument, LevelSkillMap, SkillDefinition } from './types';
+import type {
+  SkillGraphDocument,
+  LevelSkillMap,
+  LevelSkillMapEntry,
+  LevelSkillBinding,
+  SkillDefinition,
+  SkillStage,
+  TeachMode,
+} from './types';
+import { LEVEL_SKILL_MAP_VERSION } from './types';
 
 export const exportSkillGraphToJSON = (document: SkillGraphDocument): string => {
   return JSON.stringify(document, null, 2);
@@ -25,17 +34,85 @@ export const exportLevelSkillMapToJSON = (map: LevelSkillMap): string => {
   return JSON.stringify(map, null, 2);
 };
 
+const STAGES: SkillStage[] = ['cross', 'f2l', 'oll', 'pll', 'full'];
+const TEACH_MODES: TeachMode[] = ['guided', 'challenge', 'demo'];
+
+const normalizeTeachMode = (value: unknown): TeachMode =>
+  TEACH_MODES.includes(value as TeachMode) ? (value as TeachMode) : 'guided';
+
+const normalizeDifficulty = (value: unknown): number => {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(6, Math.max(1, Math.round(n)));
+};
+
+const normalizeStage = (value: unknown, fallback: SkillStage = 'cross'): SkillStage =>
+  STAGES.includes(value as SkillStage) ? (value as SkillStage) : fallback;
+
+const normalizeBinding = (raw: unknown): LevelSkillBinding | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const b = raw as Record<string, unknown>;
+  if (typeof b.skillId !== 'string' || !b.skillId) return null;
+  return {
+    skillId: b.skillId,
+    cfopStage: normalizeStage(b.cfopStage),
+    teachMode: normalizeTeachMode(b.teachMode),
+    formulaDifficulty: normalizeDifficulty(b.formulaDifficulty),
+  };
+};
+
+/** Migrate legacy single-skill entry or normalize v2 `skills[]`. */
+export const normalizeLevelSkillMapEntry = (raw: unknown): LevelSkillMapEntry | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const entry = raw as Record<string, unknown>;
+
+  if (Array.isArray(entry.skills)) {
+    const skills: LevelSkillBinding[] = [];
+    const seen = new Set<string>();
+    for (const item of entry.skills) {
+      const binding = normalizeBinding(item);
+      if (!binding || seen.has(binding.skillId)) continue;
+      seen.add(binding.skillId);
+      skills.push(binding);
+    }
+    if (skills.length === 0) return null;
+    return { skills };
+  }
+
+  // Legacy: top-level skillId + teachMode / difficulty
+  if (typeof entry.skillId === 'string' && entry.skillId) {
+    return {
+      skills: [
+        {
+          skillId: entry.skillId,
+          cfopStage: normalizeStage(entry.cfopStage),
+          teachMode: normalizeTeachMode(entry.teachMode),
+          formulaDifficulty: normalizeDifficulty(entry.formulaDifficulty),
+        },
+      ],
+    };
+  }
+
+  return null;
+};
+
 export const importLevelSkillMapFromJSON = (json: string): LevelSkillMap => {
   try {
     const parsed = JSON.parse(json) as unknown;
     if (!parsed || typeof parsed !== 'object') throw new Error('Invalid level skill map format');
 
-    const map = parsed as LevelSkillMap;
-    if (typeof map.mappings !== 'object') throw new Error('Missing mappings object');
+    const map = parsed as { version?: number; mappings?: unknown };
+    if (!map.mappings || typeof map.mappings !== 'object') throw new Error('Missing mappings object');
+
+    const mappings: Record<string, LevelSkillMapEntry> = {};
+    for (const [levelId, rawEntry] of Object.entries(map.mappings as Record<string, unknown>)) {
+      const normalized = normalizeLevelSkillMapEntry(rawEntry);
+      if (normalized) mappings[levelId] = normalized;
+    }
 
     return {
-      version: map.version || 1,
-      mappings: map.mappings,
+      version: LEVEL_SKILL_MAP_VERSION,
+      mappings,
     };
   } catch (error) {
     throw new Error(`Failed to parse level skill map: ${error instanceof Error ? error.message : String(error)}`);
