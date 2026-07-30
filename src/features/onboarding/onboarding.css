@@ -1,0 +1,116 @@
+.ob-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.ob-welcome-dialog {
+  width: min(100%, 420px);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+  padding: 24px;
+}
+
+.ob-welcome-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.ob-welcome-dialog p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #475569;
+}
+
+.ob-welcome-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ob-welcome-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.ob-welcome-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.ob-welcome-btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.ob-welcome-btn-primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.ob-help-menu {
+  position: relative;
+}
+
+.ob-help-trigger {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.ob-help-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 140px;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.ob-help-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 12px;
+  color: #0f172a;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ob-help-item:hover {
+  background: #f1f5f9;
+}
+
+/* Joyride tooltip polish */
+.__floater__body,
+.react-joyride__tooltip {
+  border-radius: 10px !important;
+}

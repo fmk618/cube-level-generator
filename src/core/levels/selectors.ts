@@ -46,7 +46,30 @@ export type LevelManagerViewModel = {
     filteredCount: number;
 };
 
-const normalizeSearchTerm = (value: string): string => value.trim().toLowerCase();
+const normalizeSearchValue = (value: string): string => (
+    value
+        .normalize('NFKC')
+        .toLocaleLowerCase()
+        .replace(/[\s_-]+/g, '')
+);
+
+const isSubsequence = (query: string, candidate: string): boolean => {
+    let queryIndex = 0;
+    for (const character of candidate) {
+        if (character === query[queryIndex]) queryIndex += 1;
+        if (queryIndex === query.length) return true;
+    }
+    return false;
+};
+
+const matchesFuzzySearch = (searchableText: string, searchTerm: string): boolean => {
+    const normalizedCandidate = normalizeSearchValue(searchableText);
+    const terms = searchTerm.trim().split(/\s+/).map(normalizeSearchValue).filter(Boolean);
+    return terms.every((term) => (
+        normalizedCandidate.includes(term)
+        || (term.length >= 2 && isSubsequence(term, normalizedCandidate))
+    ));
+};
 
 export function buildLevelManagerViewModel(
     levels: LevelDefinition[],
@@ -62,7 +85,7 @@ export function buildLevelManagerViewModel(
         unlockAll: options.debugEnabled ?? true,
         chapters: options.chapters,
     });
-    const normalizedSearchTerm = normalizeSearchTerm(options.searchTerm);
+    const hasSearchTerm = options.searchTerm.trim().length > 0;
     const orderedLevels = getConfiguredLevelsInSlotOrder(levels, options.chapters);
     const globalIndexByLevelId = new Map(
         orderedLevels.map((level, index) => [level.id, index] as const),
@@ -131,7 +154,7 @@ export function buildLevelManagerViewModel(
                 if (options.filter === 'completed' && !item.isCompleted) return false;
                 if (options.filter === 'hidden' && !item.isHidden) return false;
 
-                if (!normalizedSearchTerm) return true;
+                if (!hasSearchTerm) return true;
 
                 const searchableText = [
                     item.chapterLabel,
@@ -140,8 +163,8 @@ export function buildLevelManagerViewModel(
                     item.level?.id ?? '',
                     item.level?.title ?? '',
                     item.isHidden ? 'hidden level' : '',
-                ].join(' ').toLowerCase();
-                return searchableText.includes(normalizedSearchTerm);
+                ].join(' ');
+                return matchesFuzzySearch(searchableText, options.searchTerm);
             });
 
             return {
@@ -151,7 +174,7 @@ export function buildLevelManagerViewModel(
         })
         .filter((section) => (
             section.items.length > 0
-            || (!normalizedSearchTerm && options.filter === 'all')
+            || (!hasSearchTerm && options.filter === 'all')
         ));
 
     return {

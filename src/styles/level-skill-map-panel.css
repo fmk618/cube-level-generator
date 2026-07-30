@@ -1,0 +1,334 @@
+.level-skill-map-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+/* Header */
+.map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px var(--panel-pad);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.map-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.map-header-left h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.map-badge {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: var(--radius-tag);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Toolbar */
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px var(--panel-pad);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-secondary);
+  flex-wrap: wrap;
+}
+
+.map-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.map-filter-chips .chip {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.map-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.map-bulk-select {
+  width: 200px;
+}
+
+/* Custom checkbox */
+.map-check {
+  position: relative;
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.map-check input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.map-check-box {
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  transition: border-color 100ms var(--ease), background 100ms var(--ease);
+  pointer-events: none;
+}
+
+.map-check input:checked + .map-check-box {
+  background: var(--primary);
+  border-color: var(--primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px;
+}
+
+.map-check:hover .map-check-box {
+  border-color: var(--text-muted);
+}
+
+/* Card Grid */
+.map-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--panel-pad);
+}
+
+.map-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.level-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+/* Level Card */
+.level-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: visible;
+  transition: border-color 120ms var(--ease), box-shadow 120ms var(--ease), background 120ms var(--ease);
+}
+
+.level-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.level-card.selected {
+  background: var(--primary-light);
+  border-color: var(--border-strong);
+}
+
+.level-card.unmapped {
+  background: var(--surface-secondary);
+}
+
+.level-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.level-card-order {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.level-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.level-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.level-card-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.level-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.level-card-field > label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.level-card-field--action {
+  justify-content: flex-end;
+}
+
+.map-number-input {
+  -moz-appearance: textfield;
+}
+
+.map-number-input::-webkit-outer-spin-button,
+.map-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Soft fill on gray unmapped cards: lift controls to white */
+.level-card.unmapped .ui-select-trigger,
+.level-card.unmapped .text-input {
+  background: var(--surface);
+}
+
+.level-card.unmapped .ui-select-trigger:hover,
+.level-card.unmapped .text-input:hover {
+  background: #fafafa;
+}
+
+.level-card-mapped-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mapped-stage-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary);
+  padding: 1px 6px;
+  border-radius: var(--radius-tag);
+  text-transform: uppercase;
+}
+
+.mapped-skill-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.level-card-clear {
+  align-self: flex-end;
+  margin-top: auto;
+  font-size: 11px;
+  color: var(--danger);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.level-card-clear:hover {
+  text-decoration: underline;
+}
+
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.level-skill-map-panel .banner {
+  margin: 8px var(--panel-pad) 0;
+}
+
+@media (max-width: 800px) {
+  .level-cards {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .map-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .map-bulk-actions {
+    width: 100%;
+  }
+
+  .map-bulk-select {
+    flex: 1;
+    width: auto;
+  }
+
+  .level-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .level-card-row {
+    grid-template-columns: 1fr;
+  }
+}

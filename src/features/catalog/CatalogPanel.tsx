@@ -23,6 +23,17 @@ const FILTERS: { key: LevelManagerFilter; label: string }[] = [
   { key: 'hidden', label: '隐藏' },
 ];
 
+function AddButtonLabel({ children }: { children: string }) {
+  return (
+    <>
+      <svg className="btn-leading-icon" viewBox="0 0 20 20" fill="none" aria-hidden>
+        <path d="M10 4v12M4 10h12" />
+      </svg>
+      <span>{children}</span>
+    </>
+  );
+}
+
 type ActionIconName = 'copy' | 'show' | 'hide' | 'up' | 'down' | 'edit' | 'delete';
 
 type ActionMenuItemDefinition = {
@@ -242,7 +253,7 @@ export function CatalogPanel() {
         {loadError && <div className="banner banner-error">{loadError}</div>}
         {banner && <div className="banner banner-error">{banner}</div>}
 
-        <div className="panel-section">
+        <div className="panel-section" data-tour="level-search">
           <div className="search-field">
             <svg className="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden>
               <circle cx="11" cy="11" r="6.5" />
@@ -274,7 +285,7 @@ export function CatalogPanel() {
           </div>
         </div>
 
-        <div className="chapter-list">
+        <div className="chapter-list" data-tour="level-list">
           {viewModel.sections.map((section, index) => (
             <ChapterSection
               key={section.chapterId}
@@ -309,16 +320,16 @@ export function CatalogPanel() {
             />
           ))}
           <button
-            className="btn btn-ghost btn-block"
+            className="btn btn-ghost btn-block catalog-add-button"
             disabled={busy !== null}
             onClick={() => setChapterDraft({ id: null, partName: `Part${chapters.length + 1}`, title: '', description: '', capacity: '6' })}
           >
-            + 新增章节
+            <AddButtonLabel>新增章节</AddButtonLabel>
           </button>
         </div>
       </div>
 
-      <div className="panel-footer">
+      <div className="panel-footer" data-tour="import-export">
         <div className="file-summary">
           <div>
             <p className="section-title">关卡文件</p>
@@ -434,7 +445,9 @@ function ChapterSection({
               onDelete={onDelete}
             />
           ))}
-          <button className="btn btn-ghost btn-block" onClick={onAppend}>+ 新增关卡</button>
+          <button className="btn btn-ghost btn-block catalog-add-button" onClick={onAppend}>
+            <AddButtonLabel>新增关卡</AddButtonLabel>
+          </button>
         </div>
       )}
     </div>

@@ -15,11 +15,16 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 const USER_DATA_DIR = () => app.getPath('userData');
 const CATALOG_FILE = () => path.join(USER_DATA_DIR(), 'levels.runtime.json');
 const CATALOG_BACKUP_FILE = () => path.join(USER_DATA_DIR(), 'levels.runtime.bak.json');
+const SKILL_GRAPH_FILE = () => path.join(USER_DATA_DIR(), 'skill_graph.runtime.json');
+const SKILL_GRAPH_BACKUP_FILE = () => path.join(USER_DATA_DIR(), 'skill_graph.runtime.bak.json');
 const SECRETS_FILE = () => path.join(USER_DATA_DIR(), 'secrets.bin');
 const DEFAULT_CATALOG_FILE = () => (
   VITE_DEV_SERVER_URL
     ? path.join(process.env.APP_ROOT!, 'src/core/levels/game_levels_english.json')
     : path.join(process.env.VITE_PUBLIC!, 'game_levels_english.json')
+);
+const DEFAULT_SKILL_GRAPH_FILE = () => (
+  path.join(process.env.VITE_PUBLIC!, 'skill_graph_default.json')
 );
 
 let mainWindow: BrowserWindow | null = null;
@@ -111,6 +116,53 @@ ipcMain.handle('catalog:exportToDisk', async (_event, json: string, suggestedNam
   if (!mainWindow) return null;
   const result = await dialog.showSaveDialog(mainWindow, {
     title: '导出关卡文件',
+    defaultPath: suggestedName,
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  await fs.writeFile(result.filePath, json, 'utf-8');
+  return result.filePath;
+});
+
+ipcMain.handle('skillGraph:loadDefault', async () => {
+  const content = await readJsonFileIfExists(DEFAULT_SKILL_GRAPH_FILE());
+  if (content === null) {
+    throw new Error(`Bundled default skill graph not found at ${DEFAULT_SKILL_GRAPH_FILE()}`);
+  }
+  return content;
+});
+
+ipcMain.handle('skillGraph:loadRuntime', async () => {
+  const content = await readJsonFileIfExists(SKILL_GRAPH_FILE());
+  if (content === null) return null;
+  return { filePath: SKILL_GRAPH_FILE(), content };
+});
+
+ipcMain.handle('skillGraph:saveRuntime', async (_event, json: string) => {
+  const existing = await readJsonFileIfExists(SKILL_GRAPH_FILE());
+  if (existing !== null) {
+    await writeFileAtomically(SKILL_GRAPH_BACKUP_FILE(), existing);
+  }
+  await writeFileAtomically(SKILL_GRAPH_FILE(), json);
+  return SKILL_GRAPH_FILE();
+});
+
+ipcMain.handle('skillGraph:importFromDisk', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '导入 Skill 树文件',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const content = await fs.readFile(result.filePaths[0], 'utf-8');
+  return { filePath: result.filePaths[0], content };
+});
+
+ipcMain.handle('skillGraph:exportToDisk', async (_event, json: string, suggestedName: string) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: '导出 Skill 树文件',
     defaultPath: suggestedName,
     filters: [{ name: 'JSON', extensions: ['json'] }],
   });

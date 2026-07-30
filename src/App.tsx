@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { CatalogPanel } from '@/features/catalog/CatalogPanel';
 import { EditorPanel } from '@/features/editor/EditorPanel';
 import { LlmPanel } from '@/features/llm-formula/LlmPanel';
+import { SkillGraphPanel } from '@/features/skill-graph/SkillGraphPanel';
+import { LevelSkillMapPanel } from '@/features/skill-graph/LevelSkillMapPanel';
+import { OnboardingTour } from '@/features/onboarding/OnboardingTour';
+import { HelpOnboardingMenu } from '@/features/onboarding/HelpOnboardingMenu';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 
@@ -53,6 +57,7 @@ export default function App() {
   const [llmCollapsed, setLlmCollapsed] = useState(false);
   const [savingCatalog, setSavingCatalog] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState<'catalog' | 'skills' | 'levelSkillMap'>('catalog');
   const selectedLevelId = useUiStore((state) => state.selectedLevelId);
   const hasUnsavedChanges = useCatalogStore((state) => state.hasUnsavedChanges);
   const saveCatalog = useCatalogStore((state) => state.saveCatalog);
@@ -151,7 +156,28 @@ export default function App() {
           </div>
         </div>
         <div className="titlebar-actions" id="global-editor-actions">
-          {!selectedLevelId && (
+          <div className="editor-mode-tabs" data-tour="module-tabs">
+            <button
+              className={`mode-tab ${editMode === 'catalog' ? 'active' : ''}`}
+              onClick={() => setEditMode('catalog')}
+            >
+              关卡编辑
+            </button>
+            <button
+              className={`mode-tab ${editMode === 'skills' ? 'active' : ''}`}
+              onClick={() => setEditMode('skills')}
+            >
+              技能编辑
+            </button>
+            <button
+              className={`mode-tab ${editMode === 'levelSkillMap' ? 'active' : ''}`}
+              onClick={() => setEditMode('levelSkillMap')}
+            >
+              关卡映射
+            </button>
+          </div>
+          <HelpOnboardingMenu />
+          {!selectedLevelId && editMode === 'catalog' && (
             <>
               {hasUnsavedChanges && <span className="save-state"><i />未保存</span>}
               <button
@@ -174,30 +200,42 @@ export default function App() {
           '--assistant-width': `${assistantWidth}px`,
         } as React.CSSProperties}
       >
-        <div className="studio-column catalog-column" style={{ width: catalogWidth }}>
-          <CatalogPanel />
-          <div
-            className="catalog-resize-edge"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="拖动目录面板右边框调整宽度"
-            aria-valuemin={MIN_CATALOG_WIDTH}
-            aria-valuemax={getResponsiveCatalogMaxWidth(window.innerWidth)}
-            aria-valuenow={catalogWidth}
-            tabIndex={0}
-            onMouseDown={startCatalogResize}
-            onKeyDown={(event) => {
-              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-              event.preventDefault();
-              const direction = event.key === 'ArrowLeft' ? -1 : 1;
-              const maxWidth = getResponsiveCatalogMaxWidth(window.innerWidth);
-              setCatalogWidth((width) => Math.min(maxWidth, Math.max(MIN_CATALOG_WIDTH, width + direction * 16)));
-            }}
-          />
-        </div>
-        <div className="studio-column studio-column-main">
-          <EditorPanel />
-        </div>
+        {editMode === 'catalog' ? (
+          <>
+            <div className="studio-column catalog-column" style={{ width: catalogWidth }}>
+              <CatalogPanel />
+              <div
+                className="catalog-resize-edge"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="拖动目录面板右边框调整宽度"
+                aria-valuemin={MIN_CATALOG_WIDTH}
+                aria-valuemax={getResponsiveCatalogMaxWidth(window.innerWidth)}
+                aria-valuenow={catalogWidth}
+                tabIndex={0}
+                onMouseDown={startCatalogResize}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                  event.preventDefault();
+                  const direction = event.key === 'ArrowLeft' ? -1 : 1;
+                  const maxWidth = getResponsiveCatalogMaxWidth(window.innerWidth);
+                  setCatalogWidth((width) => Math.min(maxWidth, Math.max(MIN_CATALOG_WIDTH, width + direction * 16)));
+                }}
+              />
+            </div>
+            <div className="studio-column studio-column-main">
+              <EditorPanel />
+            </div>
+          </>
+        ) : editMode === 'skills' ? (
+          <div className="studio-column studio-column-main" style={{ width: '100%' }}>
+            <SkillGraphPanel />
+          </div>
+        ) : (
+          <div className="studio-column studio-column-main" style={{ width: '100%' }}>
+            <LevelSkillMapPanel />
+          </div>
+        )}
         <div className={`studio-column llm-column ${llmCollapsed ? 'is-collapsed' : ''}`}>
           <div
             className="llm-resize-edge"
@@ -223,6 +261,12 @@ export default function App() {
           <LlmPanel collapsed={llmCollapsed} onToggleCollapsed={() => setLlmCollapsed((value) => !value)} />
         </div>
       </main>
+      <OnboardingTour
+        editMode={editMode}
+        setEditMode={setEditMode}
+        llmCollapsed={llmCollapsed}
+        setLlmCollapsed={setLlmCollapsed}
+      />
     </div>
   );
 }
