@@ -181,17 +181,20 @@ export function LevelSkillMapPanel() {
         </div>
 
         <div className="map-bulk-actions">
-          <SelectDropdown
-            size="sm"
-            className="map-bulk-select"
-            value={quickAssignSkillId}
-            options={skillOptions}
-            placeholder="选择技能..."
-            searchable
-            onChange={setQuickAssignSkillId}
-          />
+          <div data-tour="skill-select">
+            <SelectDropdown
+              size="sm"
+              className="map-bulk-select"
+              value={quickAssignSkillId}
+              options={skillOptions}
+              placeholder="选择技能..."
+              searchable
+              onChange={setQuickAssignSkillId}
+            />
+          </div>
           <button
             className="btn btn-sm btn-primary"
+            data-tour="assign-button"
             onClick={handleQuickAssign}
             disabled={selectedLevelIds.size === 0}
           >分配 ({selectedLevelIds.size})</button>

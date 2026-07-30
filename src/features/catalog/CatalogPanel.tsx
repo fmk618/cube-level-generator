@@ -253,7 +253,7 @@ export function CatalogPanel() {
         {loadError && <div className="banner banner-error">{loadError}</div>}
         {banner && <div className="banner banner-error">{banner}</div>}
 
-        <div className="panel-section">
+        <div className="panel-section" data-tour="level-search">
           <div className="search-field">
             <svg className="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden>
               <circle cx="11" cy="11" r="6.5" />
@@ -285,7 +285,7 @@ export function CatalogPanel() {
           </div>
         </div>
 
-        <div className="chapter-list">
+        <div className="chapter-list" data-tour="level-list">
           {viewModel.sections.map((section, index) => (
             <ChapterSection
               key={section.chapterId}
@@ -329,7 +329,7 @@ export function CatalogPanel() {
         </div>
       </div>
 
-      <div className="panel-footer">
+      <div className="panel-footer" data-tour="import-export">
         <div className="file-summary">
           <div>
             <p className="section-title">关卡文件</p>

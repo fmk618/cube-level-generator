@@ -4,9 +4,9 @@ import { EditorPanel } from '@/features/editor/EditorPanel';
 import { LlmPanel } from '@/features/llm-formula/LlmPanel';
 import { SkillGraphPanel } from '@/features/skill-graph/SkillGraphPanel';
 import { LevelSkillMapPanel } from '@/features/skill-graph/LevelSkillMapPanel';
+import { OnboardingTour } from '@/features/onboarding/OnboardingTour';
+import { HelpOnboardingMenu } from '@/features/onboarding/HelpOnboardingMenu';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
-import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
-import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 
 const CATALOG_WIDTH_KEY = 'catalog-panel-width';
@@ -60,8 +60,6 @@ export default function App() {
   const [editMode, setEditMode] = useState<'catalog' | 'skills' | 'levelSkillMap'>('catalog');
   const selectedLevelId = useUiStore((state) => state.selectedLevelId);
   const hasUnsavedChanges = useCatalogStore((state) => state.hasUnsavedChanges);
-  const skillGraphHasUnsavedChanges = useSkillGraphStore((state) => state.hasUnsavedChanges);
-  const levelSkillMapHasUnsavedChanges = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
   const saveCatalog = useCatalogStore((state) => state.saveCatalog);
 
   useEffect(() => {
@@ -158,7 +156,7 @@ export default function App() {
           </div>
         </div>
         <div className="titlebar-actions" id="global-editor-actions">
-          <div className="editor-mode-tabs">
+          <div className="editor-mode-tabs" data-tour="module-tabs">
             <button
               className={`mode-tab ${editMode === 'catalog' ? 'active' : ''}`}
               onClick={() => setEditMode('catalog')}
@@ -178,6 +176,7 @@ export default function App() {
               关卡映射
             </button>
           </div>
+          <HelpOnboardingMenu />
           {!selectedLevelId && editMode === 'catalog' && (
             <>
               {hasUnsavedChanges && <span className="save-state"><i />未保存</span>}
@@ -262,6 +261,12 @@ export default function App() {
           <LlmPanel collapsed={llmCollapsed} onToggleCollapsed={() => setLlmCollapsed((value) => !value)} />
         </div>
       </main>
+      <OnboardingTour
+        editMode={editMode}
+        setEditMode={setEditMode}
+        llmCollapsed={llmCollapsed}
+        setLlmCollapsed={setLlmCollapsed}
+      />
     </div>
   );
 }
