@@ -89,13 +89,13 @@
 }
 
 .map-bulk-skill-hint {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 220px;
   font-size: 10px;
   color: var(--text-muted);
-  line-height: 1.2;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Custom checkbox */
@@ -158,8 +158,21 @@
 
 .level-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
+  /* Wider cards → auto-fill drops column count so labels stay readable */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 1400px) {
+  .level-cards {
+    grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+  }
+}
+
+@media (min-width: 1800px) {
+  .level-cards {
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+  }
 }
 
 /* Level Card */
@@ -210,9 +223,9 @@
   color: var(--text-primary);
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .level-card-bind-count {
@@ -324,12 +337,13 @@
 
 .mapped-skill-chip {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   max-width: 100%;
 }
 
 .mapped-stage-badge {
+  flex-shrink: 0;
   font-size: 10px;
   font-weight: 700;
   color: #fff;
@@ -343,9 +357,9 @@
   font-size: 11px;
   color: var(--text-secondary);
   font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .level-binding-list {
@@ -357,15 +371,58 @@
   list-style: none;
 }
 
+/* Skill on its own row; mode / difficulty / remove share the second row */
 .level-binding-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) 56px auto;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 72px auto;
+  grid-template-areas:
+    "skill skill skill"
+    "mode diff remove";
+  gap: 6px 8px;
   align-items: end;
+  padding: 8px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.level-binding-row > .level-card-field:nth-child(1) {
+  grid-area: skill;
+}
+
+.level-binding-row > .level-card-field:nth-child(2) {
+  grid-area: mode;
+}
+
+.level-binding-row > .level-card-field--diff {
+  grid-area: diff;
+  max-width: none;
+}
+
+.level-binding-row > .level-binding-remove {
+  grid-area: remove;
+}
+
+/* Show full skill / mode labels inside map cards (no ellipsis) */
+.level-card .ui-select-trigger {
+  height: auto;
+  min-height: 32px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  align-items: flex-start;
+}
+
+.level-card .ui-select-label {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .level-card-field--diff {
-  max-width: 56px;
+  max-width: none;
 }
 
 .level-binding-remove {
@@ -433,9 +490,9 @@
   margin: 8px var(--panel-pad) 0;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .level-cards {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   }
 }
 
@@ -461,14 +518,5 @@
 
   .level-card-row {
     grid-template-columns: 1fr;
-  }
-
-  .level-binding-row {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .level-card-field--diff,
-  .level-binding-remove {
-    grid-column: span 1;
   }
 }

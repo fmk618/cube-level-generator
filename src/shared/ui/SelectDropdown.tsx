@@ -62,8 +62,8 @@ export function SelectDropdown({
     const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
     const available = openUp ? spaceAbove : spaceBelow;
     const maxHeight = Math.min(260, Math.max(140, available));
-    // Exact trigger box — never min-widen (that made the panel look shifted right).
-    const width = rect.width;
+    // Prefer trigger width; searchable menus get a floor so long skill names stay readable.
+    const width = searchable ? Math.max(rect.width, 320) : rect.width;
     let left = rect.left;
     const overflowRight = left + width - (window.innerWidth - 8);
     if (overflowRight > 0) left = Math.max(8, left - overflowRight);
