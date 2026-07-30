@@ -106,6 +106,14 @@
   margin: 0;
 }
 
+.skill-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
 /* Skill Card */
 .skill-card {
   background: var(--surface);

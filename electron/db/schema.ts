@@ -77,13 +77,23 @@ const SCHEMA_STATEMENTS = [
 ];
 
 let schemaReady = false;
+let schemaPromise: Promise<void> | null = null;
 
 export async function ensureSchema(): Promise<void> {
   if (schemaReady) return;
-  const pool = getPool();
-  for (const statement of SCHEMA_STATEMENTS) {
-    await pool.query(statement);
-  }
-  await runMigrations(pool);
-  schemaReady = true;
+  if (schemaPromise) return schemaPromise;
+
+  schemaPromise = (async () => {
+    const pool = getPool();
+    for (const statement of SCHEMA_STATEMENTS) {
+      await pool.query(statement);
+    }
+    await runMigrations(pool);
+    schemaReady = true;
+  })().catch((error) => {
+    schemaPromise = null;
+    throw error;
+  });
+
+  return schemaPromise;
 }

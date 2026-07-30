@@ -46,6 +46,14 @@ export function SkillGraphPanel() {
     }
   }, [skillGraph, isLoading, refreshSkillGraph]);
 
+  useEffect(() => {
+    if (skillGraph || !isLoading) return;
+    const timer = window.setTimeout(() => {
+      useSkillGraphStore.setState({ isLoading: false, loadError: '加载超时，请重试或恢复默认技能树' });
+    }, 6000);
+    return () => window.clearTimeout(timer);
+  }, [skillGraph, isLoading]);
+
   const filteredSkills =
     filterStage === 'all' ? skills : skills.filter((skill) => skill.stage === filterStage);
 
@@ -133,6 +141,17 @@ export function SkillGraphPanel() {
             <>
               <h2>正在加载技能编辑器...</h2>
               <p>系统正在加载默认技能模版，请稍候</p>
+              <div className="skill-empty-actions">
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    useSkillGraphStore.setState({ isLoading: false, loadError: null });
+                    void resetToDefault();
+                  }}
+                >
+                  立即加载默认技能树
+                </button>
+              </div>
             </>
           )}
         </div>
