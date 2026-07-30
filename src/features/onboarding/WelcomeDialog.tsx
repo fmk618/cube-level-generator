@@ -17,7 +17,24 @@ export function WelcomeDialog({ onStart, onSkip }: WelcomeDialogProps) {
       >
         <h2 id="ob-welcome-title">欢迎使用关卡编辑器</h2>
         <p>
-          接下来将用大约 1 分钟介绍软件的核心功能。你可以随时跳过，并可以在帮助菜单中重新查看新手引导。
+          本工具用三个页面完成关卡数据联调。接下来会按调试顺序带你走一遍，大约 2 分钟。
+        </p>
+        <ol className="ob-welcome-flow">
+          <li>
+            <strong>关卡编辑</strong>
+            <span>维护关卡内容：章节、状态、公式与预览</span>
+          </li>
+          <li>
+            <strong>技能编辑</strong>
+            <span>维护 CFOP 技能树：阶段、目标与掌握标准</span>
+          </li>
+          <li>
+            <strong>关卡映射</strong>
+            <span>把关卡挂到技能上，并设置教学模式 / 难度</span>
+          </li>
+        </ol>
+        <p className="ob-welcome-tip">
+          推荐顺序：先有关卡与技能，再做映射校验与导出。可随时跳过，也可从「帮助 → 新手引导」重看。
         </p>
         <div className="ob-welcome-actions">
           <button type="button" className="ob-welcome-btn" onClick={onSkip}>
