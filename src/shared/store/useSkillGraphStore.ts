@@ -97,7 +97,12 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       let runtimeFilePath: string | null = null;
 
       try {
-        const cloud = await window.api.db.pullSkills();
+        const cloud = await Promise.race([
+          window.api.db.pullSkills(),
+          new Promise<null>((resolve) => {
+            window.setTimeout(() => resolve(null), 8000);
+          }),
+        ]);
         if (cloud && Array.isArray(cloud.skills) && cloud.skills.length > 0) {
           skillGraph = cloud;
         }
