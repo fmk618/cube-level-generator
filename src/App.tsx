@@ -72,11 +72,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void (async () => {
-      await refreshCatalog();
-      await refreshSkillGraph();
-      await refreshMap();
-    })();
+    void Promise.allSettled([
+      refreshCatalog(),
+      refreshSkillGraph(),
+      refreshMap(),
+    ]);
   }, [refreshCatalog, refreshSkillGraph, refreshMap]);
 
   useEffect(() => {

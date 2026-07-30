@@ -90,27 +90,16 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
   refreshSkillGraph: async () => {
     const state = get();
     if (state.hasUnsavedChanges && state.skillGraph) return;
+    // 若已在加载但超过卡住阈值，允许强制重入
+    if (state.isLoading && state.skillGraph) return;
 
     set({ isLoading: true, loadError: null });
     try {
       let skillGraph: SkillGraphDocument | null = null;
       let runtimeFilePath: string | null = null;
 
+      // 本地优先：不阻塞在云端 MySQL 上
       try {
-        const cloud = await Promise.race([
-          window.api.db.pullSkills(),
-          new Promise<null>((resolve) => {
-            window.setTimeout(() => resolve(null), 8000);
-          }),
-        ]);
-        if (cloud && Array.isArray(cloud.skills) && cloud.skills.length > 0) {
-          skillGraph = cloud;
-        }
-      } catch {
-        // 云端不可用时回退本地
-      }
-
-      if (!skillGraph) {
         const runtime = await window.api.skillGraph.loadRuntime();
         runtimeFilePath = runtime?.filePath ?? null;
         if (runtime?.content) {
@@ -124,19 +113,18 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
             runtimeFilePath = null;
           }
         }
+      } catch {
+        // 本地 runtime 不可读时回退默认
       }
 
-      const usedDefaultFallback = !skillGraph;
       if (!skillGraph) {
         const json = await window.api.skillGraph.loadDefault();
         skillGraph = importSkillGraphFromJSON(json);
-        if (usedDefaultFallback) {
-          try {
-            runtimeFilePath = await window.api.skillGraph.saveRuntime(json);
-          } catch {
-            // 修复本地损坏文件失败不影响继续使用默认模版
+        void window.api.skillGraph.saveRuntime(json).then((path) => {
+          if (!get().runtimeFilePath) {
+            set({ runtimeFilePath: path });
           }
-        }
+        }).catch(() => undefined);
       }
 
       const errors = validateSkillGraph(skillGraph);
@@ -144,12 +132,32 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
         set({ isLoading: false, loadError: errors.join('; ') });
         return;
       }
+
       applySkillGraph(set, skillGraph, cloneSkillGraph(skillGraph), false);
       set({
         isLoaded: true,
         isLoading: false,
         runtimeFilePath,
       });
+
+      // 云端后台拉取：有数据且本地无未保存改动时再覆盖
+      void (async () => {
+        try {
+          const cloud = await Promise.race([
+            window.api.db.pullSkills(),
+            new Promise<null>((resolve) => {
+              window.setTimeout(() => resolve(null), 5000);
+            }),
+          ]);
+          if (!cloud || !Array.isArray(cloud.skills) || cloud.skills.length === 0) return;
+          if (get().hasUnsavedChanges) return;
+          const cloudErrors = validateSkillGraph(cloud);
+          if (cloudErrors.length > 0) return;
+          applySkillGraph(set, cloud, cloneSkillGraph(cloud), false);
+        } catch {
+          // 云端失败不影响已展示的本地技能树
+        }
+      })();
     } catch (error) {
       set({
         isLoading: false,
