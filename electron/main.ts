@@ -2,6 +2,20 @@ import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electro
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import {
+  closePool,
+  countRows,
+  pingDb,
+  pullCatalog,
+  pullLevelSkillMap,
+  pullSkills,
+  pushCatalog,
+  pushLevelSkillMap,
+  pushSkills,
+  type CloudCatalogDocument,
+  type CloudLevelSkillMap,
+  type CloudSkillGraphDocument,
+} from './db/index.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +31,8 @@ const CATALOG_FILE = () => path.join(USER_DATA_DIR(), 'levels.runtime.json');
 const CATALOG_BACKUP_FILE = () => path.join(USER_DATA_DIR(), 'levels.runtime.bak.json');
 const SKILL_GRAPH_FILE = () => path.join(USER_DATA_DIR(), 'skill_graph.runtime.json');
 const SKILL_GRAPH_BACKUP_FILE = () => path.join(USER_DATA_DIR(), 'skill_graph.runtime.bak.json');
+const LEVEL_SKILL_MAP_FILE = () => path.join(USER_DATA_DIR(), 'level_skill_map.runtime.json');
+const LEVEL_SKILL_MAP_BACKUP_FILE = () => path.join(USER_DATA_DIR(), 'level_skill_map.runtime.bak.json');
 const SECRETS_FILE = () => path.join(USER_DATA_DIR(), 'secrets.bin');
 const DEFAULT_CATALOG_FILE = () => (
   VITE_DEV_SERVER_URL
@@ -171,6 +187,43 @@ ipcMain.handle('skillGraph:exportToDisk', async (_event, json: string, suggested
   return result.filePath;
 });
 
+ipcMain.handle('levelSkillMap:loadRuntime', async () => {
+  const content = await readJsonFileIfExists(LEVEL_SKILL_MAP_FILE());
+  if (content === null) return null;
+  return { filePath: LEVEL_SKILL_MAP_FILE(), content };
+});
+
+ipcMain.handle('levelSkillMap:saveRuntime', async (_event, json: string) => {
+  const existing = await readJsonFileIfExists(LEVEL_SKILL_MAP_FILE());
+  if (existing !== null) {
+    await writeFileAtomically(LEVEL_SKILL_MAP_BACKUP_FILE(), existing);
+  }
+  await writeFileAtomically(LEVEL_SKILL_MAP_FILE(), json);
+  return LEVEL_SKILL_MAP_FILE();
+});
+
+ipcMain.handle('db:ping', async () => pingDb());
+
+ipcMain.handle('db:pullCatalog', async () => pullCatalog());
+ipcMain.handle('db:pushCatalog', async (_event, doc: CloudCatalogDocument) => {
+  await pushCatalog(doc);
+  return countRows();
+});
+
+ipcMain.handle('db:pullSkills', async () => pullSkills());
+ipcMain.handle('db:pushSkills', async (_event, doc: CloudSkillGraphDocument) => {
+  await pushSkills(doc);
+  return countRows();
+});
+
+ipcMain.handle('db:pullLevelSkillMap', async () => pullLevelSkillMap());
+ipcMain.handle('db:pushLevelSkillMap', async (_event, map: CloudLevelSkillMap) => {
+  await pushLevelSkillMap(map);
+  return countRows();
+});
+
+ipcMain.handle('db:counts', async () => countRows());
+
 ipcMain.handle('secrets:has', async (_event, key: string) => {
   const content = await readJsonFileIfExists(SECRETS_FILE());
   if (!content) return false;
@@ -257,6 +310,10 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+app.on('before-quit', () => {
+  void closePool();
 });
 
 void app.whenReady().then(createWindow);

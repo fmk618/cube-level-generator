@@ -18,6 +18,47 @@ declare global {
         importFromDisk: () => Promise<{ filePath: string; content: string } | null>;
         exportToDisk: (json: string, suggestedName: string) => Promise<string | null>;
       };
+      levelSkillMap: {
+        loadRuntime: () => Promise<{ filePath: string; content: string } | null>;
+        saveRuntime: (json: string) => Promise<string>;
+      };
+      db: {
+        ping: () => Promise<{
+          ok: boolean;
+          database: string;
+          version: string;
+          user: string;
+          host: string;
+          error?: string;
+        }>;
+        counts: () => Promise<{
+          chapters: number;
+          levels: number;
+          skills: number;
+          bindings: number;
+        }>;
+        pullCatalog: () => Promise<import('@/core/levels').LevelCatalogDocument | null>;
+        pushCatalog: (doc: import('@/core/levels').LevelCatalogDocument) => Promise<{
+          chapters: number;
+          levels: number;
+          skills: number;
+          bindings: number;
+        }>;
+        pullSkills: () => Promise<import('@/core/skill-graph/types').SkillGraphDocument | null>;
+        pushSkills: (doc: import('@/core/skill-graph/types').SkillGraphDocument) => Promise<{
+          chapters: number;
+          levels: number;
+          skills: number;
+          bindings: number;
+        }>;
+        pullLevelSkillMap: () => Promise<import('@/core/skill-graph/types').LevelSkillMap | null>;
+        pushLevelSkillMap: (map: import('@/core/skill-graph/types').LevelSkillMap) => Promise<{
+          chapters: number;
+          levels: number;
+          skills: number;
+          bindings: number;
+        }>;
+      };
       secrets: {
         has: (key: string) => Promise<boolean>;
         get: (key: string) => Promise<string | null>;

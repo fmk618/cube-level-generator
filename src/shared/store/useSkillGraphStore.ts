@@ -79,9 +79,37 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
 
     set({ isLoading: true, loadError: null });
     try {
-      const runtime = await window.api.skillGraph.loadRuntime();
-      const json = runtime?.content ?? (await window.api.skillGraph.loadDefault());
-      const skillGraph = importSkillGraphFromJSON(json);
+      let skillGraph: SkillGraphDocument | null = null;
+      let runtimeFilePath: string | null = null;
+
+      try {
+        const cloud = await window.api.db.pullSkills();
+        if (cloud && Array.isArray(cloud.skills) && cloud.skills.length > 0) {
+          skillGraph = cloud;
+        }
+      } catch {
+        // 云端不可用时回退本地
+      }
+
+      if (!skillGraph) {
+        const runtime = await window.api.skillGraph.loadRuntime();
+        runtimeFilePath = runtime?.filePath ?? null;
+        if (runtime?.content) {
+          try {
+            skillGraph = importSkillGraphFromJSON(runtime.content);
+          } catch {
+            // 旧版可能把映射 JSON 误写入 skill_graph.runtime.json，忽略后回退默认
+            skillGraph = null;
+            runtimeFilePath = null;
+          }
+        }
+      }
+
+      if (!skillGraph) {
+        const json = await window.api.skillGraph.loadDefault();
+        skillGraph = importSkillGraphFromJSON(json);
+      }
+
       const errors = validateSkillGraph(skillGraph);
       if (errors.length > 0) {
         set({ isLoading: false, loadError: errors.join('; ') });
@@ -91,7 +119,7 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       set({
         isLoaded: true,
         isLoading: false,
-        runtimeFilePath: runtime?.filePath ?? null,
+        runtimeFilePath,
       });
     } catch (error) {
       set({
@@ -148,6 +176,13 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     if (!skillGraph) throw new Error('Skill graph not loaded');
     const json = exportSkillGraphToJSON(skillGraph);
     const filePath = await window.api.skillGraph.saveRuntime(json);
+    try {
+      await window.api.db.pushSkills(skillGraph);
+    } catch (error) {
+      throw new Error(
+        `本地已保存，但云端同步失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     applySkillGraph(set, skillGraph, cloneSkillGraph(skillGraph), false);
     set({ runtimeFilePath: filePath });
     return filePath;

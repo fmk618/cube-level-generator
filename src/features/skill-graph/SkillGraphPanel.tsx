@@ -63,7 +63,7 @@ export function SkillGraphPanel() {
     try {
       setError(null);
       await saveSkillGraph();
-      setError('✓ 保存成功');
+      setError('✓ 已保存并同步到云端');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
     } finally {

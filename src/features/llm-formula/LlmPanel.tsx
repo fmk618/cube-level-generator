@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
+import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import { deriveLevelFormulaPreset, type LevelFormulaTarget } from '@/core/levels';
 
 const API_KEY_STORAGE_KEY = 'dashscope-api-key';
@@ -71,11 +73,21 @@ function ModelComboInput({ value, onChange }: { value: string; onChange: (v: str
 type LlmPanelProps = {
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
+  editMode?: 'catalog' | 'skills' | 'levelSkillMap';
+  onSwitchToCatalog?: () => void;
 };
 
-export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps) {
+export function LlmPanel({
+  collapsed = false,
+  onToggleCollapsed,
+  editMode = 'catalog',
+  onSwitchToCatalog,
+}: LlmPanelProps) {
   const requestFormulaAdoption = useUiStore((s) => s.requestFormulaAdoption);
   const selectedLevelId = useUiStore((s) => s.selectedLevelId);
+  const selectLevel = useUiStore((s) => s.selectLevel);
+  const levels = useCatalogStore((s) => s.levels);
+  const chapters = useCatalogStore((s) => s.chapters);
 
   const [hasStoredKey, setHasStoredKey] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -90,6 +102,7 @@ export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adoptNotice, setAdoptNotice] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
 
   useEffect(() => {
@@ -99,6 +112,22 @@ export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps
   const difficultyHint = useMemo(
     () => DIFFICULTY_OPTIONS.find((d) => d.key === difficulty)?.hint ?? '',
     [difficulty],
+  );
+
+  const levelOptions = useMemo(() => {
+    return levels.map((level) => {
+      const chapter = chapters.find((c) => c.id === level.chapterId);
+      const chapterLabel = chapter ? `${chapter.partName} ${chapter.title}` : level.chapterId;
+      return {
+        value: level.id,
+        label: `${chapterLabel} / ${level.title}`,
+      };
+    });
+  }, [levels, chapters]);
+
+  const selectedLevelLabel = useMemo(
+    () => levelOptions.find((option) => option.value === selectedLevelId)?.label ?? '',
+    [levelOptions, selectedLevelId],
   );
 
   const handleSaveKey = async () => {
@@ -138,6 +167,7 @@ export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps
 
   const handleGenerate = async () => {
     setError(null);
+    setAdoptNotice(null);
     setCandidates([]);
     const apiKey = await window.api.secrets.get(API_KEY_STORAGE_KEY);
     if (!apiKey) {
@@ -172,11 +202,19 @@ export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps
   };
 
   const adopt = (candidate: Candidate, kind: 'rotation' | 'guidance') => {
+    setError(null);
+    setAdoptNotice(null);
     if (!selectedLevelId) {
-      setError('请先在左侧选择一个关卡。');
+      setError('请先在「应用到关卡」中选择目标关卡。');
       return;
     }
     requestFormulaAdoption({ kind, formula: candidate.formula, target });
+    if (editMode !== 'catalog') {
+      onSwitchToCatalog?.();
+      setAdoptNotice('已写入待应用公式，已切换到「关卡编辑」页面。请在对应 Tab 点击保存关卡。');
+      return;
+    }
+    setAdoptNotice('已写入当前关卡编辑器。请在对应 Tab 检查后点击保存关卡。');
   };
 
   if (collapsed) {
@@ -212,6 +250,38 @@ export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps
             <i />
             {hasStoredKey ? '已配置' : '未配置'}
           </span>
+        </div>
+
+        <div className="ai-target-card">
+          <div className="ai-target-row">
+            <span className="ai-target-label">应用到关卡</span>
+            <SelectDropdown
+              size="sm"
+              className="ai-target-select"
+              value={selectedLevelId ?? ''}
+              options={levelOptions}
+              placeholder={levels.length > 0 ? '选择要应用的关卡...' : '暂无可选关卡'}
+              searchable
+              disabled={levels.length === 0}
+              onChange={(value) => {
+                selectLevel(value || null);
+                setError(null);
+                setAdoptNotice(null);
+              }}
+            />
+          </div>
+          <div className="ai-target-meta">
+            {selectedLevelLabel ? (
+              <span>当前：{selectedLevelLabel}</span>
+            ) : (
+              <span>未选择关卡，候选公式无法落地到编辑器。</span>
+            )}
+            {editMode !== 'catalog' && (
+              <button type="button" className="btn btn-sm" onClick={onSwitchToCatalog}>
+                打开关卡编辑
+              </button>
+            )}
+          </div>
         </div>
 
         <button
@@ -293,6 +363,7 @@ export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps
         </div>
 
         {error && <div className="banner banner-error">{error}</div>}
+        {adoptNotice && <div className="banner banner-ok">{adoptNotice}</div>}
 
         {candidates.length > 0 && (
           <div className="panel-section">

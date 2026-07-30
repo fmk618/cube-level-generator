@@ -14,6 +14,10 @@ dist-electron
 release
 *.local
 
+# Local DB overrides (keep example committed)
+electron/db/db.config.json
+db.config.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

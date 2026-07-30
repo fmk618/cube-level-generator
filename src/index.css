@@ -2159,6 +2159,41 @@ textarea.text-input--sm {
   white-space: nowrap;
 }
 
+.ai-target-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-secondary);
+}
+
+.ai-target-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-target-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.ai-target-select {
+  width: 100%;
+}
+
+.ai-target-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 .api-status {
   display: inline-flex;
   flex-direction: row;

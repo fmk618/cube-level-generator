@@ -187,24 +187,24 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     },
     {
       id: 'skill-select',
-      target: tourSelector('skill-select'),
-      title: '批量选技能',
+      target: tourSelector('map-list'),
+      title: '单关添加技能',
       content:
-        '先勾选若干关卡，再在这里选择要追加的技能。选中后会显示技能名称；分配是「追加」到关卡，不会清掉已有绑定。',
-      placement: 'bottom',
+        '在卡片里点「点击选择技能」或「+ 添加技能」即可绑定；一关可绑多个技能，各自设置模式与难度。',
+      placement: 'top',
       before: async () => {
-        await prepareMode(ctx, 'levelSkillMap', 'skill-select');
+        await prepareMode(ctx, 'levelSkillMap', 'map-list');
       },
     },
     {
       id: 'assign-button',
-      target: tourSelector('assign-button'),
-      title: '一键追加分配',
+      target: tourSelector('map-list'),
+      title: '批量追加（可选）',
       content:
-        '关卡与技能都选好后点「分配」。每个关卡会追加该技能；卡片上可继续「+ 添加技能」绑更多个。',
-      placement: 'bottom',
+        '需要给多个关卡挂同一技能时：先勾选卡片左侧复选框，顶部会出现「批量追加」条，选技能后一键追加。平时单关编辑不必用它。',
+      placement: 'top',
       before: async () => {
-        await prepareMode(ctx, 'levelSkillMap', 'assign-button');
+        await prepareMode(ctx, 'levelSkillMap', 'map-list');
       },
     },
     {
