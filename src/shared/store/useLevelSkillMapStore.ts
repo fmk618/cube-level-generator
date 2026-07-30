@@ -64,7 +64,7 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
   importFromDisk: async () => {
     set({ isLoading: true });
     try {
-      const result = await window.api.skillGraph.loadDisk();
+      const result = await window.api.skillGraph.importFromDisk();
       if (!result) return false;
       get().importMapFromJSON(result.content);
       return true;

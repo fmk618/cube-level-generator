@@ -24,9 +24,7 @@ const DEFAULT_CATALOG_FILE = () => (
     : path.join(process.env.VITE_PUBLIC!, 'game_levels_english.json')
 );
 const DEFAULT_SKILL_GRAPH_FILE = () => (
-  VITE_DEV_SERVER_URL
-    ? path.join(process.env.APP_ROOT!, 'src/core/skill-graph/default.json')
-    : path.join(process.env.VITE_PUBLIC!, 'skill_graph_cfop.json')
+  path.join(process.env.VITE_PUBLIC!, 'skill_graph_default.json')
 );
 
 let mainWindow: BrowserWindow | null = null;
@@ -136,7 +134,8 @@ ipcMain.handle('skillGraph:loadDefault', async () => {
 
 ipcMain.handle('skillGraph:loadRuntime', async () => {
   const content = await readJsonFileIfExists(SKILL_GRAPH_FILE());
-  return { filePath: SKILL_GRAPH_FILE(), content } as any || null;
+  if (content === null) return null;
+  return { filePath: SKILL_GRAPH_FILE(), content };
 });
 
 ipcMain.handle('skillGraph:saveRuntime', async (_event, json: string) => {

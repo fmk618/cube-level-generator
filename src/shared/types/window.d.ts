@@ -11,6 +11,13 @@ declare global {
         importFromDisk: () => Promise<{ filePath: string; content: string } | null>;
         exportToDisk: (json: string, suggestedName: string) => Promise<string | null>;
       };
+      skillGraph: {
+        loadDefault: () => Promise<string>;
+        loadRuntime: () => Promise<{ filePath: string; content: string } | null>;
+        saveRuntime: (json: string) => Promise<string>;
+        importFromDisk: () => Promise<{ filePath: string; content: string } | null>;
+        exportToDisk: (json: string, suggestedName: string) => Promise<string | null>;
+      };
       secrets: {
         has: (key: string) => Promise<boolean>;
         get: (key: string) => Promise<string | null>;

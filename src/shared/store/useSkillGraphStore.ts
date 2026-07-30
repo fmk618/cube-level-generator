@@ -16,6 +16,7 @@ type SkillGraphState = {
   runtimeFilePath: string | null;
   loadError: string | null;
 
+  refreshSkillGraph: () => Promise<void>;
   importSkillGraphFromJSON: (json: string) => void;
   importFromDisk: () => Promise<boolean>;
   exportToDisk: () => Promise<string | null>;
@@ -72,6 +73,34 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
   runtimeFilePath: null,
   loadError: null,
 
+  refreshSkillGraph: async () => {
+    const state = get();
+    if (state.hasUnsavedChanges && state.skillGraph) return;
+
+    set({ isLoading: true, loadError: null });
+    try {
+      const runtime = await window.api.skillGraph.loadRuntime();
+      const json = runtime?.content ?? (await window.api.skillGraph.loadDefault());
+      const skillGraph = importSkillGraphFromJSON(json);
+      const errors = validateSkillGraph(skillGraph);
+      if (errors.length > 0) {
+        set({ isLoading: false, loadError: errors.join('; ') });
+        return;
+      }
+      applySkillGraph(set, skillGraph, cloneSkillGraph(skillGraph), false);
+      set({
+        isLoaded: true,
+        isLoading: false,
+        runtimeFilePath: runtime?.filePath ?? null,
+      });
+    } catch (error) {
+      set({
+        isLoading: false,
+        loadError: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+
   importSkillGraphFromJSON: (json: string) => {
     try {
       const skillGraph = importSkillGraphFromJSON(json);
@@ -92,7 +121,7 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
   importFromDisk: async () => {
     set({ isLoading: true });
     try {
-      const result = await window.api.skillGraph.loadDisk();
+      const result = await window.api.skillGraph.importFromDisk();
       if (!result) return false;
       get().importSkillGraphFromJSON(result.content);
       set({ runtimeFilePath: result.filePath });

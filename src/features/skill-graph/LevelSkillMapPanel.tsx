@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
-import type { LevelSkillMapEntry, SkillStage, LevelSkillMap } from '@/core/skill-graph/types';
-import '../../../src/styles/level-skill-map-panel.css';
+import { SelectDropdown } from '@/shared/ui/SelectDropdown';
+import type { LevelSkillMapEntry, LevelSkillMap } from '@/core/skill-graph/types';
+import '../../styles/level-skill-map-panel.css';
 
-const TEACH_MODES = ['guided', 'challenge', 'demo'] as const;
-const SKILL_STAGES: SkillStage[] = ['cross', 'f2l', 'oll', 'pll', 'full'];
+const TEACH_MODES = [
+  { value: 'guided', label: 'guided' },
+  { value: 'challenge', label: 'challenge' },
+  { value: 'demo', label: 'demo' },
+] as const;
 
 export function LevelSkillMapPanel() {
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +30,11 @@ export function LevelSkillMapPanel() {
   const hasUnsavedChanges = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
   const saveMap = useLevelSkillMapStore((state) => state.saveMap);
 
+  const skillOptions = useMemo(
+    () => skills.map((s) => ({ value: s.id, label: s.displayNameZh })),
+    [skills],
+  );
+
   const filteredLevels = useMemo(() => {
     if (filterChapter === 'all') return levels;
     return levels.filter((level) => level.chapterId === filterChapter);
@@ -35,7 +44,6 @@ export function LevelSkillMapPanel() {
     return levelSkillMap ? Object.keys(levelSkillMap.mappings).length : 0;
   }, [levelSkillMap]);
 
-  // 初始化空映射
   useEffect(() => {
     if (!levelSkillMap && levels.length > 0) {
       const emptyMap: LevelSkillMap = {
@@ -54,11 +62,9 @@ export function LevelSkillMapPanel() {
     try {
       setError(null);
       const filePath = await exportToDisk();
-      if (!filePath) {
-        setError('Export cancelled');
-      }
+      setError(filePath ? '✓ 导出成功' : '导出已取消');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed');
+      setError(err instanceof Error ? err.message : '导出失败');
     }
   };
 
@@ -66,22 +72,23 @@ export function LevelSkillMapPanel() {
     try {
       setError(null);
       await saveMap();
+      setError('✓ 保存成功');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      setError(err instanceof Error ? err.message : '保存失败');
     }
   };
 
   const handleUpdateEntry = (levelId: string, entry: Partial<LevelSkillMapEntry>) => {
     const current = getLevelSkillEntry(levelId);
     if (!current && !entry.skillId) {
-      setError('Skill ID is required');
+      setError('请选择一个技能');
       return;
     }
 
     const skillId = entry.skillId || current?.skillId || '';
     const skill = skills.find((s) => s.id === skillId);
     if (!skill) {
-      setError(`Skill "${skillId}" not found in graph`);
+      setError(`未找到技能 "${skillId}"`);
       return;
     }
 
@@ -98,41 +105,37 @@ export function LevelSkillMapPanel() {
 
   const handleQuickAssign = () => {
     if (!quickAssignSkillId) {
-      setError('Please select a skill');
+      setError('请选择一个技能');
       return;
     }
-
     if (selectedLevelIds.size === 0) {
-      setError('Please select at least one level');
+      setError('请至少选择一个关卡');
       return;
     }
 
     const skill = skills.find((s) => s.id === quickAssignSkillId);
     if (!skill) {
-      setError(`Skill "${quickAssignSkillId}" not found`);
+      setError(`未找到技能 "${quickAssignSkillId}"`);
       return;
     }
 
     let count = 0;
     selectedLevelIds.forEach((levelId) => {
-      handleUpdateEntry(levelId, {
-        skillId: skill.id,
-        cfopStage: skill.stage,
-      });
+      handleUpdateEntry(levelId, { skillId: skill.id, cfopStage: skill.stage });
       count++;
     });
 
     setSelectedLevelIds(new Set());
     setQuickAssignSkillId('');
-    setError(`✓ 已为 ${count} 个关卡分配 skill`);
+    setError(`✓ 已为 ${count} 个关卡分配技能`);
   };
 
   if (!levelSkillMap) {
     return (
       <div className="panel level-skill-map-panel">
         <div className="panel-empty">
-          <p>未加载 Level-Skill 映射</p>
-          <p className="text-small">请先在关卡编辑模式加载关卡</p>
+          <p>未加载关卡映射数据</p>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>请先在关卡编辑模式加载关卡</p>
         </div>
       </div>
     );
@@ -145,73 +148,59 @@ export function LevelSkillMapPanel() {
       )}
 
       <div className="map-header">
-        <h2>关卡-Skill 映射</h2>
-        <div className="map-progress">
-          {mappedCount} / {levels.length} 已分配
+        <div className="map-header-left">
+          <h2>关卡映射</h2>
+          <span className="map-badge">{mappedCount} / {levels.length}</span>
         </div>
-        <div className="map-actions" id="map-export">
-          <button className="btn btn-sm btn-text" onClick={() => setShowGuide(true)}>
-            ? 指引
-          </button>
-          <button className="btn btn-sm" onClick={handleExport}>
-            导出
-          </button>
+        <div className="map-header-actions" id="map-export">
+          <button className="btn btn-sm btn-text" onClick={() => setShowGuide(true)}>指引</button>
+          <button className="btn btn-sm" onClick={() => void handleExport()}>导出</button>
           {hasUnsavedChanges && (
-            <button className="btn btn-sm btn-primary" onClick={() => void handleSave()}>
-              保存
-            </button>
+            <button className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存</button>
           )}
         </div>
       </div>
 
       {error && (
-        <div className={`banner ${error.startsWith('✓') ? 'banner-ok' : 'banner-error'}`}>
-          {error}
-        </div>
+        <div className={`banner ${error.startsWith('✓') ? 'banner-ok' : 'banner-error'}`}>{error}</div>
       )}
 
-      <div className="map-toolbar">
-        <div className="toolbar-group" id="map-filter">
-          <label className="toolbar-label">筛选章节:</label>
-          <select value={filterChapter} onChange={(e) => setFilterChapter(e.target.value)} className="toolbar-select">
-            <option value="all">全部</option>
-            {chapters.map((chapter) => (
-              <option key={chapter.id} value={chapter.id}>
-                {chapter.partName}: {chapter.title}
-              </option>
-            ))}
-          </select>
+      <div className="map-toolbar" id="map-toolbar">
+        <div className="map-filter-chips" id="map-filter">
+          <button
+            className={`chip ${filterChapter === 'all' ? 'chip-active' : ''}`}
+            onClick={() => setFilterChapter('all')}
+          >全部</button>
+          {chapters.map((chapter) => (
+            <button
+              key={chapter.id}
+              className={`chip ${filterChapter === chapter.id ? 'chip-active' : ''}`}
+              onClick={() => setFilterChapter(chapter.id)}
+            >{chapter.partName}</button>
+          ))}
         </div>
 
-        <div className="toolbar-group quick-assign-group" id="map-toolbar">
-          <label className="toolbar-label">快速分配:</label>
-          <div className="quick-assign-row">
-            <select
-              value={quickAssignSkillId}
-              onChange={(e) => setQuickAssignSkillId(e.target.value)}
-              className="toolbar-select"
-            >
-              <option value="">选择 Skill...</option>
-              {skills.map((skill) => (
-                <option key={skill.id} value={skill.id}>
-                  {skill.displayNameZh}
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={handleQuickAssign}
-              disabled={selectedLevelIds.size === 0}
-            >
-              分配给 {selectedLevelIds.size} 个
-            </button>
-          </div>
+        <div className="map-bulk-actions">
+          <SelectDropdown
+            size="sm"
+            className="map-bulk-select"
+            value={quickAssignSkillId}
+            options={skillOptions}
+            placeholder="选择技能..."
+            searchable
+            onChange={setQuickAssignSkillId}
+          />
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={handleQuickAssign}
+            disabled={selectedLevelIds.size === 0}
+          >分配 ({selectedLevelIds.size})</button>
         </div>
       </div>
 
-      <div className="map-list">
+      <div className="map-list" id="map-list">
         {filteredLevels.length === 0 ? (
-          <p className="empty-state">该章节无关卡</p>
+          <div className="map-empty">该章节无关卡</div>
         ) : (
           <div className="level-cards">
             {filteredLevels.map((level) => {
@@ -222,110 +211,86 @@ export function LevelSkillMapPanel() {
               return (
                 <div
                   key={level.id}
-                  className={`level-card ${isSelected ? 'selected' : ''} ${entry ? 'mapped' : 'unmapped'}`}
+                  className={`level-card ${isSelected ? 'selected' : ''} ${entry ? '' : 'unmapped'}`}
                 >
-                  <div className="card-header">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) => {
-                        const next = new Set(selectedLevelIds);
-                        if (e.target.checked) {
-                          next.add(level.id);
-                        } else {
-                          next.delete(level.id);
-                        }
-                        setSelectedLevelIds(next);
-                      }}
-                      className="card-checkbox"
-                    />
-                    <div className="card-title">
-                      <span className="card-order">{level.order}</span>
-                      <span className="card-name">{level.title}</span>
-                    </div>
+                  <div className="level-card-header">
+                    <label className="map-check">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          const next = new Set(selectedLevelIds);
+                          if (e.target.checked) next.add(level.id);
+                          else next.delete(level.id);
+                          setSelectedLevelIds(next);
+                        }}
+                      />
+                      <span className="map-check-box" />
+                    </label>
+                    <span className="level-card-order">{level.order}</span>
+                    <span className="level-card-name">{level.title}</span>
                   </div>
 
-                  {entry ? (
-                    <div className="card-content">
-                      <div className="card-field">
-                        <label>Skill:</label>
-                        <select
-                          value={entry.skillId}
-                          onChange={(e) => handleUpdateEntry(level.id, { skillId: e.target.value })}
-                          className="text-input small"
-                        >
-                          {skills.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.displayNameZh}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="card-row">
-                        <div className="card-field">
-                          <label>教学模式:</label>
-                          <select
-                            value={entry.teachMode}
-                            onChange={(e) => handleUpdateEntry(level.id, { teachMode: e.target.value as any })}
-                            className="text-input small"
-                          >
-                            {TEACH_MODES.map((mode) => (
-                              <option key={mode} value={mode}>
-                                {mode}
-                              </option>
-                            ))}
-                          </select>
+                  <div className="level-card-body">
+                    {entry ? (
+                      <>
+                        {skill && (
+                          <div className="level-card-mapped-info">
+                            <span className="mapped-stage-badge">{(entry.cfopStage ?? '').toUpperCase()}</span>
+                            <span className="mapped-skill-name">{skill.displayNameZh}</span>
+                          </div>
+                        )}
+                        <div className="level-card-row">
+                          <div className="level-card-field">
+                            <label>技能</label>
+                            <SelectDropdown
+                              size="sm"
+                              value={entry.skillId ?? ''}
+                              options={skillOptions}
+                              searchable
+                              onChange={(v) => handleUpdateEntry(level.id, { skillId: v })}
+                            />
+                          </div>
+                          <div className="level-card-field">
+                            <label>模式</label>
+                            <SelectDropdown
+                              size="sm"
+                              value={entry.teachMode}
+                              options={[...TEACH_MODES]}
+                              onChange={(v) => handleUpdateEntry(level.id, { teachMode: v as LevelSkillMapEntry['teachMode'] })}
+                            />
+                          </div>
                         </div>
-                        <div className="card-field">
-                          <label>难度 (1-6):</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="6"
-                            value={entry.formulaDifficulty}
-                            onChange={(e) =>
-                              handleUpdateEntry(level.id, { formulaDifficulty: parseInt(e.target.value) as any })
-                            }
-                            className="text-input small"
-                          />
+                        <div className="level-card-row">
+                          <div className="level-card-field">
+                            <label>难度</label>
+                            <input
+                              className="text-input text-input--sm map-number-input"
+                              type="number"
+                              min="1"
+                              max="6"
+                              value={entry.formulaDifficulty}
+                              onChange={(e) => handleUpdateEntry(level.id, { formulaDifficulty: parseInt(e.target.value) || 1 })}
+                            />
+                          </div>
+                          <div className="level-card-field level-card-field--action">
+                            <button className="level-card-clear" onClick={() => deleteLevelSkillEntry(level.id)}>清除映射</button>
+                          </div>
                         </div>
-                      </div>
-
-                      {skill && (
-                        <div className="card-badge">
-                          <span className="badge-stage">{entry.cfopStage.toUpperCase()}</span>
-                          <span className="badge-skill">{skill.displayNameZh}</span>
-                        </div>
-                      )}
-
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => deleteLevelSkillEntry(level.id)}
-                      >
-                        清除映射
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="card-empty">
-                      <select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleUpdateEntry(level.id, { skillId: e.target.value });
-                          }
+                      </>
+                    ) : (
+                      <SelectDropdown
+                        size="sm"
+                        value=""
+                        options={skillOptions}
+                        placeholder="点击选择技能..."
+                        searchable
+                        onChange={(v) => {
+                          if (v) handleUpdateEntry(level.id, { skillId: v });
                         }}
-                        defaultValue=""
-                        className="text-input"
-                      >
-                        <option value="">点击选择 Skill...</option>
-                        {skills.map((skill) => (
-                          <option key={skill.id} value={skill.id}>
-                            {skill.displayNameZh}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                      />
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -344,94 +309,34 @@ interface MapGuideDialogProps {
 
 function MapGuideDialog({ onClose, mappedCount, totalCount }: MapGuideDialogProps) {
   const [step, setStep] = useState(0);
-
   const steps = [
-    {
-      title: '👋 欢迎使用关卡映射编辑器',
-      content: `已加载 ${totalCount} 个关卡，其中 ${mappedCount} 个已分配技能。我会用 4 个步骤教你如何使用。`,
-      action: '开始',
-      highlight: null,
-    },
-    {
-      title: '1️⃣ 选择章节',
-      content: '👆 看到上面的"筛选章节"下拉框了吗？\n\n点击它可以：\n• 查看某个章节的关卡\n• 一次性处理一个章节的映射\n\n这样能聚焦注意力，不会很混乱',
-      action: '我看到了',
-      highlight: 'map-filter',
-    },
-    {
-      title: '2️⃣ 逐个分配技能',
-      content: '👆 看到下面的关卡卡片了吗？\n\n灰色卡片 = 未分配\n白色卡片 = 已分配\n\n点击灰色卡片的下拉框选择技能，它会自动添加映射。已分配的卡片可以随时修改。',
-      action: '我看到了',
-      highlight: 'map-list',
-    },
-    {
-      title: '3️⃣ 快速批量分配（推荐）⚡',
-      content: '👆 对于多个相同的关卡：\n\n1. 在卡片左上打勾选中多个\n2. 在工具栏选择技能\n3. 点"分配给 N 个关卡"\n\n效率高 10 倍！',
-      action: '我看到了',
-      highlight: 'map-toolbar',
-    },
-    {
-      title: '4️⃣ 导出文件到 App',
-      content: '👆 点击右上角的"导出"按钮\n\n这会生成 level_skill_map.json\n\n覆盖到 App 的：\ndata/skills/level_skill_map.json',
-      action: '完成了',
-      highlight: 'map-export',
-    },
+    { title: '欢迎使用关卡映射编辑器', content: `已加载 ${totalCount} 个关卡，其中 ${mappedCount} 个已分配技能。`, action: '开始', highlight: null },
+    { title: '章节筛选', content: '使用工具栏 chip 按钮快速切换到不同章节，聚焦处理映射。', action: '下一步', highlight: 'map-filter' },
+    { title: '逐个分配', content: '灰色卡片表示未分配，直接在下拉框中选择技能即可。已分配的卡片可以修改技能、模式和难度。', action: '下一步', highlight: 'map-list' },
+    { title: '批量操作', content: '勾选多个关卡，然后在工具栏选择技能点击"分配"，一键批量完成。', action: '下一步', highlight: 'map-toolbar' },
+    { title: '导出到应用', content: '点击右上角"导出"按钮生成 level_skill_map.json 文件。', action: '完成', highlight: 'map-export' },
   ];
-
-  const currentStep = steps[step];
+  const cur = steps[step];
 
   return (
     <>
       <div className="guide-overlay" onClick={onClose} />
-      {currentStep.highlight && (
-        <style>{`
-          #${currentStep.highlight} {
-            box-shadow: inset 0 0 0 3px #3b82f6, 0 0 0 3px rgba(59, 130, 246, 0.3);
-            animation: pulse-highlight 2s infinite;
-          }
-          @keyframes pulse-highlight {
-            0%, 100% { box-shadow: inset 0 0 0 3px #3b82f6, 0 0 0 3px rgba(59, 130, 246, 0.3); }
-            50% { box-shadow: inset 0 0 0 3px #3b82f6, 0 0 0 6px rgba(59, 130, 246, 0.2); }
-          }
-        `}</style>
+      {cur.highlight && (
+        <style>{`#${cur.highlight}{outline:3px solid #3b82f6;outline-offset:3px;border-radius:8px;animation:pulse-hl 2s infinite}@keyframes pulse-hl{0%,100%{outline-offset:3px}50%{outline-offset:5px}}`}</style>
       )}
       <div className="guide-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="guide-header">
-          <h2>{currentStep.title}</h2>
+          <h2>{cur.title}</h2>
           <button className="guide-close" onClick={onClose}>✕</button>
         </div>
-
-        <div className="guide-content">
-          {currentStep.content.split('\n').map((line, i) => (
-            <p key={i}>{line || <br />}</p>
-          ))}
-        </div>
-
+        <div className="guide-content"><p>{cur.content}</p></div>
         <div className="guide-footer">
           <div className="guide-progress">
-            {steps.map((_, i) => (
-              <div key={i} className={`progress-dot ${i === step ? 'active' : ''} ${i < step ? 'done' : ''}`} />
-            ))}
+            {steps.map((_, i) => <div key={i} className={`progress-dot ${i === step ? 'active' : ''} ${i < step ? 'done' : ''}`} />)}
           </div>
-
           <div className="guide-buttons">
-            {step > 0 && (
-              <button className="btn btn-sm" onClick={() => setStep(step - 1)}>
-                上一步
-              </button>
-            )}
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => {
-                if (step < steps.length - 1) {
-                  setStep(step + 1);
-                } else {
-                  onClose();
-                }
-              }}
-            >
-              {currentStep.action}
-            </button>
+            {step > 0 && <button className="btn btn-sm" onClick={() => setStep(step - 1)}>上一步</button>}
+            <button className="btn btn-sm btn-primary" onClick={() => step < steps.length - 1 ? setStep(step + 1) : onClose()}>{cur.action}</button>
           </div>
         </div>
       </div>
