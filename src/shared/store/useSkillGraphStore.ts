@@ -84,7 +84,9 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
 
       try {
         const cloud = await window.api.db.pullSkills();
-        if (cloud) skillGraph = cloud;
+        if (cloud && Array.isArray(cloud.skills) && cloud.skills.length > 0) {
+          skillGraph = cloud;
+        }
       } catch {
         // 云端不可用时回退本地
       }
@@ -92,7 +94,19 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       if (!skillGraph) {
         const runtime = await window.api.skillGraph.loadRuntime();
         runtimeFilePath = runtime?.filePath ?? null;
-        const json = runtime?.content ?? (await window.api.skillGraph.loadDefault());
+        if (runtime?.content) {
+          try {
+            skillGraph = importSkillGraphFromJSON(runtime.content);
+          } catch {
+            // 旧版可能把映射 JSON 误写入 skill_graph.runtime.json，忽略后回退默认
+            skillGraph = null;
+            runtimeFilePath = null;
+          }
+        }
+      }
+
+      if (!skillGraph) {
+        const json = await window.api.skillGraph.loadDefault();
         skillGraph = importSkillGraphFromJSON(json);
       }
 
