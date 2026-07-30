@@ -166,9 +166,20 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
 
         set({ isLoading: true, loadError: null });
         try {
-            const runtimeJson = await window.api.catalog.loadRuntime();
-            const json = runtimeJson ?? await window.api.catalog.loadDefault();
-            const catalog = importLevelsFromJSON(json);
+            let catalog: LevelCatalogDocument | null = null;
+            try {
+                const cloud = await window.api.db.pullCatalog();
+                if (cloud) catalog = normalizeLevelCatalogDocument(cloud);
+            } catch {
+                // 云端不可用时回退本地
+            }
+
+            if (!catalog) {
+                const runtimeJson = await window.api.catalog.loadRuntime();
+                const json = runtimeJson ?? await window.api.catalog.loadDefault();
+                catalog = importLevelsFromJSON(json);
+            }
+
             const runtimeFilePath = await window.api.catalog.getRuntimePath();
             applyCatalog(set, catalog, catalog, false);
             set({ isLoading: false, runtimeFilePath });
@@ -205,6 +216,13 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         if (!catalog) throw new Error('关卡目录尚未加载。');
         const json = exportLevelsToJSON(catalog);
         const filePath = await window.api.catalog.saveRuntime(json);
+        try {
+            await window.api.db.pushCatalog(catalog);
+        } catch (error) {
+            throw new Error(
+                `本地已保存，但云端同步失败：${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
         applyCatalog(set, catalog, catalog, false);
         set({ runtimeFilePath: filePath });
         return filePath;

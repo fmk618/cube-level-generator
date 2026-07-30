@@ -264,7 +264,12 @@ export default function App() {
               ));
             }}
           />
-          <LlmPanel collapsed={llmCollapsed} onToggleCollapsed={() => setLlmCollapsed((value) => !value)} />
+          <LlmPanel
+            collapsed={llmCollapsed}
+            onToggleCollapsed={() => setLlmCollapsed((value) => !value)}
+            editMode={editMode}
+            onSwitchToCatalog={() => setEditMode('catalog')}
+          />
         </div>
       </main>
       <OnboardingTour

@@ -17,6 +17,7 @@
 - **3D 预览** — 基于 Three.js 实时预览初始态与目标态
 - **技能编辑** — 按 CFOP 阶段筛选/新建/编辑技能，保存运行时草稿与导出技能树
 - **关卡映射** — 单卡或批量把关卡关联到技能，配置引导/挑战/演示模式与公式难度
+- **云端同步** — 保存时同步关卡 / 技能 / 映射到宝塔 MySQL；启动优先从云端拉取
 - **新手引导** — React Joyride 分步介绍三页联调流程
 - **LLM 助手** — 按教学目标描述生成候选公式，本地校验通过后可一键采纳到编辑器
 
@@ -31,6 +32,7 @@
 | 前端 | React 19、TypeScript |
 | 3D | Three.js、@react-three/fiber、@react-three/drei |
 | 状态 | Zustand |
+| 云端库 | MySQL 8（mysql2，EXE 直连） |
 | 引导 | react-joyride |
 | 校验 | oxlint |
 
@@ -97,8 +99,9 @@ CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --win
 ```text
 cube-level-generator/
 ├── electron/                 # Electron 主进程
-│   ├── main.ts               # 窗口、文件 IO、技能树 IO、DashScope 代理、safeStorage
-│   └── preload.ts            # 渲染进程 API 桥接
+│   ├── main.ts               # 窗口、文件 IO、技能树 IO、DashScope 代理、safeStorage、云端 DB IPC
+│   ├── preload.ts            # 渲染进程 API 桥接
+│   └── db/                   # MySQL 连接池、建表、推拉仓库
 ├── public/                   # 静态资源（默认关卡 / 技能树 JSON）
 ├── src/
 │   ├── core/                 # 纯 TypeScript 业务逻辑（无 UI 依赖）
@@ -146,7 +149,11 @@ cube-level-generator/
 | `public/skill_graph_default.json` | 默认技能树模版 |
 | `{userData}/levels.runtime.json` | 关卡运行时草稿 |
 | `{userData}/skill_graph.runtime.json` | 技能树运行时草稿 |
+| `{userData}/level_skill_map.runtime.json` | 关卡映射运行时草稿 |
+| 云端 MySQL `chapters` / `levels` / `skills` / `level_skill_bindings` | 多机共享主数据（保存时推送，加载时优先拉取） |
 | 导出 `level_skill_map.json` | 关卡 ↔ 技能映射（一关可绑多个技能，映射页导出） |
+
+连接配置默认写在 `electron/db/config.ts`；可用环境变量 `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD`，或本地 `electron/db/db.config.json`（已 gitignore）覆盖。
 
 **关卡工作流**
 

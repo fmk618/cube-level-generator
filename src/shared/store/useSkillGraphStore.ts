@@ -79,9 +79,23 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
 
     set({ isLoading: true, loadError: null });
     try {
-      const runtime = await window.api.skillGraph.loadRuntime();
-      const json = runtime?.content ?? (await window.api.skillGraph.loadDefault());
-      const skillGraph = importSkillGraphFromJSON(json);
+      let skillGraph: SkillGraphDocument | null = null;
+      let runtimeFilePath: string | null = null;
+
+      try {
+        const cloud = await window.api.db.pullSkills();
+        if (cloud) skillGraph = cloud;
+      } catch {
+        // 云端不可用时回退本地
+      }
+
+      if (!skillGraph) {
+        const runtime = await window.api.skillGraph.loadRuntime();
+        runtimeFilePath = runtime?.filePath ?? null;
+        const json = runtime?.content ?? (await window.api.skillGraph.loadDefault());
+        skillGraph = importSkillGraphFromJSON(json);
+      }
+
       const errors = validateSkillGraph(skillGraph);
       if (errors.length > 0) {
         set({ isLoading: false, loadError: errors.join('; ') });
@@ -91,7 +105,7 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       set({
         isLoaded: true,
         isLoading: false,
-        runtimeFilePath: runtime?.filePath ?? null,
+        runtimeFilePath,
       });
     } catch (error) {
       set({
@@ -148,6 +162,13 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     if (!skillGraph) throw new Error('Skill graph not loaded');
     const json = exportSkillGraphToJSON(skillGraph);
     const filePath = await window.api.skillGraph.saveRuntime(json);
+    try {
+      await window.api.db.pushSkills(skillGraph);
+    } catch (error) {
+      throw new Error(
+        `本地已保存，但云端同步失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     applySkillGraph(set, skillGraph, cloneSkillGraph(skillGraph), false);
     set({ runtimeFilePath: filePath });
     return filePath;

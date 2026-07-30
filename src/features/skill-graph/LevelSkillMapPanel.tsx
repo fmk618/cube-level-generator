@@ -5,10 +5,8 @@ import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import type {
   LevelSkillBinding,
-  LevelSkillMap,
   TeachMode,
 } from '@/core/skill-graph/types';
-import { LEVEL_SKILL_MAP_VERSION } from '@/core/skill-graph/types';
 import '../../styles/level-skill-map-panel.css';
 
 const TEACH_MODES = [
@@ -43,6 +41,9 @@ export function LevelSkillMapPanel() {
   const exportToDisk = useLevelSkillMapStore((state) => state.exportToDisk);
   const hasUnsavedChanges = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
   const saveMap = useLevelSkillMapStore((state) => state.saveMap);
+  const refreshMap = useLevelSkillMapStore((state) => state.refreshMap);
+  const isMapLoading = useLevelSkillMapStore((state) => state.isLoading);
+  const mapLoadError = useLevelSkillMapStore((state) => state.loadError);
 
   useEffect(() => {
     if (!skillGraph && !isSkillLoading && !skillLoadError) {
@@ -51,18 +52,10 @@ export function LevelSkillMapPanel() {
   }, [skillGraph, isSkillLoading, skillLoadError, refreshSkillGraph]);
 
   useEffect(() => {
-    if (!levelSkillMap && levels.length > 0) {
-      const emptyMap: LevelSkillMap = {
-        version: LEVEL_SKILL_MAP_VERSION,
-        mappings: {},
-      };
-      useLevelSkillMapStore.setState({
-        levelSkillMap: emptyMap,
-        savedLevelSkillMap: emptyMap,
-        isLoaded: true,
-      });
+    if (!levelSkillMap && !isMapLoading && !mapLoadError) {
+      void refreshMap();
     }
-  }, [levelSkillMap, levels.length]);
+  }, [levelSkillMap, isMapLoading, mapLoadError, refreshMap]);
 
   const skillOptions = useMemo(
     () => skills.map((s) => ({ value: s.id, label: s.displayNameZh })),
@@ -103,7 +96,7 @@ export function LevelSkillMapPanel() {
     try {
       setError(null);
       await saveMap();
-      setError('✓ 保存成功');
+      setError('✓ 已保存并同步到云端');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
     }
