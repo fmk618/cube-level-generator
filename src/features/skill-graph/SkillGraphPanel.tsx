@@ -26,7 +26,6 @@ export function SkillGraphPanel() {
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
 
   const skills = useSkillGraphStore((state) => state.skills);
   const hasUnsavedChanges = useSkillGraphStore((state) => state.hasUnsavedChanges);
@@ -143,7 +142,6 @@ export function SkillGraphPanel() {
           <span className="skill-badge">{skills.length} 个技能</span>
         </div>
         <div className="skill-header-actions" id="skill-export">
-          <button className="btn btn-sm btn-text" onClick={() => setShowGuide(true)}>指引</button>
           <button className="btn btn-sm" onClick={() => void handleExport()}>导出</button>
           {hasUnsavedChanges && (
             <button className="btn btn-sm btn-primary" onClick={() => void handleSave()} disabled={saving}>
@@ -157,9 +155,7 @@ export function SkillGraphPanel() {
         <div className={`banner ${error.startsWith('✓') ? 'banner-ok' : 'banner-error'}`}>{error}</div>
       )}
 
-      {showGuide && <SkillGuideDialog onClose={() => setShowGuide(false)} skillCount={skills.length} />}
-
-      <div className="skill-toolbar" id="skill-filter">
+      <div className="skill-toolbar" id="skill-filter" data-tour="skill-editor">
         <div className="skill-filter-chips">
           <button
             className={`chip ${filterStage === 'all' ? 'chip-active' : ''}`}
@@ -296,41 +292,5 @@ function SkillCard({ skill, isEditing, onEdit, onClose, onUpdate, onDelete }: Sk
         </div>
       )}
     </div>
-  );
-}
-
-function SkillGuideDialog({ onClose, skillCount }: { onClose: () => void; skillCount: number }) {
-  const [step, setStep] = useState(0);
-  const steps = [
-    { title: '欢迎使用技能编辑器', content: `已加载 ${skillCount} 个技能模版。`, action: '开始', highlight: null },
-    { title: '按阶段筛选', content: '使用工具栏的 chip 按钮筛选不同 CFOP 阶段的技能。', action: '下一步', highlight: 'skill-filter' },
-    { title: '创建新技能', content: '点击 "+ 新建" 按钮，选择阶段后创建。', action: '下一步', highlight: 'skill-create' },
-    { title: '编辑与导出', content: '在技能卡片上点击"编辑"修改信息，完成后点右上角"导出"生成 JSON。', action: '完成', highlight: 'skill-export' },
-  ];
-  const cur = steps[step];
-
-  return (
-    <>
-      <div className="guide-overlay" onClick={onClose} />
-      {cur.highlight && (
-        <style>{`#${cur.highlight}{outline:3px solid #3b82f6;outline-offset:3px;border-radius:8px;animation:pulse-hl 2s infinite}@keyframes pulse-hl{0%,100%{outline-offset:3px}50%{outline-offset:5px}}`}</style>
-      )}
-      <div className="guide-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="guide-header">
-          <h2>{cur.title}</h2>
-          <button className="guide-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="guide-content"><p>{cur.content}</p></div>
-        <div className="guide-footer">
-          <div className="guide-progress">
-            {steps.map((_, i) => <div key={i} className={`progress-dot ${i === step ? 'active' : ''} ${i < step ? 'done' : ''}`} />)}
-          </div>
-          <div className="guide-buttons">
-            {step > 0 && <button className="btn btn-sm" onClick={() => setStep(step - 1)}>上一步</button>}
-            <button className="btn btn-sm btn-primary" onClick={() => step < steps.length - 1 ? setStep(step + 1) : onClose()}>{cur.action}</button>
-          </div>
-        </div>
-      </div>
-    </>
   );
 }

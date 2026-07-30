@@ -4,7 +4,7 @@ import { tourSelector, waitForTourTarget } from './waitForTourTarget';
 
 async function prepareMode(
   ctx: OnboardingTourContext,
-  mode: 'catalog' | 'levelSkillMap',
+  mode: 'catalog' | 'skills' | 'levelSkillMap',
   tourId: string,
 ): Promise<void> {
   ctx.setEditMode(mode);
@@ -49,6 +49,16 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
       placement: 'bottom',
       before: async () => {
         await waitForTourTarget('module-tabs', 2000);
+      },
+    },
+    {
+      id: 'skill-editor',
+      target: tourSelector('skill-editor'),
+      title: '技能编辑',
+      content: '在这里按 CFOP 阶段管理技能树：筛选、新建、编辑与导出。',
+      placement: 'left',
+      before: async () => {
+        await prepareMode(ctx, 'skills', 'skill-editor');
       },
     },
     {
