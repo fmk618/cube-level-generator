@@ -28,10 +28,10 @@ const DIFFICULTY_OPTIONS: { key: 'short' | 'medium' | 'long'; label: string; hin
   { key: 'long', label: '长', hint: '13-20 步，适合挑战关卡' },
 ];
 
-const MAP_SCOPE_OPTIONS: { value: MapScope; label: string }[] = [
-  { value: 'unmapped', label: '仅未映射关卡' },
-  { value: 'selected', label: '仅勾选关卡' },
-  { value: 'all', label: '全部关卡' },
+const MAP_SCOPE_OPTIONS: { value: MapScope; label: string; shortLabel: string }[] = [
+  { value: 'unmapped', label: '仅未映射关卡', shortLabel: '未映射' },
+  { value: 'selected', label: '仅勾选关卡', shortLabel: '已勾选' },
+  { value: 'all', label: '全部关卡', shortLabel: '全部' },
 ];
 
 type FormulaCandidate = {
@@ -516,32 +516,34 @@ export function LlmPanel({
         )}
 
         {editMode === 'levelSkillMap' && (
-          <div className="ai-target-card">
-            <div className="ai-option-row">
-              <span className="ai-option-label">映射范围</span>
-              <div className="segmented">
+          <div className="ai-map-controls">
+            <div className="ai-map-field">
+              <span className="ai-map-field-label">映射范围</span>
+              <div className="ai-map-segmented" role="group" aria-label="映射范围">
                 {MAP_SCOPE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
                     type="button"
-                    className={`chip ${mapScope === opt.value ? 'chip-active' : ''}`}
+                    className={mapScope === opt.value ? 'is-active' : ''}
                     onClick={() => setMapScope(opt.value)}
                   >
-                    {opt.label}
+                    {opt.shortLabel}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="ai-option-row">
-              <span className="ai-option-label">应用方式</span>
-              <div className="segmented">
-                <button type="button" className={`chip ${mapMode === 'merge' ? 'chip-active' : ''}`} onClick={() => setMapMode('merge')}>合并</button>
-                <button type="button" className={`chip ${mapMode === 'replace' ? 'chip-active' : ''}`} onClick={() => setMapMode('replace')}>覆盖</button>
+            <div className="ai-map-field">
+              <span className="ai-map-field-label">应用方式</span>
+              <div className="ai-map-segmented" role="group" aria-label="应用方式">
+                <button type="button" className={mapMode === 'merge' ? 'is-active' : ''} onClick={() => setMapMode('merge')}>合并</button>
+                <button type="button" className={mapMode === 'replace' ? 'is-active' : ''} onClick={() => setMapMode('replace')}>覆盖</button>
               </div>
             </div>
-            {mapScope === 'selected' && (
-              <p className="hint-text">已同步映射页勾选：{aiMapLevelIds.length} 个关卡</p>
-            )}
+            <p className={`ai-map-hint ${mapScope === 'selected' ? 'is-visible' : ''}`} aria-hidden={mapScope !== 'selected'}>
+              {mapScope === 'selected'
+                ? `已同步映射页勾选：${aiMapLevelIds.length} 个关卡`
+                : '\u00a0'}
+            </p>
           </div>
         )}
 

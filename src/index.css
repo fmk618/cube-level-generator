@@ -2134,14 +2134,19 @@ textarea.text-input--sm {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 34px;
+  min-height: 40px;
   gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
 }
 
 .ai-model-status > div {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  gap: 1px;
 }
 
 .ai-model-status span {
@@ -2151,9 +2156,9 @@ textarea.text-input--sm {
 
 .ai-model-status strong {
   overflow: hidden;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2167,6 +2172,77 @@ textarea.text-input--sm {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface-secondary);
+}
+
+.ai-map-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-secondary);
+}
+
+.ai-map-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-map-field-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ai-map-segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.ai-map-segmented button {
+  min-height: 30px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.ai-map-segmented button:hover:not(.is-active) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--ai-accent-soft) 70%, transparent);
+}
+
+.ai-map-segmented button.is-active {
+  color: var(--ai-accent);
+  background: var(--ai-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--ai-accent-border);
+}
+
+.ai-map-hint {
+  margin: 0;
+  min-height: 16px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  visibility: hidden;
+}
+
+.ai-map-hint.is-visible {
+  visibility: visible;
 }
 
 .ai-target-row {
@@ -2309,23 +2385,23 @@ textarea.text-input--sm {
 }
 
 .ai-option-row {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  align-items: center;
-  min-height: 34px;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-height: 0;
 }
 
 .ai-option-label {
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 550;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .ai-option-row .segmented,
 .ai-option-row .count-stepper {
   width: 100%;
-  justify-self: stretch;
 }
 
 .count-stepper {
@@ -2673,7 +2749,6 @@ textarea.text-input--sm {
 
   .ai-option-row {
     align-items: stretch;
-    grid-template-columns: 1fr;
   }
 
   .ai-option-row .segmented,
