@@ -34,7 +34,7 @@ function SceneContent({ stateMatrix, brightnessMatrix, colorMatrix }: Omit<CubeP
         blur={2.5}
         far={4}
       />
-      <OrbitControls enablePan={false} minDistance={3.2} maxDistance={7} />
+      <OrbitControls enablePan={false} enableZoom={false} minDistance={3.2} maxDistance={7} />
     </>
   );
 }

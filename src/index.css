@@ -425,6 +425,13 @@ button {
 .editor-scroll {
   gap: 20px;
   padding: 20px;
+  overflow: hidden;
+}
+
+.editor-scroll > .editor-header,
+.editor-scroll > .banner,
+.editor-scroll > .preview-hero {
+  flex-shrink: 0;
 }
 
 .panel-loading,
@@ -834,7 +841,7 @@ textarea.text-input--sm {
 
 .ui-select-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
@@ -851,9 +858,11 @@ textarea.text-input--sm {
 .ui-select-option-label {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .ui-select-option:hover {
@@ -1747,6 +1756,22 @@ textarea.text-input--sm {
   border-radius: var(--radius-region);
 }
 
+@media (max-height: 860px) {
+  .cube-preview.cube-preview-editor {
+    height: clamp(220px, 28vh, 360px);
+  }
+}
+
+@media (max-height: 700px) {
+  .cube-preview.cube-preview-editor {
+    height: clamp(160px, 22vh, 260px);
+  }
+
+  .editor-workspace {
+    min-height: 0;
+  }
+}
+
 .cube-preview canvas {
   border-radius: var(--radius-region);
 }
@@ -1795,6 +1820,10 @@ textarea.text-input--sm {
 }
 
 .editor-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1803,10 +1832,13 @@ textarea.text-input--sm {
 
 .tab-bar {
   display: flex;
+  flex-shrink: 0;
+  align-items: stretch;
   height: 43px;
   gap: 22px;
   padding: 0 16px;
-  overflow-x: auto;
+  overflow: hidden;
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
@@ -1864,9 +1896,14 @@ textarea.text-input--sm {
 
 .tab-content {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
   padding: 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .field-row {
