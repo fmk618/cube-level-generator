@@ -181,7 +181,7 @@ export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps
 
   if (collapsed) {
     return (
-      <div className="panel panel--assistant llm-panel llm-panel-collapsed">
+      <div className="panel panel--assistant llm-panel llm-panel-collapsed" data-tour="ai-assistant">
         <button type="button" className="ai-rail-button" onClick={onToggleCollapsed} title="展开公式助手" aria-label="展开公式助手">
           <span aria-hidden>✦</span>
           <span>AI</span>
@@ -191,7 +191,7 @@ export function LlmPanel({ collapsed = false, onToggleCollapsed }: LlmPanelProps
   }
 
   return (
-    <div className="panel panel--assistant llm-panel">
+    <div className="panel panel--assistant llm-panel" data-tour="ai-assistant">
       <div className="panel-scroll">
         <div className="ai-header">
           <div className="ai-header-text">
