@@ -38,12 +38,13 @@ export function SkillGraphPanel() {
   const createSkill = useSkillGraphStore((state) => state.createSkill);
   const exportToDisk = useSkillGraphStore((state) => state.exportToDisk);
   const saveSkillGraph = useSkillGraphStore((state) => state.saveSkillGraph);
+  const resetToDefault = useSkillGraphStore((state) => state.resetToDefault);
 
   useEffect(() => {
-    if (!skillGraph && !isLoading && !loadError) {
+    if (!skillGraph && !isLoading) {
       void refreshSkillGraph();
     }
-  }, [skillGraph, isLoading, loadError, refreshSkillGraph]);
+  }, [skillGraph, isLoading, refreshSkillGraph]);
 
   const filteredSkills =
     filterStage === 'all' ? skills : skills.filter((skill) => skill.stage === filterStage);
@@ -119,9 +120,14 @@ export function SkillGraphPanel() {
             <>
               <h2>技能模版加载失败</h2>
               <p>{loadError}</p>
-              <button className="btn btn-sm btn-primary" onClick={() => void refreshSkillGraph()}>
-                重试
-              </button>
+              <div className="skill-empty-actions">
+                <button className="btn btn-sm btn-primary" onClick={() => void refreshSkillGraph()}>
+                  重试
+                </button>
+                <button className="btn btn-sm" onClick={() => void resetToDefault()}>
+                  恢复默认技能树
+                </button>
+              </div>
             </>
           ) : (
             <>

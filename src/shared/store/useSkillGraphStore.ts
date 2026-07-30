@@ -3,6 +3,7 @@ import type { SkillGraphDocument, SkillDefinition } from '@/core/skill-graph/typ
 import {
   exportSkillGraphToJSON,
   importSkillGraphFromJSON,
+  isSkillGraphDocumentShape,
   validateSkillGraph,
 } from '@/core/skill-graph/utils';
 
@@ -29,6 +30,19 @@ type SkillGraphState = {
   deleteSkill: (skillId: string) => void;
   getSkillById: (skillId: string) => SkillDefinition | undefined;
   getSkillsByStage: (stage: SkillDefinition['stage']) => SkillDefinition[];
+  applyAiSkillProposals: (
+    proposals: Array<{
+      action: 'create' | 'update';
+      id: string;
+      stage: SkillDefinition['stage'];
+      displayNameZh: string;
+      displayNameEn: string;
+      goal: string;
+      prerequisites: string[];
+      masteryStandard: SkillDefinition['masteryStandard'];
+      order: number;
+    }>,
+  ) => { created: number; updated: number };
 };
 
 const generateSkillId = (stage: string): string => {
@@ -96,18 +110,28 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
         runtimeFilePath = runtime?.filePath ?? null;
         if (runtime?.content) {
           try {
-            skillGraph = importSkillGraphFromJSON(runtime.content);
+            const parsed = JSON.parse(runtime.content) as unknown;
+            if (isSkillGraphDocumentShape(parsed)) {
+              skillGraph = importSkillGraphFromJSON(runtime.content);
+            }
           } catch {
-            // 旧版可能把映射 JSON 误写入 skill_graph.runtime.json，忽略后回退默认
             skillGraph = null;
             runtimeFilePath = null;
           }
         }
       }
 
+      const usedDefaultFallback = !skillGraph;
       if (!skillGraph) {
         const json = await window.api.skillGraph.loadDefault();
         skillGraph = importSkillGraphFromJSON(json);
+        if (usedDefaultFallback) {
+          try {
+            runtimeFilePath = await window.api.skillGraph.saveRuntime(json);
+          } catch {
+            // 修复本地损坏文件失败不影响继续使用默认模版
+          }
+        }
       }
 
       const errors = validateSkillGraph(skillGraph);
@@ -290,5 +314,54 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     const skillGraph = get().skillGraph;
     if (!skillGraph) return [];
     return skillGraph.skills.filter((skill) => skill.stage === stage);
+  },
+
+  applyAiSkillProposals: (proposals) => {
+    const skillGraph = get().skillGraph;
+    if (!skillGraph) throw new Error('Skill graph not loaded');
+
+    let created = 0;
+    let updated = 0;
+    const skills = skillGraph.skills.map((s) => ({ ...s }));
+
+    for (const proposal of proposals) {
+      if (proposal.action === 'update') {
+        const idx = skills.findIndex((s) => s.id === proposal.id);
+        if (idx < 0) continue;
+        skills[idx] = {
+          ...skills[idx],
+          stage: proposal.stage,
+          displayNameZh: proposal.displayNameZh,
+          displayNameEn: proposal.displayNameEn,
+          goal: proposal.goal,
+          prerequisites: [...proposal.prerequisites],
+          masteryStandard: proposal.masteryStandard,
+          order: proposal.order,
+        };
+        updated += 1;
+      } else {
+        if (skills.some((s) => s.id === proposal.id)) continue;
+        skills.push({
+          id: proposal.id,
+          stage: proposal.stage,
+          displayNameZh: proposal.displayNameZh,
+          displayNameEn: proposal.displayNameEn,
+          goal: proposal.goal,
+          prerequisites: [...proposal.prerequisites],
+          masteryStandard: proposal.masteryStandard,
+          order: proposal.order,
+          draft: true,
+        });
+        created += 1;
+      }
+    }
+
+    const nextSkillGraph: SkillGraphDocument = {
+      version: skillGraph.version,
+      skills,
+    };
+    const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
+    applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
+    return { created, updated };
   },
 }));
