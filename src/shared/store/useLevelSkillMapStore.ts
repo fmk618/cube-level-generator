@@ -114,7 +114,12 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     try {
       let map: LevelSkillMap | null = null;
       try {
-        map = await window.api.db.pullLevelSkillMap();
+        map = await Promise.race([
+          window.api.db.pullLevelSkillMap(),
+          new Promise<null>((resolve) => {
+            window.setTimeout(() => resolve(null), 8000);
+          }),
+        ]);
       } catch {
         // 云端不可用时回退本地
       }

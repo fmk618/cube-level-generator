@@ -72,9 +72,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refreshCatalog();
-    void refreshSkillGraph();
-    void refreshMap();
+    void (async () => {
+      await refreshCatalog();
+      await refreshSkillGraph();
+      await refreshMap();
+    })();
   }, [refreshCatalog, refreshSkillGraph, refreshMap]);
 
   useEffect(() => {

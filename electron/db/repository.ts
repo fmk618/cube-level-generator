@@ -2,6 +2,8 @@ import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { getPool } from './pool.ts';
 import { ensureSchema } from './schema.ts';
 import { resolveDbConfig } from './config.ts';
+import { withDeadlockRetry, withWriteLock } from './writeLock.ts';
+import { bindingRowUuid, newSyncUuid } from './uuid.ts';
 import type {
   CloudCatalogDocument,
   CloudLevelSkillMap,
@@ -11,6 +13,17 @@ import type {
 
 type Queryable = {
   query: PoolConnection['query'];
+};
+
+const BATCH_SIZE = 40;
+
+type BindingRow = {
+  levelId: string;
+  skillId: string;
+  cfopStage: string;
+  teachMode: string;
+  formulaDifficulty: number;
+  rowUuid: string;
 };
 
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -42,6 +55,26 @@ async function getMeta(key: string): Promise<string | null> {
   return rows[0]?.meta_value != null ? String(rows[0].meta_value) : null;
 }
 
+async function runWriteTransaction(run: (conn: PoolConnection) => Promise<void>): Promise<void> {
+  await withWriteLock(() =>
+    withDeadlockRetry(async () => {
+      await ensureSchema();
+      const pool = getPool();
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        await run(conn);
+        await conn.commit();
+      } catch (error) {
+        await conn.rollback();
+        throw error;
+      } finally {
+        conn.release();
+      }
+    }),
+  );
+}
+
 export async function pingDb(): Promise<DbPingResult> {
   const config = resolveDbConfig();
   try {
@@ -71,18 +104,20 @@ export async function pingDb(): Promise<DbPingResult> {
 }
 
 export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
-  await ensureSchema();
-  const pool = getPool();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    await conn.query('DELETE FROM levels');
-    await conn.query('DELETE FROM chapters');
+  const syncUuid = newSyncUuid();
 
+  await runWriteTransaction(async (conn) => {
     for (const chapter of doc.chapters) {
       await conn.query(
-        `INSERT INTO chapters (id, part_number, part_name, title, description, capacity)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO chapters (id, part_number, part_name, title, description, capacity, sync_uuid)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           part_number = VALUES(part_number),
+           part_name = VALUES(part_name),
+           title = VALUES(title),
+           description = VALUES(description),
+           capacity = VALUES(capacity),
+           sync_uuid = VALUES(sync_uuid)`,
         [
           chapter.id,
           chapter.partNumber,
@@ -90,47 +125,66 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
           chapter.title,
           chapter.description ?? null,
           chapter.capacity,
+          syncUuid,
         ],
       );
     }
 
-    for (const level of doc.levels) {
-      await conn.query(
-        `INSERT INTO levels (
-          id, chapter_id, level_order, title, description,
-          start_state_matrix, goal_state_matrix, brightness_matrix,
-          max_moves, star_thresholds, hint, rotation_formula, rotation_target,
-          guidance_formula, guidance_failure_threshold, hidden
-        ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, ?, ?, ?)`,
-        [
-          level.id,
-          level.chapterId,
-          level.order,
-          level.title,
-          level.description,
-          JSON.stringify(level.startStateMatrix),
-          JSON.stringify(level.goalStateMatrix),
-          JSON.stringify(level.brightnessMatrix),
-          level.maxMoves,
-          JSON.stringify(level.starThresholds),
-          level.hint ?? null,
-          level.rotationFormula ?? null,
-          level.rotationTarget ?? null,
-          level.guidanceFormula ?? null,
-          level.guidanceFailureThreshold ?? null,
-          level.hidden ? 1 : 0,
-        ],
-      );
+    for (let i = 0; i < doc.levels.length; i += BATCH_SIZE) {
+      const chunk = doc.levels.slice(i, i + BATCH_SIZE);
+      for (const level of chunk) {
+        await conn.query(
+          `INSERT INTO levels (
+            id, chapter_id, level_order, title, description,
+            start_state_matrix, goal_state_matrix, brightness_matrix,
+            max_moves, star_thresholds, hint, rotation_formula, rotation_target,
+            guidance_formula, guidance_failure_threshold, hidden, sync_uuid
+          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            chapter_id = VALUES(chapter_id),
+            level_order = VALUES(level_order),
+            title = VALUES(title),
+            description = VALUES(description),
+            start_state_matrix = VALUES(start_state_matrix),
+            goal_state_matrix = VALUES(goal_state_matrix),
+            brightness_matrix = VALUES(brightness_matrix),
+            max_moves = VALUES(max_moves),
+            star_thresholds = VALUES(star_thresholds),
+            hint = VALUES(hint),
+            rotation_formula = VALUES(rotation_formula),
+            rotation_target = VALUES(rotation_target),
+            guidance_formula = VALUES(guidance_formula),
+            guidance_failure_threshold = VALUES(guidance_failure_threshold),
+            hidden = VALUES(hidden),
+            sync_uuid = VALUES(sync_uuid)`,
+          [
+            level.id,
+            level.chapterId,
+            level.order,
+            level.title,
+            level.description,
+            JSON.stringify(level.startStateMatrix),
+            JSON.stringify(level.goalStateMatrix),
+            JSON.stringify(level.brightnessMatrix),
+            level.maxMoves,
+            JSON.stringify(level.starThresholds),
+            level.hint ?? null,
+            level.rotationFormula ?? null,
+            level.rotationTarget ?? null,
+            level.guidanceFormula ?? null,
+            level.guidanceFailureThreshold ?? null,
+            level.hidden ? 1 : 0,
+            syncUuid,
+          ],
+        );
+      }
     }
 
+    await conn.query('DELETE FROM levels WHERE sync_uuid IS NULL OR sync_uuid <> ?', [syncUuid]);
+    await conn.query('DELETE FROM chapters WHERE sync_uuid IS NULL OR sync_uuid <> ?', [syncUuid]);
     await setMeta(conn, 'catalog_version', String(doc.version));
-    await conn.commit();
-  } catch (error) {
-    await conn.rollback();
-    throw error;
-  } finally {
-    conn.release();
-  }
+    await setMeta(conn, 'catalog_sync_uuid', syncUuid);
+  });
 }
 
 export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
@@ -184,39 +238,47 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
 }
 
 export async function pushSkills(doc: CloudSkillGraphDocument): Promise<void> {
-  await ensureSchema();
-  const pool = getPool();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    await conn.query('DELETE FROM skills');
-    for (const skill of doc.skills) {
-      await conn.query(
-        `INSERT INTO skills (
-          id, stage, display_name_zh, display_name_en, goal,
-          prerequisites, mastery_standard, skill_order, draft
-        ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, ?)`,
-        [
-          skill.id,
-          skill.stage,
-          skill.displayNameZh,
-          skill.displayNameEn,
-          skill.goal,
-          JSON.stringify(skill.prerequisites ?? []),
-          skill.masteryStandard,
-          skill.order,
-          skill.draft ? 1 : 0,
-        ],
-      );
+  const syncUuid = newSyncUuid();
+
+  await runWriteTransaction(async (conn) => {
+    for (let i = 0; i < doc.skills.length; i += BATCH_SIZE) {
+      const chunk = doc.skills.slice(i, i + BATCH_SIZE);
+      for (const skill of chunk) {
+        await conn.query(
+          `INSERT INTO skills (
+            id, stage, display_name_zh, display_name_en, goal,
+            prerequisites, mastery_standard, skill_order, draft, sync_uuid
+          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            stage = VALUES(stage),
+            display_name_zh = VALUES(display_name_zh),
+            display_name_en = VALUES(display_name_en),
+            goal = VALUES(goal),
+            prerequisites = VALUES(prerequisites),
+            mastery_standard = VALUES(mastery_standard),
+            skill_order = VALUES(skill_order),
+            draft = VALUES(draft),
+            sync_uuid = VALUES(sync_uuid)`,
+          [
+            skill.id,
+            skill.stage,
+            skill.displayNameZh,
+            skill.displayNameEn,
+            skill.goal,
+            JSON.stringify(skill.prerequisites ?? []),
+            skill.masteryStandard,
+            skill.order,
+            skill.draft ? 1 : 0,
+            syncUuid,
+          ],
+        );
+      }
     }
+
+    await conn.query('DELETE FROM skills WHERE sync_uuid IS NULL OR sync_uuid <> ?', [syncUuid]);
     await setMeta(conn, 'skill_graph_version', String(doc.version));
-    await conn.commit();
-  } catch (error) {
-    await conn.rollback();
-    throw error;
-  } finally {
-    conn.release();
-  }
+    await setMeta(conn, 'skill_graph_sync_uuid', syncUuid);
+  });
 }
 
 export async function pullSkills(): Promise<CloudSkillGraphDocument | null> {
@@ -248,38 +310,58 @@ export async function pullSkills(): Promise<CloudSkillGraphDocument | null> {
 }
 
 export async function pushLevelSkillMap(map: CloudLevelSkillMap): Promise<void> {
-  await ensureSchema();
-  const pool = getPool();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    await conn.query('DELETE FROM level_skill_bindings');
-    for (const [levelId, entry] of Object.entries(map.mappings) as Array<
-      [string, CloudLevelSkillMap['mappings'][string]]
-    >) {
-      for (const binding of entry.skills) {
+  const syncUuid = newSyncUuid();
+  const rows: BindingRow[] = [];
+
+  for (const [levelId, entry] of Object.entries(map.mappings) as Array<
+    [string, CloudLevelSkillMap['mappings'][string]]
+  >) {
+    for (const binding of entry.skills) {
+      rows.push({
+        levelId,
+        skillId: binding.skillId,
+        cfopStage: binding.cfopStage,
+        teachMode: binding.teachMode,
+        formulaDifficulty: binding.formulaDifficulty,
+        rowUuid: bindingRowUuid(levelId, binding.skillId),
+      });
+    }
+  }
+
+  await runWriteTransaction(async (conn) => {
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const chunk = rows.slice(i, i + BATCH_SIZE);
+      for (const row of chunk) {
         await conn.query(
           `INSERT INTO level_skill_bindings (
-            level_id, skill_id, cfop_stage, teach_mode, formula_difficulty
-          ) VALUES (?, ?, ?, ?, ?)`,
+            row_uuid, level_id, skill_id, cfop_stage, teach_mode, formula_difficulty, sync_uuid
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            row_uuid = VALUES(row_uuid),
+            cfop_stage = VALUES(cfop_stage),
+            teach_mode = VALUES(teach_mode),
+            formula_difficulty = VALUES(formula_difficulty),
+            sync_uuid = VALUES(sync_uuid)`,
           [
-            levelId,
-            binding.skillId,
-            binding.cfopStage,
-            binding.teachMode,
-            binding.formulaDifficulty,
+            row.rowUuid,
+            row.levelId,
+            row.skillId,
+            row.cfopStage,
+            row.teachMode,
+            row.formulaDifficulty,
+            syncUuid,
           ],
         );
       }
     }
+
+    await conn.query(
+      'DELETE FROM level_skill_bindings WHERE sync_uuid IS NULL OR sync_uuid <> ?',
+      [syncUuid],
+    );
     await setMeta(conn, 'level_skill_map_version', String(map.version));
-    await conn.commit();
-  } catch (error) {
-    await conn.rollback();
-    throw error;
-  } finally {
-    conn.release();
-  }
+    await setMeta(conn, 'level_skill_map_sync_uuid', syncUuid);
+  });
 }
 
 export async function pullLevelSkillMap(): Promise<CloudLevelSkillMap | null> {
@@ -288,7 +370,7 @@ export async function pullLevelSkillMap(): Promise<CloudLevelSkillMap | null> {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT level_id, skill_id, cfop_stage, teach_mode, formula_difficulty
      FROM level_skill_bindings
-     ORDER BY level_id ASC, id ASC`,
+     ORDER BY level_id ASC, row_uuid ASC, id ASC`,
   );
   if (rows.length === 0) {
     const versionRaw = await getMeta('level_skill_map_version');

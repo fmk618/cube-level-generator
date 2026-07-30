@@ -168,7 +168,12 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         try {
             let catalog: LevelCatalogDocument | null = null;
             try {
-                const cloud = await window.api.db.pullCatalog();
+                const cloud = await Promise.race([
+                    window.api.db.pullCatalog(),
+                    new Promise<null>((resolve) => {
+                        window.setTimeout(() => resolve(null), 8000);
+                    }),
+                ]);
                 if (cloud) catalog = normalizeLevelCatalogDocument(cloud);
             } catch {
                 // 云端不可用时回退本地
