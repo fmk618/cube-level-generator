@@ -19,6 +19,9 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
+            rollupOptions: {
+              external: ['mysql2', 'mysql2/promise'],
+            },
           },
         },
       },

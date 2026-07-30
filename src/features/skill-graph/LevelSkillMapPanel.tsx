@@ -5,10 +5,8 @@ import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import type {
   LevelSkillBinding,
-  LevelSkillMap,
   TeachMode,
 } from '@/core/skill-graph/types';
-import { LEVEL_SKILL_MAP_VERSION } from '@/core/skill-graph/types';
 import '../../styles/level-skill-map-panel.css';
 
 const TEACH_MODES = [
@@ -43,6 +41,9 @@ export function LevelSkillMapPanel() {
   const exportToDisk = useLevelSkillMapStore((state) => state.exportToDisk);
   const hasUnsavedChanges = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
   const saveMap = useLevelSkillMapStore((state) => state.saveMap);
+  const refreshMap = useLevelSkillMapStore((state) => state.refreshMap);
+  const isMapLoading = useLevelSkillMapStore((state) => state.isLoading);
+  const mapLoadError = useLevelSkillMapStore((state) => state.loadError);
 
   useEffect(() => {
     if (!skillGraph && !isSkillLoading && !skillLoadError) {
@@ -51,18 +52,10 @@ export function LevelSkillMapPanel() {
   }, [skillGraph, isSkillLoading, skillLoadError, refreshSkillGraph]);
 
   useEffect(() => {
-    if (!levelSkillMap && levels.length > 0) {
-      const emptyMap: LevelSkillMap = {
-        version: LEVEL_SKILL_MAP_VERSION,
-        mappings: {},
-      };
-      useLevelSkillMapStore.setState({
-        levelSkillMap: emptyMap,
-        savedLevelSkillMap: emptyMap,
-        isLoaded: true,
-      });
+    if (!levelSkillMap && !isMapLoading && !mapLoadError) {
+      void refreshMap();
     }
-  }, [levelSkillMap, levels.length]);
+  }, [levelSkillMap, isMapLoading, mapLoadError, refreshMap]);
 
   const skillOptions = useMemo(
     () => skills.map((s) => ({ value: s.id, label: s.displayNameZh })),
@@ -89,8 +82,6 @@ export function LevelSkillMapPanel() {
     ? skillLabelById.get(quickAssignSkillId) ?? quickAssignSkillId
     : '';
 
-  const canBulkAssign = Boolean(quickAssignSkillId) && selectedLevelIds.size > 0;
-
   const handleExport = async () => {
     try {
       setError(null);
@@ -105,7 +96,7 @@ export function LevelSkillMapPanel() {
     try {
       setError(null);
       await saveMap();
-      setError('✓ 保存成功');
+      setError('✓ 已保存并同步到云端');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
     }
@@ -226,40 +217,48 @@ export function LevelSkillMapPanel() {
             >{chapter.partName}</button>
           ))}
         </div>
+        <p className="map-toolbar-hint">单关在卡片内添加技能；勾选多个关卡后可批量追加</p>
+      </div>
 
-        <div className="map-bulk-actions">
-          <div data-tour="skill-select" className="map-bulk-skill">
-            <SelectDropdown
-              size="sm"
-              className="map-bulk-select"
-              value={quickAssignSkillId}
-              options={skillOptions}
-              placeholder="选择技能..."
-              searchable
-              disabled={skills.length === 0}
-              onChange={setQuickAssignSkillId}
-            />
-            {quickAssignSkillName && (
-              <span className="map-bulk-skill-hint">已选：{quickAssignSkillName}</span>
-            )}
-          </div>
+      {selectedLevelIds.size > 0 && (
+        <div className="map-bulk-bar" data-tour="skill-select">
+          <span className="map-bulk-bar-label">
+            已勾选 <strong>{selectedLevelIds.size}</strong> 个关卡，批量追加同一技能：
+          </span>
+          <SelectDropdown
+            size="sm"
+            className="map-bulk-select"
+            value={quickAssignSkillId}
+            options={skillOptions}
+            placeholder="选择要追加的技能..."
+            searchable
+            disabled={skills.length === 0}
+            onChange={setQuickAssignSkillId}
+          />
           <button
+            type="button"
             className="btn btn-sm btn-primary"
             data-tour="assign-button"
             onClick={handleQuickAssign}
-            disabled={!canBulkAssign}
-            title={
-              !quickAssignSkillId
-                ? '请先选择技能'
-                : selectedLevelIds.size === 0
-                  ? '请先勾选关卡'
-                  : `向 ${selectedLevelIds.size} 个关卡追加技能`
-            }
+            disabled={!quickAssignSkillId || skills.length === 0}
           >
-            分配 ({selectedLevelIds.size})
+            追加到已选关卡
           </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              setSelectedLevelIds(new Set());
+              setQuickAssignSkillId('');
+            }}
+          >
+            取消勾选
+          </button>
+          {quickAssignSkillName && (
+            <span className="map-bulk-skill-hint">将追加：{quickAssignSkillName}</span>
+          )}
         </div>
-      </div>
+      )}
 
       <div className="map-list" id="map-list" data-tour="map-list">
         {filteredLevels.length === 0 ? (

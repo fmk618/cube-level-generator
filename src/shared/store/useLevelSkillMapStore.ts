@@ -12,6 +12,7 @@ type LevelSkillMapState = {
   loadError: string | null;
 
   importMapFromJSON: (json: string) => void;
+  refreshMap: () => Promise<void>;
   importFromDisk: () => Promise<boolean>;
   exportToDisk: () => Promise<string | null>;
   saveMap: () => Promise<string>;
@@ -101,6 +102,40 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     }
   },
 
+  refreshMap: async () => {
+    const state = get();
+    if (state.hasUnsavedChanges && state.levelSkillMap) return;
+
+    set({ isLoading: true, loadError: null });
+    try {
+      let map: LevelSkillMap | null = null;
+      try {
+        map = await window.api.db.pullLevelSkillMap();
+      } catch {
+        // 云端不可用时回退本地
+      }
+
+      if (!map) {
+        const runtime = await window.api.levelSkillMap.loadRuntime();
+        if (runtime?.content) {
+          map = importLevelSkillMapFromJSON(runtime.content);
+        }
+      }
+
+      if (!map) {
+        map = { version: LEVEL_SKILL_MAP_VERSION, mappings: {} };
+      }
+
+      applyMap(set, map, cloneMap(map), false);
+      set({ isLoaded: true, isLoading: false });
+    } catch (error) {
+      set({
+        isLoading: false,
+        loadError: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+
   importFromDisk: async () => {
     set({ isLoading: true });
     try {
@@ -129,7 +164,14 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     const map = get().levelSkillMap;
     if (!map) throw new Error('Level skill map not loaded');
     const json = exportLevelSkillMapToJSON(map);
-    await window.api.skillGraph.saveRuntime(json);
+    await window.api.levelSkillMap.saveRuntime(json);
+    try {
+      await window.api.db.pushLevelSkillMap(map);
+    } catch (error) {
+      throw new Error(
+        `本地已保存，但云端同步失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     applyMap(set, map, cloneMap(map), false);
     return 'saved';
   },

@@ -254,7 +254,7 @@ export function EditorPanel() {
       setStartStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(updatedLevel.goalStateMatrix));
       setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
-      setSaveNotice('关卡已保存到运行文件。');
+      setSaveNotice('关卡已保存并同步到云端。');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {

@@ -19,6 +19,7 @@
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "mysql2": "^3.23.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-joyride": "^3.2.0",
@@ -46,7 +47,21 @@
     "productName": "cube-level-generator",
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "node_modules/mysql2/**/*",
+      "node_modules/sqlstring/**/*",
+      "node_modules/denque/**/*",
+      "node_modules/generate-function/**/*",
+      "node_modules/is-property/**/*",
+      "node_modules/long/**/*",
+      "node_modules/lru.min/**/*",
+      "node_modules/named-placeholders/**/*",
+      "node_modules/aws-ssl-profiles/**/*",
+      "node_modules/iconv-lite/**/*",
+      "node_modules/safer-buffer/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/mysql2/**"
     ],
     "directories": {
       "output": "release"
