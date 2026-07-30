@@ -1,4 +1,5 @@
 import { getPool } from './pool.ts';
+import { runMigrations } from './migrate.ts';
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS chapters (
@@ -8,6 +9,7 @@ const SCHEMA_STATEMENTS = [
   title VARCHAR(255) NOT NULL,
   description TEXT NULL,
   capacity INT NOT NULL,
+  sync_uuid CHAR(36) NULL,
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   KEY idx_chapters_part_number (part_number)
@@ -29,6 +31,7 @@ const SCHEMA_STATEMENTS = [
   guidance_formula TEXT NULL,
   guidance_failure_threshold TINYINT NULL,
   hidden TINYINT(1) NOT NULL DEFAULT 0,
+  sync_uuid CHAR(36) NULL,
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   KEY idx_levels_chapter (chapter_id),
@@ -44,21 +47,26 @@ const SCHEMA_STATEMENTS = [
   mastery_standard VARCHAR(64) NOT NULL,
   skill_order INT NOT NULL,
   draft TINYINT(1) NOT NULL DEFAULT 0,
+  sync_uuid CHAR(36) NULL,
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   KEY idx_skills_stage (stage)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS level_skill_bindings (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  row_uuid CHAR(36) NULL,
   level_id VARCHAR(64) NOT NULL,
   skill_id VARCHAR(64) NOT NULL,
   cfop_stage VARCHAR(16) NOT NULL,
   teach_mode VARCHAR(32) NOT NULL,
   formula_difficulty INT NOT NULL,
+  sync_uuid CHAR(36) NULL,
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uk_level_skill (level_id, skill_id),
-  KEY idx_bindings_skill (skill_id)
+  UNIQUE KEY uk_binding_row_uuid (row_uuid),
+  KEY idx_bindings_skill (skill_id),
+  KEY idx_bindings_sync_uuid (sync_uuid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS app_meta (
   meta_key VARCHAR(64) NOT NULL,
@@ -68,9 +76,14 @@ const SCHEMA_STATEMENTS = [
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ];
 
+let schemaReady = false;
+
 export async function ensureSchema(): Promise<void> {
+  if (schemaReady) return;
   const pool = getPool();
   for (const statement of SCHEMA_STATEMENTS) {
     await pool.query(statement);
   }
+  await runMigrations(pool);
+  schemaReady = true;
 }
