@@ -8,6 +8,8 @@ import { OnboardingTour } from '@/features/onboarding/OnboardingTour';
 import { HelpOnboardingMenu } from '@/features/onboarding/HelpOnboardingMenu';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
+import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
+import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 
 const CATALOG_WIDTH_KEY = 'catalog-panel-width';
 const DEFAULT_CATALOG_WIDTH = 300;
@@ -61,10 +63,19 @@ export default function App() {
   const selectedLevelId = useUiStore((state) => state.selectedLevelId);
   const hasUnsavedChanges = useCatalogStore((state) => state.hasUnsavedChanges);
   const saveCatalog = useCatalogStore((state) => state.saveCatalog);
+  const refreshCatalog = useCatalogStore((state) => state.refreshCatalog);
+  const refreshSkillGraph = useSkillGraphStore((state) => state.refreshSkillGraph);
+  const refreshMap = useLevelSkillMapStore((state) => state.refreshMap);
 
   useEffect(() => {
     document.documentElement.dataset.platform = window.platform;
   }, []);
+
+  useEffect(() => {
+    void refreshCatalog();
+    void refreshSkillGraph();
+    void refreshMap();
+  }, [refreshCatalog, refreshSkillGraph, refreshMap]);
 
   useEffect(() => {
     localStorage.setItem(CATALOG_WIDTH_KEY, String(catalogWidth));

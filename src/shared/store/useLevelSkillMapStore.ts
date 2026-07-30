@@ -32,6 +32,10 @@ type LevelSkillMapState = {
   removeLevelSkillBinding: (levelId: string, skillId: string) => void;
 
   getMappedCount: () => number;
+  applyAiMappings: (
+    entries: Array<{ levelId: string; bindings: LevelSkillBinding[] }>,
+    mode: 'merge' | 'replace',
+  ) => number;
 };
 
 const cloneMap = (map: LevelSkillMap): LevelSkillMap => ({
@@ -249,5 +253,43 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     const map = get().levelSkillMap;
     if (!map) return 0;
     return Object.values(map.mappings).filter((e) => e.skills.length > 0).length;
+  },
+
+  applyAiMappings: (entries, mode) => {
+    const map = get().levelSkillMap;
+    if (!map) throw new Error('Level skill map not loaded');
+
+    const nextMappings = { ...map.mappings };
+    let applied = 0;
+
+    for (const entry of entries) {
+      const bindings = entry.bindings.map((b) => ({ ...b }));
+      if (bindings.length === 0) {
+        if (mode === 'replace') delete nextMappings[entry.levelId];
+        continue;
+      }
+
+      if (mode === 'replace') {
+        nextMappings[entry.levelId] = { skills: bindings };
+      } else {
+        const current = nextMappings[entry.levelId];
+        const merged = current ? [...current.skills] : [];
+        for (const binding of bindings) {
+          const idx = merged.findIndex((b) => b.skillId === binding.skillId);
+          if (idx >= 0) merged[idx] = binding;
+          else merged.push(binding);
+        }
+        nextMappings[entry.levelId] = { skills: merged };
+      }
+      applied += 1;
+    }
+
+    const nextMap: LevelSkillMap = {
+      version: LEVEL_SKILL_MAP_VERSION,
+      mappings: nextMappings,
+    };
+    const savedMap = get().savedLevelSkillMap ?? map;
+    applyMap(set, nextMap, savedMap, true);
+    return applied;
   },
 }));
