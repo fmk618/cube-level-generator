@@ -146,7 +146,7 @@ cube-level-generator/
 | `public/skill_graph_default.json` | 默认技能树模版 |
 | `{userData}/levels.runtime.json` | 关卡运行时草稿 |
 | `{userData}/skill_graph.runtime.json` | 技能树运行时草稿 |
-| 导出 `level_skill_map.json` | 关卡 ↔ 技能映射（映射页导出） |
+| 导出 `level_skill_map.json` | 关卡 ↔ 技能映射（一关可绑多个技能，映射页导出） |
 
 **关卡工作流**
 

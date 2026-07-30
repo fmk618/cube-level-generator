@@ -179,7 +179,7 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
       target: tourSelector('tab-map'),
       title: '③ 关卡映射',
       content:
-        '最后进入关卡映射：把「关卡」挂到「技能」上，并设置教学模式（引导 / 挑战 / 演示）与公式难度。这是三页联调的验收页。',
+        '最后进入关卡映射：一个关卡可以绑定多个技能，每个技能各自设置教学模式（引导 / 挑战 / 演示）与难度。这是三页联调的验收页。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'levelSkillMap', 'tab-map');
@@ -190,7 +190,7 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
       target: tourSelector('skill-select'),
       title: '批量选技能',
       content:
-        '先勾选若干关卡，再在这里选目标技能。适合同一技能下多关连调（例如一整段 PLL）。',
+        '先勾选若干关卡，再在这里选择要追加的技能。选中后会显示技能名称；分配是「追加」到关卡，不会清掉已有绑定。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'levelSkillMap', 'skill-select');
@@ -199,9 +199,9 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     {
       id: 'assign-button',
       target: tourSelector('assign-button'),
-      title: '一键分配',
+      title: '一键追加分配',
       content:
-        '选好关卡与技能后点「分配」。成功后卡片会显示阶段徽章与技能名，可马上核对是否挂对。',
+        '关卡与技能都选好后点「分配」。每个关卡会追加该技能；卡片上可继续「+ 添加技能」绑更多个。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'levelSkillMap', 'assign-button');
@@ -212,7 +212,7 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
       target: tourSelector('map-list'),
       title: '逐关校验映射',
       content:
-        '在卡片里可改技能、教学模式与难度，或清除错误映射。联调目标：每个需要教学的关卡都有正确技能与模式。',
+        '卡片展示已绑技能列表：可改每条的技能 / 模式 / 难度，可移除单条或清除全部。联调目标：目标关卡都挂上正确技能。',
       placement: 'top',
       before: async () => {
         await prepareMode(ctx, 'levelSkillMap', 'map-list');
@@ -248,7 +248,7 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
       target: 'body',
       title: '联调清单',
       content:
-        '验收时确认：① 关卡内容正确且已保存；② 技能树阶段/名称正确且已保存；③ 映射覆盖目标关卡，模式与难度合理并已导出。以后可从「帮助 → 新手引导」重看。',
+        '验收时确认：① 关卡内容正确且已保存；② 技能树阶段/名称正确且已保存；③ 映射覆盖目标关卡（可一关多技能），模式与难度合理并已导出。以后可从「帮助 → 新手引导」重看。',
       placement: 'center',
       hideOverlay: false,
       skipBeacon: true,

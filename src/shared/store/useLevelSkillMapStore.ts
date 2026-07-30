@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { LevelSkillMap, LevelSkillMapEntry } from '@/core/skill-graph/types';
+import type { LevelSkillMap, LevelSkillMapEntry, LevelSkillBinding } from '@/core/skill-graph/types';
+import { LEVEL_SKILL_MAP_VERSION } from '@/core/skill-graph/types';
 import { exportLevelSkillMapToJSON, importLevelSkillMapFromJSON } from '@/core/skill-graph/utils';
 
 type LevelSkillMapState = {
@@ -16,15 +17,30 @@ type LevelSkillMapState = {
   saveMap: () => Promise<string>;
   discardChanges: () => void;
 
+  /** Replace entire entry for a level (must include skills[]). */
   updateLevelSkillEntry: (levelId: string, entry: LevelSkillMapEntry) => void;
   deleteLevelSkillEntry: (levelId: string) => void;
   getLevelSkillEntry: (levelId: string) => LevelSkillMapEntry | undefined;
+
+  addLevelSkillBinding: (levelId: string, binding: LevelSkillBinding) => void;
+  updateLevelSkillBinding: (
+    levelId: string,
+    skillId: string,
+    partial: Partial<Omit<LevelSkillBinding, 'skillId'>> & { skillId?: string },
+  ) => void;
+  removeLevelSkillBinding: (levelId: string, skillId: string) => void;
+
   getMappedCount: () => number;
 };
 
 const cloneMap = (map: LevelSkillMap): LevelSkillMap => ({
   version: map.version,
-  mappings: { ...map.mappings },
+  mappings: Object.fromEntries(
+    Object.entries(map.mappings).map(([id, entry]) => [
+      id,
+      { skills: entry.skills.map((b) => ({ ...b })) },
+    ]),
+  ),
 });
 
 const applyMap = (
@@ -39,6 +55,30 @@ const applyMap = (
     hasUnsavedChanges: hasChanged,
     loadError: null,
   });
+};
+
+const setLevelEntry = (
+  get: () => LevelSkillMapState,
+  set: typeof useLevelSkillMapStore.setState,
+  levelId: string,
+  entry: LevelSkillMapEntry | null,
+) => {
+  const map = get().levelSkillMap;
+  if (!map) return;
+
+  const nextMappings = { ...map.mappings };
+  if (!entry || entry.skills.length === 0) {
+    delete nextMappings[levelId];
+  } else {
+    nextMappings[levelId] = { skills: entry.skills.map((b) => ({ ...b })) };
+  }
+
+  const nextMap: LevelSkillMap = {
+    version: LEVEL_SKILL_MAP_VERSION,
+    mappings: nextMappings,
+  };
+  const savedMap = get().savedLevelSkillMap ?? map;
+  applyMap(set, nextMap, savedMap, true);
 };
 
 export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
@@ -97,36 +137,15 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
   discardChanges: () => {
     const savedMap = get().savedLevelSkillMap;
     if (!savedMap) return;
-    applyMap(set, savedMap, savedMap, false);
+    applyMap(set, cloneMap(savedMap), savedMap, false);
   },
 
   updateLevelSkillEntry: (levelId: string, entry: LevelSkillMapEntry) => {
-    const map = get().levelSkillMap;
-    if (!map) return;
-
-    const nextMap: LevelSkillMap = {
-      version: map.version,
-      mappings: { ...map.mappings, [levelId]: entry },
-    };
-
-    const savedMap = get().savedLevelSkillMap ?? map;
-    applyMap(set, nextMap, savedMap, true);
+    setLevelEntry(get, set, levelId, entry);
   },
 
   deleteLevelSkillEntry: (levelId: string) => {
-    const map = get().levelSkillMap;
-    if (!map) return;
-
-    const nextMappings = { ...map.mappings };
-    delete nextMappings[levelId];
-
-    const nextMap: LevelSkillMap = {
-      version: map.version,
-      mappings: nextMappings,
-    };
-
-    const savedMap = get().savedLevelSkillMap ?? map;
-    applyMap(set, nextMap, savedMap, true);
+    setLevelEntry(get, set, levelId, null);
   },
 
   getLevelSkillEntry: (levelId: string) => {
@@ -134,8 +153,59 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     return map?.mappings[levelId];
   },
 
+  addLevelSkillBinding: (levelId, binding) => {
+    const map = get().levelSkillMap;
+    if (!map) return;
+    const current = map.mappings[levelId];
+    const skills = current ? [...current.skills] : [];
+    const idx = skills.findIndex((b) => b.skillId === binding.skillId);
+    if (idx >= 0) {
+      skills[idx] = { ...binding };
+    } else {
+      skills.push({ ...binding });
+    }
+    setLevelEntry(get, set, levelId, { skills });
+  },
+
+  updateLevelSkillBinding: (levelId, skillId, partial) => {
+    const map = get().levelSkillMap;
+    if (!map) return;
+    const current = map.mappings[levelId];
+    if (!current) return;
+
+    const nextSkillId = partial.skillId ?? skillId;
+    const skills = current.skills.map((b) => ({ ...b }));
+    const idx = skills.findIndex((b) => b.skillId === skillId);
+    if (idx < 0) return;
+
+    // Changing skillId to one that already exists: replace that slot and drop duplicate.
+    if (nextSkillId !== skillId) {
+      const dup = skills.findIndex((b, i) => i !== idx && b.skillId === nextSkillId);
+      if (dup >= 0) skills.splice(dup, 1);
+    }
+
+    const at = skills.findIndex((b) => b.skillId === skillId);
+    if (at < 0) return;
+    skills[at] = {
+      ...skills[at],
+      ...partial,
+      skillId: nextSkillId,
+    };
+    setLevelEntry(get, set, levelId, { skills });
+  },
+
+  removeLevelSkillBinding: (levelId, skillId) => {
+    const map = get().levelSkillMap;
+    if (!map) return;
+    const current = map.mappings[levelId];
+    if (!current) return;
+    const skills = current.skills.filter((b) => b.skillId !== skillId);
+    setLevelEntry(get, set, levelId, skills.length ? { skills } : null);
+  },
+
   getMappedCount: () => {
     const map = get().levelSkillMap;
-    return map ? Object.keys(map.mappings).length : 0;
+    if (!map) return 0;
+    return Object.values(map.mappings).filter((e) => e.skills.length > 0).length;
   },
 }));

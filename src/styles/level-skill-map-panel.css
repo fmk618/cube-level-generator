@@ -77,8 +77,25 @@
   flex-shrink: 0;
 }
 
+.map-bulk-skill {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .map-bulk-select {
   width: 200px;
+}
+
+.map-bulk-skill-hint {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.2;
 }
 
 /* Custom checkbox */
@@ -198,6 +215,17 @@
   white-space: nowrap;
 }
 
+.level-card-bind-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tag);
+  padding: 1px 6px;
+}
+
 .level-card-body {
   display: flex;
   flex-direction: column;
@@ -294,6 +322,13 @@
   flex-wrap: wrap;
 }
 
+.mapped-skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
 .mapped-stage-badge {
   font-size: 10px;
   font-weight: 700;
@@ -308,6 +343,65 @@
   font-size: 11px;
   color: var(--text-secondary);
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.level-binding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.level-binding-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) 56px auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.level-card-field--diff {
+  max-width: 56px;
+}
+
+.level-binding-remove {
+  height: 32px;
+  padding: 0 6px;
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.level-binding-remove:hover {
+  text-decoration: underline;
+}
+
+.level-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.level-card-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.level-card-add-row .ui-select {
+  flex: 1;
+  min-width: 0;
 }
 
 .level-card-clear {
@@ -367,5 +461,14 @@
 
   .level-card-row {
     grid-template-columns: 1fr;
+  }
+
+  .level-binding-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .level-card-field--diff,
+  .level-binding-remove {
+    grid-column: span 1;
   }
 }
