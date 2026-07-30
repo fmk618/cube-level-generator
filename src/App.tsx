@@ -158,19 +158,25 @@ export default function App() {
         <div className="titlebar-actions" id="global-editor-actions">
           <div className="editor-mode-tabs" data-tour="module-tabs">
             <button
+              type="button"
               className={`mode-tab ${editMode === 'catalog' ? 'active' : ''}`}
+              data-tour="tab-catalog"
               onClick={() => setEditMode('catalog')}
             >
               关卡编辑
             </button>
             <button
+              type="button"
               className={`mode-tab ${editMode === 'skills' ? 'active' : ''}`}
+              data-tour="tab-skills"
               onClick={() => setEditMode('skills')}
             >
               技能编辑
             </button>
             <button
+              type="button"
               className={`mode-tab ${editMode === 'levelSkillMap' ? 'active' : ''}`}
+              data-tour="tab-map"
               onClick={() => setEditMode('levelSkillMap')}
             >
               关卡映射

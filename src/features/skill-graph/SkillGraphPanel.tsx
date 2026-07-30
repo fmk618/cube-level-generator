@@ -141,7 +141,7 @@ export function SkillGraphPanel() {
           <h2>技能编辑</h2>
           <span className="skill-badge">{skills.length} 个技能</span>
         </div>
-        <div className="skill-header-actions" id="skill-export">
+        <div className="skill-header-actions" id="skill-export" data-tour="skill-save">
           <button className="btn btn-sm" onClick={() => void handleExport()}>导出</button>
           {hasUnsavedChanges && (
             <button className="btn btn-sm btn-primary" onClick={() => void handleSave()} disabled={saving}>
@@ -189,7 +189,7 @@ export function SkillGraphPanel() {
         </div>
       </div>
 
-      <div className="skill-list" id="skill-list">
+      <div className="skill-list" id="skill-list" data-tour="skill-list">
         {filteredSkills.length === 0 ? (
           <div className="skill-empty-state">
             <p>该阶段暂无技能</p>
