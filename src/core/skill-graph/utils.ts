@@ -13,6 +13,12 @@ export const exportSkillGraphToJSON = (document: SkillGraphDocument): string => 
   return JSON.stringify(document, null, 2);
 };
 
+export const isSkillGraphDocumentShape = (value: unknown): value is SkillGraphDocument => {
+  if (!value || typeof value !== 'object') return false;
+  const doc = value as Record<string, unknown>;
+  return Array.isArray(doc.skills);
+};
+
 export const importSkillGraphFromJSON = (json: string): SkillGraphDocument => {
   try {
     const parsed = JSON.parse(json) as unknown;

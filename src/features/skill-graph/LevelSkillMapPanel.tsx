@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
+import { useUiStore } from '@/shared/store/useUiStore';
 import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import type {
   LevelSkillBinding,
@@ -23,13 +24,16 @@ export function LevelSkillMapPanel() {
   const [selectedLevelIds, setSelectedLevelIds] = useState<Set<string>>(new Set());
   const [quickAssignSkillId, setQuickAssignSkillId] = useState<string>('');
   const [addingForLevelId, setAddingForLevelId] = useState<string | null>(null);
+  const setAiMapLevelIds = useUiStore((state) => state.setAiMapLevelIds);
 
   const levels = useCatalogStore((state) => state.levels);
   const chapters = useCatalogStore((state) => state.chapters);
+  const isCatalogLoaded = useCatalogStore((state) => state.isLoaded);
+  const isCatalogLoading = useCatalogStore((state) => state.isLoading);
+  const refreshCatalog = useCatalogStore((state) => state.refreshCatalog);
   const skills = useSkillGraphStore((state) => state.skills);
   const skillGraph = useSkillGraphStore((state) => state.skillGraph);
   const isSkillLoading = useSkillGraphStore((state) => state.isLoading);
-  const skillLoadError = useSkillGraphStore((state) => state.loadError);
   const refreshSkillGraph = useSkillGraphStore((state) => state.refreshSkillGraph);
 
   const levelSkillMap = useLevelSkillMapStore((state) => state.levelSkillMap);
@@ -43,19 +47,51 @@ export function LevelSkillMapPanel() {
   const saveMap = useLevelSkillMapStore((state) => state.saveMap);
   const refreshMap = useLevelSkillMapStore((state) => state.refreshMap);
   const isMapLoading = useLevelSkillMapStore((state) => state.isLoading);
-  const mapLoadError = useLevelSkillMapStore((state) => state.loadError);
 
   useEffect(() => {
-    if (!skillGraph && !isSkillLoading && !skillLoadError) {
+    setAiMapLevelIds(Array.from(selectedLevelIds));
+  }, [selectedLevelIds, setAiMapLevelIds]);
+
+  useEffect(() => {
+    if (!isCatalogLoaded && !isCatalogLoading) {
+      void refreshCatalog();
+    }
+  }, [isCatalogLoaded, isCatalogLoading, refreshCatalog]);
+
+  useEffect(() => {
+    if (!skillGraph && !isSkillLoading) {
       void refreshSkillGraph();
     }
-  }, [skillGraph, isSkillLoading, skillLoadError, refreshSkillGraph]);
+  }, [skillGraph, isSkillLoading, refreshSkillGraph]);
 
   useEffect(() => {
-    if (!levelSkillMap && !isMapLoading && !mapLoadError) {
+    if (!levelSkillMap && !isMapLoading) {
       void refreshMap();
     }
-  }, [levelSkillMap, isMapLoading, mapLoadError, refreshMap]);
+  }, [levelSkillMap, isMapLoading, refreshMap]);
+
+  if (!isCatalogLoaded && isCatalogLoading) {
+    return (
+      <div className="panel level-skill-map-panel">
+        <div className="panel-empty">
+          <p>正在加载关卡数据...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isCatalogLoaded || levels.length === 0) {
+    return (
+      <div className="panel level-skill-map-panel">
+        <div className="panel-empty">
+          <p>暂无可用关卡</p>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            请先在「关卡编辑」导入或创建关卡，保存后再回到本页做映射
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const skillOptions = useMemo(
     () => skills.map((s) => ({ value: s.id, label: s.displayNameZh })),
