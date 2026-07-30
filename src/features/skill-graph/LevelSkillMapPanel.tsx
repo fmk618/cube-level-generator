@@ -7,17 +7,18 @@ import type { LevelSkillMapEntry, LevelSkillMap } from '@/core/skill-graph/types
 import '../../styles/level-skill-map-panel.css';
 
 const TEACH_MODES = [
-  { value: 'guided', label: 'guided' },
-  { value: 'challenge', label: 'challenge' },
-  { value: 'demo', label: 'demo' },
+  { value: 'guided', label: '引导' },
+  { value: 'challenge', label: '挑战' },
+  { value: 'demo', label: '演示' },
 ] as const;
+
+const TEACH_MODE_HINT = '引导：带提示教学；挑战：弱化提示独立完成；演示：以观看演示为主';
 
 export function LevelSkillMapPanel() {
   const [error, setError] = useState<string | null>(null);
   const [filterChapter, setFilterChapter] = useState<string | 'all'>('all');
   const [selectedLevelIds, setSelectedLevelIds] = useState<Set<string>>(new Set());
   const [quickAssignSkillId, setQuickAssignSkillId] = useState<string>('');
-  const [showGuide, setShowGuide] = useState(false);
 
   const levels = useCatalogStore((state) => state.levels);
   const chapters = useCatalogStore((state) => state.chapters);
@@ -143,17 +144,12 @@ export function LevelSkillMapPanel() {
 
   return (
     <div className="panel level-skill-map-panel">
-      {showGuide && (
-        <MapGuideDialog onClose={() => setShowGuide(false)} mappedCount={mappedCount} totalCount={levels.length} />
-      )}
-
       <div className="map-header">
         <div className="map-header-left">
           <h2>关卡映射</h2>
           <span className="map-badge">{mappedCount} / {levels.length}</span>
         </div>
         <div className="map-header-actions" id="map-export">
-          <button className="btn btn-sm btn-text" onClick={() => setShowGuide(true)}>指引</button>
           <button className="btn btn-sm" onClick={() => void handleExport()}>导出</button>
           {hasUnsavedChanges && (
             <button className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存</button>
@@ -264,6 +260,7 @@ export function LevelSkillMapPanel() {
                             />
                           </div>
                         </div>
+                        <p className="level-card-hint">{TEACH_MODE_HINT}</p>
                         <div className="level-card-row">
                           <div className="level-card-field">
                             <label>难度</label>
@@ -277,6 +274,7 @@ export function LevelSkillMapPanel() {
                             />
                           </div>
                           <div className="level-card-field level-card-field--action">
+                            <label className="level-card-label-spacer" aria-hidden>&nbsp;</label>
                             <button className="level-card-clear" onClick={() => deleteLevelSkillEntry(level.id)}>清除映射</button>
                           </div>
                         </div>
@@ -301,48 +299,5 @@ export function LevelSkillMapPanel() {
         )}
       </div>
     </div>
-  );
-}
-
-interface MapGuideDialogProps {
-  onClose: () => void;
-  mappedCount: number;
-  totalCount: number;
-}
-
-function MapGuideDialog({ onClose, mappedCount, totalCount }: MapGuideDialogProps) {
-  const [step, setStep] = useState(0);
-  const steps = [
-    { title: '欢迎使用关卡映射编辑器', content: `已加载 ${totalCount} 个关卡，其中 ${mappedCount} 个已分配技能。`, action: '开始', highlight: null },
-    { title: '章节筛选', content: '使用工具栏 chip 按钮快速切换到不同章节，聚焦处理映射。', action: '下一步', highlight: 'map-filter' },
-    { title: '逐个分配', content: '灰色卡片表示未分配，直接在下拉框中选择技能即可。已分配的卡片可以修改技能、模式和难度。', action: '下一步', highlight: 'map-list' },
-    { title: '批量操作', content: '勾选多个关卡，然后在工具栏选择技能点击"分配"，一键批量完成。', action: '下一步', highlight: 'map-toolbar' },
-    { title: '导出到应用', content: '点击右上角"导出"按钮生成 level_skill_map.json 文件。', action: '完成', highlight: 'map-export' },
-  ];
-  const cur = steps[step];
-
-  return (
-    <>
-      <div className="guide-overlay" onClick={onClose} />
-      {cur.highlight && (
-        <style>{`#${cur.highlight}{outline:3px solid #3b82f6;outline-offset:3px;border-radius:8px;animation:pulse-hl 2s infinite}@keyframes pulse-hl{0%,100%{outline-offset:3px}50%{outline-offset:5px}}`}</style>
-      )}
-      <div className="guide-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="guide-header">
-          <h2>{cur.title}</h2>
-          <button className="guide-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="guide-content"><p>{cur.content}</p></div>
-        <div className="guide-footer">
-          <div className="guide-progress">
-            {steps.map((_, i) => <div key={i} className={`progress-dot ${i === step ? 'active' : ''} ${i < step ? 'done' : ''}`} />)}
-          </div>
-          <div className="guide-buttons">
-            {step > 0 && <button className="btn btn-sm" onClick={() => setStep(step - 1)}>上一步</button>}
-            <button className="btn btn-sm btn-primary" onClick={() => step < steps.length - 1 ? setStep(step + 1) : onClose()}>{cur.action}</button>
-          </div>
-        </div>
-      </div>
-    </>
   );
 }

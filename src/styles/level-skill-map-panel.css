@@ -208,6 +208,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+  align-items: end;
 }
 
 .level-card-field {
@@ -223,9 +224,45 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  line-height: 1.2;
+  min-height: 12px;
+}
+
+.level-card-field .ui-select,
+.level-card-field .text-input {
+  width: 100%;
+}
+
+.level-card-field .ui-select-trigger,
+.level-card-field .text-input.text-input--sm,
+.level-card-field .map-number-input {
+  height: 32px;
+}
+
+.level-card-hint {
+  margin: -2px 0 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.level-card-label-spacer {
+  font-size: 10px;
+  line-height: 1.2;
+  min-height: 12px;
+  visibility: hidden;
 }
 
 .level-card-field--action {
+  justify-content: flex-end;
+}
+
+.level-card-field--action .level-card-clear {
+  height: 32px;
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
   justify-content: flex-end;
 }
 
