@@ -142,7 +142,8 @@ export function LlmPanel({
   const [difficulty, setDifficulty] = useState<'short' | 'medium' | 'long'>('short');
   const [candidateCount, setCandidateCount] = useState(3);
   const [mapScope, setMapScope] = useState<MapScope>('unmapped');
-  const [mapMode, setMapMode] = useState<'merge' | 'replace'>('merge');
+  // mapMode removed: first edition always replaces the single primary binding
+
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,18 +192,18 @@ export function LlmPanel({
   const modeMeta = useMemo(() => {
     if (editMode === 'skills') {
       return {
-        title: 'AI 技能助手',
-        subtitle: '描述教学目标，AI 生成或补充技能节点，确认后一键应用',
-        placeholder: '例如：为 F2L 阶段补充「角块在底層」相关技能，按从易到难排列…',
-        actionLabel: 'AI 生成技能提案',
+        title: 'AI 能力标签助手',
+        subtitle: '描述教学目标，AI 生成或补充能力标签（非玩法），确认后一键应用',
+        placeholder: '例如：为 F2L 阶段补充「角块在底层」相关能力标签…',
+        actionLabel: 'AI 生成能力标签提案',
       };
     }
     if (editMode === 'levelSkillMap') {
       return {
-        title: 'AI 映射助手',
-        subtitle: '根据关卡内容与技能树，AI 自动填写关卡-技能映射',
-        placeholder: '可选：补充映射偏好，例如「入门关用 guided、挑战关用 challenge」…',
-        actionLabel: 'AI 自动映射',
+        title: 'AI 推荐配置助手',
+        subtitle: '为关卡指定唯一主能力标签与推荐参数，确认后写入 AI 推荐配置',
+        placeholder: '可选：补充偏好，例如「入门关用 guided、难度偏低」…',
+        actionLabel: 'AI 生成主标签配置',
       };
     }
     if (catalogAiMode === 'chapters') {
@@ -459,8 +460,9 @@ export function LlmPanel({
         systemPrompt: buildMappingSystemPrompt(skills, scoped, mapScope),
       });
       const validLevelIds = new Set(scoped.map((s) => s.id));
-      const validSkillIds = new Set(skills.map((s) => s.id));
-      setMappingProposals(parseMappingProposals(content, validLevelIds, validSkillIds));
+      const validSkillIds = new Set(skills.filter((s) => !s.draft).map((s) => s.id));
+      const skillStageById = new Map(skills.map((s) => [s.id, s.stage]));
+      setMappingProposals(parseMappingProposals(content, validLevelIds, validSkillIds, skillStageById));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -605,20 +607,24 @@ export function LlmPanel({
     if (mappingProposals.length === 0) return;
     try {
       const levelIds = mappingProposals.map((p) => p.levelId);
+      const skillById = new Map(skills.map((s) => [s.id, s]));
       const applied = applyAiMappings(
-        mappingProposals.map((p) => ({
-          levelId: p.levelId,
-          bindings: p.skills.map(({ skillId, cfopStage, teachMode, formulaDifficulty }) => ({
-            skillId,
-            cfopStage,
-            teachMode,
-            formulaDifficulty,
-          })),
-        })),
-        mapMode,
+        mappingProposals.map((p) => {
+          const skill = skillById.get(p.skillId);
+          if (!skill) throw new Error(`能力标签不存在：${p.skillId}`);
+          return {
+            levelId: p.levelId,
+            binding: {
+              skillId: skill.id,
+              cfopStage: skill.stage,
+              teachMode: p.teachMode,
+              formulaDifficulty: p.formulaDifficulty,
+            },
+          };
+        }),
       );
       markAiTouchedLevels(levelIds);
-      setNotice(`✓ 已应用 ${applied} 个关卡映射（高亮卡片）。请在左侧核对后保存。`);
+      setNotice(`✓ 已应用 ${applied} 个关卡主标签配置（高亮）。请在左侧核对后保存。`);
       setMappingProposals([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -644,22 +650,26 @@ export function LlmPanel({
     if (mappingProposals.length === 0) return;
     try {
       const levelIds = mappingProposals.map((p) => p.levelId);
+      const skillById = new Map(skills.map((s) => [s.id, s]));
       applyAiMappings(
-        mappingProposals.map((p) => ({
-          levelId: p.levelId,
-          bindings: p.skills.map(({ skillId, cfopStage, teachMode, formulaDifficulty }) => ({
-            skillId,
-            cfopStage,
-            teachMode,
-            formulaDifficulty,
-          })),
-        })),
-        mapMode,
+        mappingProposals.map((p) => {
+          const skill = skillById.get(p.skillId);
+          if (!skill) throw new Error(`能力标签不存在：${p.skillId}`);
+          return {
+            levelId: p.levelId,
+            binding: {
+              skillId: skill.id,
+              cfopStage: skill.stage,
+              teachMode: p.teachMode,
+              formulaDifficulty: p.formulaDifficulty,
+            },
+          };
+        }),
       );
       markAiTouchedLevels(levelIds);
       await saveMap();
       clearAiTouched();
-      setNotice('✓ 映射提案已应用并保存到云端。');
+      setNotice('✓ 推荐配置已应用并保存到云端。');
       setMappingProposals([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -879,8 +889,8 @@ export function LlmPanel({
         {editMode === 'levelSkillMap' && (
           <div className="ai-map-controls">
             <div className="ai-map-field">
-              <span className="ai-map-field-label">映射范围</span>
-              <div className="ai-map-segmented" role="group" aria-label="映射范围">
+              <span className="ai-map-field-label">配置范围</span>
+              <div className="ai-map-segmented" role="group" aria-label="配置范围">
                 {MAP_SCOPE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
@@ -893,16 +903,9 @@ export function LlmPanel({
                 ))}
               </div>
             </div>
-            <div className="ai-map-field">
-              <span className="ai-map-field-label">应用方式</span>
-              <div className="ai-map-segmented" role="group" aria-label="应用方式">
-                <button type="button" className={mapMode === 'merge' ? 'is-active' : ''} onClick={() => setMapMode('merge')}>合并</button>
-                <button type="button" className={mapMode === 'replace' ? 'is-active' : ''} onClick={() => setMapMode('replace')}>覆盖</button>
-              </div>
-            </div>
             <p className={`ai-map-hint ${mapScope === 'selected' ? 'is-visible' : ''}`} aria-hidden={mapScope !== 'selected'}>
               {mapScope === 'selected'
-                ? `已同步映射页勾选：${aiMapLevelIds.length} 个关卡`
+                ? `已同步推荐配置页勾选：${aiMapLevelIds.length} 个关卡`
                 : '\u00a0'}
             </p>
           </div>
@@ -1120,27 +1123,21 @@ export function LlmPanel({
 
         {editMode === 'levelSkillMap' && mappingProposals.length > 0 && (
           <div className="panel-section">
-            <p className="ai-results-header">映射提案 · {mappingProposals.length} 关</p>
+            <p className="ai-results-header">主标签提案 · {mappingProposals.length} 关</p>
             <div className="llm-results">
               {mappingProposals.map((proposal) => (
                 <div key={proposal.levelId} className="llm-candidate">
                   <div className="llm-candidate-formula">{levelTitleById.get(proposal.levelId) ?? proposal.levelId}</div>
-                  {proposal.skills.length === 0 ? (
-                    <div className="llm-candidate-note">（无绑定）</div>
-                  ) : (
-                    proposal.skills.map((binding) => (
-                      <div key={binding.skillId} className="llm-candidate-note">
-                        → {skillLabelById.get(binding.skillId) ?? binding.skillId}
-                        {' · '}{binding.teachMode} · 难度 {binding.formulaDifficulty}
-                        {binding.reason ? ` · ${binding.reason}` : ''}
-                      </div>
-                    ))
-                  )}
+                  <div className="llm-candidate-note">
+                    → {skillLabelById.get(proposal.skillId) ?? proposal.skillId}
+                    {' · '}{proposal.teachMode} · 难度 {proposal.formulaDifficulty}
+                    {proposal.reason ? ` · ${proposal.reason}` : ''}
+                  </div>
                 </div>
               ))}
             </div>
             <div className="llm-candidate-actions" style={{ marginTop: 12 }}>
-              <button type="button" className="btn btn-sm btn-primary" onClick={() => void applyMappingProposals()}>应用到映射页（待保存）</button>
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => void applyMappingProposals()}>应用到推荐配置（待保存）</button>
               <button type="button" className="btn btn-sm" onClick={() => void applyAndSaveMappings()}>应用并保存</button>
             </div>
           </div>

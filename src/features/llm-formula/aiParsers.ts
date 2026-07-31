@@ -1,6 +1,5 @@
 import type { LevelFormulaTarget } from '@/core/levels';
 import type {
-  LevelSkillBinding,
   MasteryStandard,
   SkillDefinition,
   SkillStage,
@@ -24,7 +23,10 @@ export type AiSkillProposal = {
 export type AiMappingProposal = {
   levelId: string;
   levelTitle?: string;
-  skills: Array<LevelSkillBinding & { reason?: string }>;
+  skillId: string;
+  teachMode: TeachMode;
+  formulaDifficulty: number;
+  reason?: string;
 };
 
 export type AiLevelProposal = {
@@ -145,6 +147,7 @@ export function parseMappingProposals(
   text: string,
   validLevelIds: Set<string>,
   validSkillIds: Set<string>,
+  skillStageById: Map<string, SkillStage>,
 ): AiMappingProposal[] {
   const parsed = extractJsonFromLlmText(text) as { mappings?: unknown[] };
   if (!parsed || !Array.isArray(parsed.mappings)) {
@@ -161,32 +164,40 @@ export function parseMappingProposals(
       throw new Error(`无效 levelId: ${levelId || '(空)'}`);
     }
 
-    const skillsRaw = Array.isArray(item.skills) ? item.skills : [];
-    const skills: AiMappingProposal['skills'] = [];
+    let skillId = typeof item.skillId === 'string' ? item.skillId.trim() : '';
+    let teachMode = parseTeachMode(item.teachMode);
+    let formulaDifficulty = parseDifficulty(item.formulaDifficulty);
+    let reason = typeof item.reason === 'string' ? item.reason : undefined;
 
-    for (const s of skillsRaw) {
-      if (!s || typeof s !== 'object') continue;
-      const binding = s as Record<string, unknown>;
-      const skillId = typeof binding.skillId === 'string' ? binding.skillId.trim() : '';
-      if (!skillId || !validSkillIds.has(skillId)) {
-        throw new Error(`关卡 ${levelId} 引用了无效 skillId: ${skillId || '(空)'}`);
+    // Compat: legacy skills[] → take first only (error if multiple without top-level skillId)
+    if (!skillId && Array.isArray(item.skills) && item.skills.length > 0) {
+      if (item.skills.length > 1) {
+        throw new Error(`关卡 ${levelId} 返回了多个能力标签，第一版只允许一个主标签`);
       }
-
-      const cfopStageRaw = typeof binding.cfopStage === 'string' ? binding.cfopStage : '';
-      if (!isValidSkillStage(cfopStageRaw)) {
-        throw new Error(`关卡 ${levelId} 的 cfopStage 无效`);
+      const first = item.skills[0];
+      if (first && typeof first === 'object') {
+        const binding = first as Record<string, unknown>;
+        skillId = typeof binding.skillId === 'string' ? binding.skillId.trim() : '';
+        teachMode = parseTeachMode(binding.teachMode);
+        formulaDifficulty = parseDifficulty(binding.formulaDifficulty);
+        reason = typeof binding.reason === 'string' ? binding.reason : reason;
       }
-
-      skills.push({
-        skillId,
-        cfopStage: cfopStageRaw,
-        teachMode: parseTeachMode(binding.teachMode),
-        formulaDifficulty: parseDifficulty(binding.formulaDifficulty),
-        reason: typeof binding.reason === 'string' ? binding.reason : undefined,
-      });
     }
 
-    results.push({ levelId, skills });
+    if (!skillId || !validSkillIds.has(skillId)) {
+      throw new Error(`关卡 ${levelId} 引用了无效 skillId: ${skillId || '(空)'}`);
+    }
+    if (!skillStageById.has(skillId)) {
+      throw new Error(`关卡 ${levelId} 的 skillId 缺少 stage：${skillId}`);
+    }
+
+    results.push({
+      levelId,
+      skillId,
+      teachMode,
+      formulaDifficulty,
+      reason,
+    });
   }
 
   if (results.length === 0) throw new Error('未解析到有效映射提案');

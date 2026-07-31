@@ -393,6 +393,43 @@
   border-color: var(--border-strong);
 }
 
+.skill-callout {
+  margin: 0 var(--panel-pad);
+  padding: 10px 12px;
+  border-left: 3px solid var(--primary);
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.skill-callout p {
+  margin: 0 0 4px;
+}
+
+.skill-callout p:last-child {
+  margin-bottom: 0;
+}
+
+.skill-create-id {
+  width: 160px;
+  min-height: 30px;
+}
+
+.skill-draft-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #fdba74;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.skill-card.is-draft {
+  opacity: 0.92;
+}
+
 @media (max-width: 600px) {
   .skill-toolbar {
     flex-direction: column;

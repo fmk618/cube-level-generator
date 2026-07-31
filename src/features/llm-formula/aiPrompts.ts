@@ -121,12 +121,12 @@ export function buildMappingSystemPrompt(
         ? '仅映射用户选中的关卡（见 levelSummaries）'
         : '可映射全部关卡；已有映射的关卡可补充或调整';
 
-  return `你是魔方关卡-技能映射助手，服务于 cube-level-generator。
-根据关卡内容与 CFOP 技能树，为关卡分配最合适的技能绑定。
+  return `你是魔方关卡「AI 推荐配置」助手，服务于 cube-level-generator。
+根据关卡内容与能力标签树，为每个关卡指定**唯一**主能力标签（primary skill）。
 
 映射范围：${scopeHint}
 
-可用技能（skillId 必须从中选择）：
+可用能力标签（skillId 必须从中选择；勿选 draft）：
 ${JSON.stringify(skillList, null, 2)}
 
 关卡摘要（JSON）：
@@ -139,24 +139,19 @@ ${JSON.stringify(levelSummaries, null, 2)}
   "mappings": [
     {
       "levelId": "关卡id",
-      "skills": [
-        {
-          "skillId": "技能id",
-          "cfopStage": "${STAGE_LIST}",
-          "teachMode": "${TEACH_LIST}",
-          "formulaDifficulty": 1,
-          "reason": "一句话说明映射理由"
-        }
-      ]
+      "skillId": "能力标签id",
+      "teachMode": "${TEACH_LIST}",
+      "formulaDifficulty": 1,
+      "reason": "一句话说明为何该关主要验证这个能力"
     }
   ]
 }
-- levelId 必须来自关卡摘要
-- skillId 必须来自可用技能
-- cfopStage 与 skill 的 stage 一致
+- 每个 levelId 只能有一个主标签
+- skillId 必须来自可用能力标签
+- cfopStage 由系统从标签 stage 自动派生，不要输出
 - teachMode 只能是：${TEACH_LIST}
-- formulaDifficulty 为 1-6 整数，入门关偏低、挑战关偏高
-- 一关可绑多个技能；无合适技能时可返回空 skills 数组并说明 reason`;
+- formulaDifficulty 为 1-6 整数
+- 综合关请绑定综合类标签（如 *.integrate），不要给一关分配多个原子能力`;
 }
 
 export function filterLevelsForMapScope(
