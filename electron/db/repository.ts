@@ -316,16 +316,16 @@ export async function pushLevelSkillMap(map: CloudLevelSkillMap): Promise<void> 
   for (const [levelId, entry] of Object.entries(map.mappings) as Array<
     [string, CloudLevelSkillMap['mappings'][string]]
   >) {
-    for (const binding of entry.skills) {
-      rows.push({
-        levelId,
-        skillId: binding.skillId,
-        cfopStage: binding.cfopStage,
-        teachMode: binding.teachMode,
-        formulaDifficulty: binding.formulaDifficulty,
-        rowUuid: bindingRowUuid(levelId, binding.skillId),
-      });
-    }
+    const binding = entry.skills[0];
+    if (!binding) continue;
+    rows.push({
+      levelId,
+      skillId: binding.skillId,
+      cfopStage: binding.cfopStage,
+      teachMode: binding.teachMode,
+      formulaDifficulty: binding.formulaDifficulty,
+      rowUuid: bindingRowUuid(levelId, binding.skillId),
+    });
   }
 
   await runWriteTransaction(async (conn) => {

@@ -1222,6 +1222,17 @@ textarea.text-input--sm {
   border-color: #bbf7d0;
 }
 
+.banner.banner-ai {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #9a3412;
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
 .modal-backdrop {
   position: fixed;
   z-index: 80;
@@ -1354,6 +1365,23 @@ textarea.text-input--sm {
   padding: 6px 0;
 }
 
+.chapter-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.chapter-header-actions .icon-btn svg,
+.level-row-actions .icon-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .chapter-header-toggle {
   display: flex;
   flex: 1;
@@ -1463,7 +1491,7 @@ textarea.text-input--sm {
   align-items: center;
   min-height: 54px;
   gap: 6px;
-  padding: 7px 42px 7px 12px;
+  padding: 7px 8px 7px 12px;
   border-radius: var(--radius-control);
   cursor: pointer;
   transition: background 120ms var(--ease);
@@ -1479,6 +1507,15 @@ textarea.text-input--sm {
 
 .level-row-selected:hover {
   background: var(--chapter-accent-soft-strong);
+}
+
+.level-row-ai-touched {
+  box-shadow: inset 0 0 0 1px #fdba74;
+  background: #fff7ed;
+}
+
+.level-row-ai-touched.level-row-selected {
+  background: #ffedd5;
 }
 
 .level-row-selected::before {
@@ -1502,7 +1539,9 @@ textarea.text-input--sm {
 
 .level-row-top {
   display: flex;
+  align-items: center;
   min-width: 0;
+  gap: 6px;
 }
 
 .level-title {
@@ -1512,6 +1551,32 @@ textarea.text-input--sm {
   font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ai-touched-badge {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  color: #9a3412;
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.level-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.level-row-actions .level-actions-menu {
+  position: relative;
+  top: auto;
+  right: auto;
+  transform: none;
 }
 
 .level-row-selected .level-title {
@@ -1580,11 +1645,8 @@ textarea.text-input--sm {
 }
 
 .level-actions-menu {
-  position: absolute;
+  position: relative;
   z-index: 12;
-  top: 50%;
-  right: 7px;
-  transform: translateY(-50%);
 }
 
 .actions-menu-popover {

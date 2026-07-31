@@ -19,6 +19,11 @@ export type MapScope = 'unmapped' | 'selected' | 'all';
 const STAGE_LIST = 'cross | f2l | oll | pll | full';
 const MASTERY_LIST = 'guided_only | guided_and_one_star | two_stars';
 const TEACH_LIST = 'guided | challenge | demo';
+const VALID_STAGES: SkillStage[] = ['cross', 'f2l', 'oll', 'pll', 'full'];
+
+export function isValidSkillStage(value: string): value is SkillStage {
+  return VALID_STAGES.includes(value as SkillStage);
+}
 
 export function buildLevelSummaries(
   levels: LevelDefinition[],
@@ -116,12 +121,12 @@ export function buildMappingSystemPrompt(
         ? '仅映射用户选中的关卡（见 levelSummaries）'
         : '可映射全部关卡；已有映射的关卡可补充或调整';
 
-  return `你是魔方关卡-技能映射助手，服务于 cube-level-generator。
-根据关卡内容与 CFOP 技能树，为关卡分配最合适的技能绑定。
+  return `你是魔方关卡「AI 推荐配置」助手，服务于 cube-level-generator。
+根据关卡内容与能力标签树，为每个关卡指定**唯一**主能力标签（primary skill）。
 
 映射范围：${scopeHint}
 
-可用技能（skillId 必须从中选择）：
+可用能力标签（skillId 必须从中选择；勿选 draft）：
 ${JSON.stringify(skillList, null, 2)}
 
 关卡摘要（JSON）：
@@ -134,24 +139,19 @@ ${JSON.stringify(levelSummaries, null, 2)}
   "mappings": [
     {
       "levelId": "关卡id",
-      "skills": [
-        {
-          "skillId": "技能id",
-          "cfopStage": "${STAGE_LIST}",
-          "teachMode": "${TEACH_LIST}",
-          "formulaDifficulty": 1,
-          "reason": "一句话说明映射理由"
-        }
-      ]
+      "skillId": "能力标签id",
+      "teachMode": "${TEACH_LIST}",
+      "formulaDifficulty": 1,
+      "reason": "一句话说明为何该关主要验证这个能力"
     }
   ]
 }
-- levelId 必须来自关卡摘要
-- skillId 必须来自可用技能
-- cfopStage 与 skill 的 stage 一致
+- 每个 levelId 只能有一个主标签
+- skillId 必须来自可用能力标签
+- cfopStage 由系统从标签 stage 自动派生，不要输出
 - teachMode 只能是：${TEACH_LIST}
-- formulaDifficulty 为 1-6 整数，入门关偏低、挑战关偏高
-- 一关可绑多个技能；无合适技能时可返回空 skills 数组并说明 reason`;
+- formulaDifficulty 为 1-6 整数
+- 综合关请绑定综合类标签（如 *.integrate），不要给一关分配多个原子能力`;
 }
 
 export function filterLevelsForMapScope(
@@ -169,6 +169,81 @@ export function filterLevelsForMapScope(
   return summaries;
 }
 
-export function isValidSkillStage(value: string): value is SkillStage {
-  return ['cross', 'f2l', 'oll', 'pll', 'full'].includes(value);
+export function buildChapterLevelsSystemPrompt(
+  chapter: { id: string; partName: string; title: string; description?: string; capacity: number },
+  existingLevelTitles: string[],
+): string {
+  return `你是魔方教学关卡设计助手，服务于 cube-level-generator。
+请为指定章节生成若干新关卡草案（含旋转公式），供作者审核后应用。
+
+目标章节：
+${JSON.stringify(chapter, null, 2)}
+
+该章节已有关卡标题（避免重复）：
+${JSON.stringify(existingLevelTitles, null, 2)}
+
+输出要求：
+- 只输出一个 JSON 对象，不要 markdown 代码块，不要额外说明
+- 格式：
+{
+  "levels": [
+    {
+      "title": "关卡标题",
+      "description": "教学目标描述",
+      "hint": "提示文案",
+      "rotationFormula": "R U R' U'",
+      "rotationTarget": "f2l",
+      "guidanceFormula": "R U R' U'",
+      "maxMoves": 8,
+      "reason": "一句话说明关卡设计意图"
+    }
+  ]
+}
+- rotationTarget 只能是 f2l | oll | pll
+- rotationFormula / guidanceFormula 只能使用标准 WCA 记号
+- 关卡数量建议 2-6，不超过章节剩余容量（capacity=${chapter.capacity}）
+- 从易到难排列`;
+}
+
+export function buildChaptersSystemPrompt(
+  existingChapters: Array<{ partName: string; title: string; capacity: number }>,
+): string {
+  return `你是魔方教学课程设计助手，服务于 cube-level-generator。
+请生成若干新章节草案，供作者审核后应用。可选地为每个章节附带初始关卡（含旋转公式）。
+
+现有章节（避免 partName/标题重复）：
+${JSON.stringify(existingChapters, null, 2)}
+
+输出要求：
+- 只输出一个 JSON 对象，不要 markdown 代码块，不要额外说明
+- 格式：
+{
+  "chapters": [
+    {
+      "partName": "Part7",
+      "title": "章节中文标题",
+      "description": "本章教学目标",
+      "capacity": 6,
+      "reason": "一句话说明章节定位",
+      "levels": [
+        {
+          "title": "关卡标题",
+          "description": "教学目标描述",
+          "hint": "提示文案",
+          "rotationFormula": "R U R' U'",
+          "rotationTarget": "f2l",
+          "guidanceFormula": "R U R' U'",
+          "maxMoves": 8,
+          "reason": "一句话说明关卡设计意图"
+        }
+      ]
+    }
+  ]
+}
+- partName 建议 PartN 形式，与现有不冲突
+- capacity 建议 4-8 的正整数
+- levels 可选；若提供，数量不超过 capacity，并从易到难
+- rotationTarget 只能是 f2l | oll | pll
+- rotationFormula / guidanceFormula 只能使用标准 WCA 记号
+- 章节数量建议 1-3`;
 }

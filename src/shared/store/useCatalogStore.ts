@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import {
     buildLevelForChapter,
+    deriveLevelFormulaPreset,
     exportLevelsToJSON,
+    getMinimumStarThresholds,
     importLevelsFromJSON,
     normalizeLevelCatalogDocument,
     sortLevelsBySlotOrder,
@@ -9,10 +11,29 @@ import {
     type LevelChapterConfig,
     type LevelChapterId,
     type LevelDefinition,
+    type LevelFormulaTarget,
     type LevelId,
 } from '@/core/levels';
 
 export type LevelMoveDirection = 'up' | 'down';
+
+export type AiLevelCreateInput = {
+    title: string;
+    description: string;
+    hint?: string;
+    rotationFormula: string;
+    rotationTarget: LevelFormulaTarget;
+    guidanceFormula?: string;
+    maxMoves: number;
+};
+
+export type AiChapterCreateInput = {
+    partName: string;
+    title: string;
+    description: string;
+    capacity: number;
+    levels?: AiLevelCreateInput[];
+};
 
 type CatalogState = {
     catalog: LevelCatalogDocument | null;
@@ -44,6 +65,8 @@ type CatalogState = {
     moveLevel: (levelId: LevelId, direction: LevelMoveDirection) => void;
     deleteLevel: (levelId: LevelId) => void;
     getLevelById: (levelId: LevelId) => LevelDefinition | undefined;
+    applyAiLevelProposals: (chapterId: LevelChapterId, proposals: AiLevelCreateInput[]) => string[];
+    applyAiChapterProposals: (proposals: AiChapterCreateInput[]) => { chapterIds: string[]; levelIds: string[] };
 };
 
 const cloneCatalog = (catalog: LevelCatalogDocument): LevelCatalogDocument =>
@@ -415,4 +438,55 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
     },
 
     getLevelById: (levelId) => get().catalog?.levels.find((level) => level.id === levelId),
+
+    applyAiLevelProposals: (chapterId, proposals) => {
+        const createdIds: string[] = [];
+        for (const proposal of proposals) {
+            const created = get().createLevelForChapter(chapterId);
+            const maxMoves = proposal.maxMoves;
+            const patch: Partial<LevelDefinition> = {
+                title: proposal.title,
+                description: proposal.description,
+                hint: proposal.hint,
+                maxMoves,
+                starThresholds: getMinimumStarThresholds(maxMoves),
+                rotationFormula: proposal.rotationFormula,
+                rotationTarget: proposal.rotationTarget,
+                guidanceFormula: proposal.guidanceFormula ?? proposal.rotationFormula,
+            };
+            try {
+                const derived = deriveLevelFormulaPreset(proposal.rotationFormula, proposal.rotationTarget);
+                patch.startStateMatrix = derived.startStateMatrix;
+                patch.goalStateMatrix = derived.goalStateMatrix;
+                patch.brightnessMatrix = derived.brightnessMatrix;
+            } catch {
+                // 公式无效时仍创建关卡元数据，作者可在编辑器修正
+            }
+            get().updateLevel(created.id, patch);
+            createdIds.push(created.id);
+        }
+        return createdIds;
+    },
+
+    applyAiChapterProposals: (proposals) => {
+        const chapterIds: string[] = [];
+        const levelIds: string[] = [];
+        for (const proposal of proposals) {
+            const chapter = get().createChapter({
+                partName: proposal.partName,
+                title: proposal.title,
+                description: proposal.description,
+                capacity: proposal.capacity,
+            });
+            chapterIds.push(chapter.id);
+            if (proposal.levels && proposal.levels.length > 0) {
+                const created = get().applyAiLevelProposals(
+                    chapter.id,
+                    proposal.levels.slice(0, chapter.capacity),
+                );
+                levelIds.push(...created);
+            }
+        }
+        return { chapterIds, levelIds };
+    },
 }));
