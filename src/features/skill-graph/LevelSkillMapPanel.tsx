@@ -4,27 +4,36 @@ import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import { SelectDropdown } from '@/shared/ui/SelectDropdown';
-import type {
-  LevelSkillBinding,
-  TeachMode,
-} from '@/core/skill-graph/types';
+import type { LevelDefinition } from '@/core/levels';
+import {
+  getLevelRecommendStatus,
+  validateLevelSkillMapForPublish,
+  type PublishCheckIssue,
+} from '@/core/skill-graph/utils';
+import type { TeachMode } from '@/core/skill-graph/types';
 import '../../styles/level-skill-map-panel.css';
 
 const TEACH_MODES = [
-  { value: 'guided', label: '引导' },
-  { value: 'challenge', label: '挑战' },
-  { value: 'demo', label: '演示' },
+  { value: 'guided', label: 'Guided' },
+  { value: 'challenge', label: 'Challenge' },
+  { value: 'demo', label: 'Demo' },
 ] as const;
 
-const TEACH_MODE_HINT = '引导：带提示教学；挑战：弱化提示独立完成；演示：以观看演示为主';
+type LevelSkillMapPanelProps = {
+  onOpenLevelContent?: (levelId: string) => void;
+};
 
-export function LevelSkillMapPanel() {
+export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelProps = {}) {
   const [error, setError] = useState<string | null>(null);
   const [filterChapter, setFilterChapter] = useState<string | 'all'>('all');
   const [selectedLevelIds, setSelectedLevelIds] = useState<Set<string>>(new Set());
-  const [quickAssignSkillId, setQuickAssignSkillId] = useState<string>('');
-  const [addingForLevelId, setAddingForLevelId] = useState<string | null>(null);
+  const [batchSkillId, setBatchSkillId] = useState('');
+  const [batchTeachMode, setBatchTeachMode] = useState<TeachMode>('guided');
+  const [batchDifficulty, setBatchDifficulty] = useState('2');
+  const [publishIssues, setPublishIssues] = useState<PublishCheckIssue[] | null>(null);
   const setAiMapLevelIds = useUiStore((state) => state.setAiMapLevelIds);
+  const aiTouchedLevelIds = useUiStore((state) => state.aiTouchedLevelIds);
+  const clearAiTouched = useUiStore((state) => state.clearAiTouched);
 
   const levels = useCatalogStore((state) => state.levels);
   const chapters = useCatalogStore((state) => state.chapters);
@@ -37,11 +46,15 @@ export function LevelSkillMapPanel() {
   const refreshSkillGraph = useSkillGraphStore((state) => state.refreshSkillGraph);
 
   const levelSkillMap = useLevelSkillMapStore((state) => state.levelSkillMap);
-  const addLevelSkillBinding = useLevelSkillMapStore((state) => state.addLevelSkillBinding);
-  const updateLevelSkillBinding = useLevelSkillMapStore((state) => state.updateLevelSkillBinding);
-  const removeLevelSkillBinding = useLevelSkillMapStore((state) => state.removeLevelSkillBinding);
-  const deleteLevelSkillEntry = useLevelSkillMapStore((state) => state.deleteLevelSkillEntry);
-  const getLevelSkillEntry = useLevelSkillMapStore((state) => state.getLevelSkillEntry);
+  const ambiguous = useLevelSkillMapStore((state) => state.ambiguous);
+  const getPrimary = useLevelSkillMapStore((state) => state.getPrimary);
+  const setPrimarySkill = useLevelSkillMapStore((state) => state.setPrimarySkill);
+  const updatePrimaryMeta = useLevelSkillMapStore((state) => state.updatePrimaryMeta);
+  const clearPrimary = useLevelSkillMapStore((state) => state.clearPrimary);
+  const batchSetPrimarySkill = useLevelSkillMapStore((state) => state.batchSetPrimarySkill);
+  const batchSetTeachMode = useLevelSkillMapStore((state) => state.batchSetTeachMode);
+  const batchSetDifficulty = useLevelSkillMapStore((state) => state.batchSetDifficulty);
+  const resolveAmbiguous = useLevelSkillMapStore((state) => state.resolveAmbiguous);
   const exportToDisk = useLevelSkillMapStore((state) => state.exportToDisk);
   const hasUnsavedChanges = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
   const saveMap = useLevelSkillMapStore((state) => state.saveMap);
@@ -53,29 +66,116 @@ export function LevelSkillMapPanel() {
   }, [selectedLevelIds, setAiMapLevelIds]);
 
   useEffect(() => {
-    if (!isCatalogLoaded && !isCatalogLoading) {
-      void refreshCatalog();
-    }
+    if (aiTouchedLevelIds.length === 0) return;
+    const firstId = aiTouchedLevelIds[0];
+    const el = document.querySelector(`[data-level-id="${CSS.escape(firstId)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [aiTouchedLevelIds]);
+
+  useEffect(() => {
+    if (!isCatalogLoaded && !isCatalogLoading) void refreshCatalog();
   }, [isCatalogLoaded, isCatalogLoading, refreshCatalog]);
 
   useEffect(() => {
-    if (!skillGraph && !isSkillLoading) {
-      void refreshSkillGraph();
-    }
+    if (!skillGraph && !isSkillLoading) void refreshSkillGraph();
   }, [skillGraph, isSkillLoading, refreshSkillGraph]);
 
   useEffect(() => {
-    if (!levelSkillMap && !isMapLoading) {
-      void refreshMap();
-    }
+    if (!levelSkillMap && !isMapLoading) void refreshMap();
   }, [levelSkillMap, isMapLoading, refreshMap]);
+
+  const skillOptions = useMemo(
+    () =>
+      skills
+        .filter((s) => !s.draft)
+        .map((s) => ({ value: s.id, label: `${STAGE_SHORT[s.stage] ?? s.stage} · ${s.displayNameZh}` })),
+    [skills],
+  );
+
+  const skillOptionsWithDraft = useMemo(
+    () =>
+      skills.map((s) => ({
+        value: s.id,
+        label: `${STAGE_SHORT[s.stage] ?? s.stage} · ${s.displayNameZh}${s.draft ? '（草稿）' : ''}`,
+      })),
+    [skills],
+  );
+
+  const skillById = useMemo(() => {
+    const map = new Map(skills.map((s) => [s.id, s]));
+    return map;
+  }, [skills]);
+
+  const filteredLevels = useMemo(() => {
+    if (filterChapter === 'all') return levels;
+    return levels.filter((level) => level.chapterId === filterChapter);
+  }, [levels, filterChapter]);
+
+  const ambiguousCount = Object.keys(ambiguous).length;
+
+  const runPublishCheck = () => {
+    if (!levelSkillMap) return;
+    const issues = validateLevelSkillMapForPublish(
+      levelSkillMap,
+      levels,
+      skills,
+      Object.keys(ambiguous),
+    );
+    setPublishIssues(issues);
+    const errors = issues.filter((i) => i.level === 'error');
+    setError(
+      errors.length === 0
+        ? `✓ 发布检查通过（警告 ${issues.filter((i) => i.level === 'warning').length} 条）`
+        : `发布检查未通过：${errors.length} 个阻断项`,
+    );
+  };
+
+  const handleExport = async () => {
+    try {
+      setError(null);
+      if (!levelSkillMap) return;
+      const issues = validateLevelSkillMapForPublish(
+        levelSkillMap,
+        levels,
+        skills,
+        Object.keys(ambiguous),
+      );
+      setPublishIssues(issues);
+      if (issues.some((i) => i.level === 'error')) {
+        setError('发布检查未通过，已阻止导出给 App');
+        return;
+      }
+      const filePath = await exportToDisk();
+      setError(filePath ? '✓ 已导出 App v1 level_skill_map.json' : '导出已取消');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '导出失败');
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setError(null);
+      await saveMap();
+      clearAiTouched();
+      setError('✓ 已保存并同步到云端（App v1）');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败');
+    }
+  };
+
+  const toggleSelect = (levelId: string) => {
+    setSelectedLevelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(levelId)) next.delete(levelId);
+      else next.add(levelId);
+      return next;
+    });
+  };
 
   if (!isCatalogLoaded && isCatalogLoading) {
     return (
       <div className="panel level-skill-map-panel">
-        <div className="panel-empty">
-          <p>正在加载关卡数据...</p>
-        </div>
+        <div className="panel-empty"><p>正在加载关卡数据...</p></div>
       </div>
     );
   }
@@ -86,129 +186,8 @@ export function LevelSkillMapPanel() {
         <div className="panel-empty">
           <p>暂无可用关卡</p>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            请先在「关卡编辑」导入或创建关卡，保存后再回到本页做映射
+            请先在「关卡内容」导入或创建关卡，再回到本页配置推荐
           </p>
-        </div>
-      </div>
-    );
-  }
-
-  const skillOptions = useMemo(
-    () => skills.map((s) => ({ value: s.id, label: s.displayNameZh })),
-    [skills],
-  );
-
-  const skillLabelById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const s of skills) map.set(s.id, s.displayNameZh);
-    return map;
-  }, [skills]);
-
-  const filteredLevels = useMemo(() => {
-    if (filterChapter === 'all') return levels;
-    return levels.filter((level) => level.chapterId === filterChapter);
-  }, [levels, filterChapter]);
-
-  const mappedCount = useMemo(() => {
-    if (!levelSkillMap) return 0;
-    return Object.values(levelSkillMap.mappings).filter((e) => e.skills.length > 0).length;
-  }, [levelSkillMap]);
-
-  const quickAssignSkillName = quickAssignSkillId
-    ? skillLabelById.get(quickAssignSkillId) ?? quickAssignSkillId
-    : '';
-
-  const handleExport = async () => {
-    try {
-      setError(null);
-      const filePath = await exportToDisk();
-      setError(filePath ? '✓ 导出成功' : '导出已取消');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '导出失败');
-    }
-  };
-
-  const handleSave = async () => {
-    try {
-      setError(null);
-      await saveMap();
-      setError('✓ 已保存并同步到云端');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败');
-    }
-  };
-
-  const buildBinding = (skillId: string, overrides?: Partial<LevelSkillBinding>): LevelSkillBinding | null => {
-    const skill = skills.find((s) => s.id === skillId);
-    if (!skill) {
-      setError(skills.length === 0 ? '技能树未加载，请稍候或先打开「技能编辑」' : `未找到技能 "${skillId}"`);
-      return null;
-    }
-    return {
-      skillId: skill.id,
-      cfopStage: overrides?.cfopStage ?? skill.stage,
-      teachMode: overrides?.teachMode ?? 'guided',
-      formulaDifficulty: overrides?.formulaDifficulty ?? 1,
-    };
-  };
-
-  const handleAddSkill = (levelId: string, skillId: string) => {
-    if (!skillId) return;
-    const binding = buildBinding(skillId);
-    if (!binding) return;
-    addLevelSkillBinding(levelId, binding);
-    setAddingForLevelId(null);
-    setError(null);
-  };
-
-  const handleChangeBindingSkill = (levelId: string, fromSkillId: string, toSkillId: string) => {
-    if (!toSkillId || toSkillId === fromSkillId) return;
-    const skill = skills.find((s) => s.id === toSkillId);
-    if (!skill) {
-      setError(`未找到技能 "${toSkillId}"`);
-      return;
-    }
-    updateLevelSkillBinding(levelId, fromSkillId, {
-      skillId: toSkillId,
-      cfopStage: skill.stage,
-    });
-    setError(null);
-  };
-
-  const handleQuickAssign = () => {
-    if (!quickAssignSkillId) {
-      setError('请先选择要分配的技能');
-      return;
-    }
-    if (selectedLevelIds.size === 0) {
-      setError('请先勾选至少一个关卡');
-      return;
-    }
-
-    const binding = buildBinding(quickAssignSkillId);
-    if (!binding) return;
-
-    let added = 0;
-    let updated = 0;
-    selectedLevelIds.forEach((levelId) => {
-      const entry = getLevelSkillEntry(levelId);
-      const exists = entry?.skills.some((b) => b.skillId === binding.skillId);
-      addLevelSkillBinding(levelId, binding);
-      if (exists) updated++;
-      else added++;
-    });
-
-    setSelectedLevelIds(new Set());
-    setQuickAssignSkillId('');
-    setError(`✓ 已追加 ${added} 个、更新 ${updated} 个绑定（技能：${binding.skillId}）`);
-  };
-
-  if (!levelSkillMap) {
-    return (
-      <div className="panel level-skill-map-panel">
-        <div className="panel-empty">
-          <p>未加载关卡映射数据</p>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>请先在关卡编辑模式加载关卡</p>
         </div>
       </div>
     );
@@ -217,14 +196,17 @@ export function LevelSkillMapPanel() {
   return (
     <div className="panel level-skill-map-panel">
       <div className="map-header">
-        <div className="map-header-left">
-          <h2>关卡映射</h2>
-          <span className="map-badge">{mappedCount} / {levels.length}</span>
+        <div>
+          <h2>AI 推荐配置</h2>
+          <p className="map-subtitle">
+            一关一个主能力标签；通关/失败聚合到该标签。导出为 App v1 <code>map</code> 契约。
+          </p>
         </div>
-        <div className="map-header-actions" id="map-export" data-tour="map-save">
-          <button className="btn btn-sm" onClick={() => void handleExport()}>导出</button>
+        <div className="map-header-actions" data-tour="map-save">
+          <button type="button" className="btn btn-sm" onClick={runPublishCheck}>发布检查</button>
+          <button type="button" className="btn btn-sm" onClick={() => void handleExport()}>导出给 App</button>
           {hasUnsavedChanges && (
-            <button className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存</button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存</button>
           )}
         </div>
       </div>
@@ -233,247 +215,302 @@ export function LevelSkillMapPanel() {
         <div className={`banner ${error.startsWith('✓') ? 'banner-ok' : 'banner-error'}`}>{error}</div>
       )}
 
-      {skills.length === 0 && (
+      {ambiguousCount > 0 && (
         <div className="banner banner-error">
-          {isSkillLoading ? '正在加载技能树…' : '尚未加载技能。请打开「技能编辑」或等待自动加载后再分配。'}
+          有 {ambiguousCount} 个关卡存在多个能力标签，请先选择主能力标签后再保存/导出。
         </div>
       )}
 
-      <div className="map-toolbar" id="map-toolbar">
-        <div className="map-filter-chips" id="map-filter">
-          <button
-            className={`chip ${filterChapter === 'all' ? 'chip-active' : ''}`}
-            onClick={() => setFilterChapter('all')}
-          >全部</button>
-          {chapters.map((chapter) => (
-            <button
-              key={chapter.id}
-              className={`chip ${filterChapter === chapter.id ? 'chip-active' : ''}`}
-              onClick={() => setFilterChapter(chapter.id)}
-            >{chapter.partName}</button>
-          ))}
+      {aiTouchedLevelIds.length > 0 && (
+        <div className="banner banner-ai">
+          AI 刚改动了 {aiTouchedLevelIds.length} 个关卡推荐配置（橙色高亮）。
+          <button type="button" className="btn btn-sm" onClick={() => clearAiTouched()}>清除高亮</button>
         </div>
-        <p className="map-toolbar-hint">单关在卡片内添加技能；勾选多个关卡后可批量追加</p>
-      </div>
+      )}
 
-      {selectedLevelIds.size > 0 && (
-        <div className="map-bulk-bar" data-tour="skill-select">
-          <span className="map-bulk-bar-label">
-            已勾选 <strong>{selectedLevelIds.size}</strong> 个关卡，批量追加同一技能：
-          </span>
-          <SelectDropdown
-            size="sm"
-            className="map-bulk-select"
-            value={quickAssignSkillId}
-            options={skillOptions}
-            placeholder="选择要追加的技能..."
-            searchable
-            disabled={skills.length === 0}
-            onChange={setQuickAssignSkillId}
-          />
-          <button
-            type="button"
-            className="btn btn-sm btn-primary"
-            data-tour="assign-button"
-            onClick={handleQuickAssign}
-            disabled={!quickAssignSkillId || skills.length === 0}
-          >
-            追加到已选关卡
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => {
-              setSelectedLevelIds(new Set());
-              setQuickAssignSkillId('');
-            }}
-          >
-            取消勾选
-          </button>
-          {quickAssignSkillName && (
-            <span className="map-bulk-skill-hint">将追加：{quickAssignSkillName}</span>
+      {publishIssues && (
+        <div className="publish-check-panel" data-tour="publish-check">
+          <div className="publish-check-header">
+            <strong>发布检查</strong>
+            <button type="button" className="btn btn-sm" onClick={() => setPublishIssues(null)}>关闭</button>
+          </div>
+          {publishIssues.length === 0 ? (
+            <p className="hint-text">无问题</p>
+          ) : (
+            <ul className="publish-check-list">
+              {publishIssues.map((issue, index) => (
+                <li key={`${issue.code}-${issue.levelId ?? ''}-${index}`} className={issue.level === 'error' ? 'is-error' : 'is-warning'}>
+                  [{issue.level === 'error' ? '阻断' : '警告'}] {issue.message}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
 
-      <div className="map-list" id="map-list" data-tour="map-list">
-        {filteredLevels.length === 0 ? (
-          <div className="map-empty">该章节无关卡</div>
-        ) : (
-          <div className="level-cards">
-            {filteredLevels.map((level) => {
-              const entry = getLevelSkillEntry(level.id);
-              const bindings = entry?.skills ?? [];
-              const isSelected = selectedLevelIds.has(level.id);
-              const boundIds = new Set(bindings.map((b) => b.skillId));
-              const addOptions = skillOptions.filter((o) => !boundIds.has(o.value));
-              const isAdding = addingForLevelId === level.id;
-
-              return (
-                <div
-                  key={level.id}
-                  className={`level-card ${isSelected ? 'selected' : ''} ${bindings.length ? '' : 'unmapped'}`}
-                >
-                  <div className="level-card-header">
-                    <label className="map-check">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          const next = new Set(selectedLevelIds);
-                          if (e.target.checked) next.add(level.id);
-                          else next.delete(level.id);
-                          setSelectedLevelIds(next);
-                        }}
-                      />
-                      <span className="map-check-box" />
-                    </label>
-                    <span className="level-card-order">{level.order}</span>
-                    <span className="level-card-name">{level.title}</span>
-                    {bindings.length > 0 && (
-                      <span className="level-card-bind-count">{bindings.length} 技能</span>
-                    )}
-                  </div>
-
-                  <div className="level-card-body">
-                    {bindings.length === 0 ? (
-                      <SelectDropdown
-                        size="sm"
-                        value=""
-                        options={skillOptions}
-                        placeholder={skills.length === 0 ? '技能加载中…' : '点击选择技能...'}
-                        searchable
-                        disabled={skills.length === 0}
-                        onChange={(v) => {
-                          if (v) handleAddSkill(level.id, v);
-                        }}
-                      />
-                    ) : (
-                      <>
-                        <div className="level-card-mapped-info">
-                          {bindings.map((b) => {
-                            const name = skillLabelById.get(b.skillId) ?? b.skillId;
-                            return (
-                              <span key={b.skillId} className="mapped-skill-chip">
-                                <span className="mapped-stage-badge">{b.cfopStage.toUpperCase()}</span>
-                                <span className="mapped-skill-name">{name}</span>
-                              </span>
-                            );
-                          })}
-                        </div>
-
-                        <ul className="level-binding-list">
-                          {bindings.map((binding) => {
-                            const otherIds = new Set(
-                              bindings.filter((b) => b.skillId !== binding.skillId).map((b) => b.skillId),
-                            );
-                            const rowOptions = skillOptions.filter(
-                              (o) => o.value === binding.skillId || !otherIds.has(o.value),
-                            );
-                            return (
-                              <li key={binding.skillId} className="level-binding-row">
-                                <div className="level-card-field">
-                                  <label>技能</label>
-                                  <SelectDropdown
-                                    size="sm"
-                                    value={binding.skillId}
-                                    options={rowOptions}
-                                    searchable
-                                    onChange={(v) => handleChangeBindingSkill(level.id, binding.skillId, v)}
-                                  />
-                                </div>
-                                <div className="level-card-field">
-                                  <label>模式</label>
-                                  <SelectDropdown
-                                    size="sm"
-                                    value={binding.teachMode}
-                                    options={[...TEACH_MODES]}
-                                    onChange={(v) =>
-                                      updateLevelSkillBinding(level.id, binding.skillId, {
-                                        teachMode: v as TeachMode,
-                                      })
-                                    }
-                                  />
-                                </div>
-                                <div className="level-card-field level-card-field--diff">
-                                  <label>难度</label>
-                                  <input
-                                    className="text-input text-input--sm map-number-input"
-                                    type="number"
-                                    min="1"
-                                    max="6"
-                                    value={binding.formulaDifficulty}
-                                    onChange={(e) =>
-                                      updateLevelSkillBinding(level.id, binding.skillId, {
-                                        formulaDifficulty: parseInt(e.target.value, 10) || 1,
-                                      })
-                                    }
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  className="level-binding-remove"
-                                  aria-label="移除该技能"
-                                  onClick={() => removeLevelSkillBinding(level.id, binding.skillId)}
-                                >
-                                  移除
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-
-                        <p className="level-card-hint">{TEACH_MODE_HINT}</p>
-
-                        <div className="level-card-footer">
-                          {isAdding ? (
-                            <div className="level-card-add-row">
-                              <SelectDropdown
-                                size="sm"
-                                value=""
-                                options={addOptions}
-                                placeholder={addOptions.length ? '选择要添加的技能...' : '已无更多技能'}
-                                searchable
-                                disabled={addOptions.length === 0}
-                                onChange={(v) => {
-                                  if (v) handleAddSkill(level.id, v);
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="btn btn-sm"
-                                onClick={() => setAddingForLevelId(null)}
-                              >
-                                取消
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn-sm"
-                              disabled={addOptions.length === 0 || skills.length === 0}
-                              onClick={() => setAddingForLevelId(level.id)}
-                            >
-                              + 添加技能
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="level-card-clear"
-                            onClick={() => deleteLevelSkillEntry(level.id)}
-                          >
-                            清除全部
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+      <div className="map-toolbar">
+        <SelectDropdown
+          size="sm"
+          value={filterChapter}
+          options={[
+            { value: 'all', label: '全部章节' },
+            ...chapters.map((c) => ({ value: c.id, label: `${c.partName} ${c.title}` })),
+          ]}
+          onChange={(v) => setFilterChapter(v === 'all' ? 'all' : v)}
+        />
+        <span className="hint-text">已配置 {useLevelSkillMapStore.getState().getMappedCount()} / {levels.length}</span>
       </div>
+
+      {selectedLevelIds.size > 0 && (
+        <div className="map-batch-bar" data-tour="map-batch">
+          <span>已选 {selectedLevelIds.size} 关</span>
+          <SelectDropdown
+            size="sm"
+            value={batchSkillId}
+            options={skillOptions}
+            placeholder="批量设主标签..."
+            searchable
+            onChange={setBatchSkillId}
+          />
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            disabled={!batchSkillId}
+            onClick={() => {
+              const skill = skillById.get(batchSkillId);
+              if (!skill) return;
+              batchSetPrimarySkill(Array.from(selectedLevelIds), skill);
+              setError(`✓ 已批量设置主标签：${skill.displayNameZh}`);
+            }}
+          >
+            设主标签
+          </button>
+          <SelectDropdown
+            size="sm"
+            value={batchTeachMode}
+            options={TEACH_MODES.map((m) => ({ value: m.value, label: m.label }))}
+            onChange={(v) => setBatchTeachMode(v as TeachMode)}
+          />
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              batchSetTeachMode(Array.from(selectedLevelIds), batchTeachMode);
+              setError('✓ 已批量设置教学模式');
+            }}
+          >
+            设模式
+          </button>
+          <input
+            className="text-input map-diff-input"
+            value={batchDifficulty}
+            onChange={(e) => setBatchDifficulty(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="难度"
+          />
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              const n = Number(batchDifficulty);
+              if (!Number.isFinite(n) || n < 1 || n > 6) {
+                setError('难度需为 1～6');
+                return;
+              }
+              batchSetDifficulty(Array.from(selectedLevelIds), n);
+              setError('✓ 已批量设置推荐难度');
+            }}
+          >
+            设难度
+          </button>
+          <button type="button" className="btn btn-sm" onClick={() => setSelectedLevelIds(new Set())}>取消勾选</button>
+        </div>
+      )}
+
+      <div className="map-list" data-tour="map-list">
+        {filteredLevels.map((level) => (
+          <RecommendCard
+            key={level.id}
+            level={level}
+            chapterLabel={chapters.find((c) => c.id === level.chapterId)?.title ?? level.chapterId}
+            selected={selectedLevelIds.has(level.id)}
+            aiTouched={aiTouchedLevelIds.includes(level.id)}
+            ambiguous={ambiguous[level.id]}
+            primary={getPrimary(level.id)}
+            skillOptions={skillOptionsWithDraft}
+            skillById={skillById}
+            onToggleSelect={() => toggleSelect(level.id)}
+            onSetPrimary={(skillId) => {
+              const skill = skillById.get(skillId);
+              if (!skill) return;
+              setPrimarySkill(level.id, skill);
+            }}
+            onUpdateMeta={(partial) => updatePrimaryMeta(level.id, partial)}
+            onClear={() => clearPrimary(level.id)}
+            onResolveAmbiguous={(skillId) => resolveAmbiguous(level.id, skillId, skills)}
+            onOpenLevel={() => onOpenLevelContent?.(level.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const STAGE_SHORT: Record<string, string> = {
+  cross: 'Cross',
+  f2l: 'F2L',
+  oll: 'OLL',
+  pll: 'PLL',
+  full: 'Full',
+};
+
+type RecommendCardProps = {
+  level: LevelDefinition;
+  chapterLabel: string;
+  selected: boolean;
+  aiTouched: boolean;
+  ambiguous?: { skillId: string; teachMode: TeachMode; formulaDifficulty: number; cfopStage: string }[];
+  primary: ReturnType<typeof useLevelSkillMapStore.getState>['getPrimary'] extends (id: string) => infer R ? R : never;
+  skillOptions: { value: string; label: string }[];
+  skillById: Map<string, { id: string; stage: string; displayNameZh: string; draft?: boolean }>;
+  onToggleSelect: () => void;
+  onSetPrimary: (skillId: string) => void;
+  onUpdateMeta: (partial: { teachMode?: TeachMode; formulaDifficulty?: number }) => void;
+  onClear: () => void;
+  onResolveAmbiguous: (skillId: string) => void;
+  onOpenLevel: () => void;
+};
+
+function RecommendCard({
+  level,
+  chapterLabel,
+  selected,
+  aiTouched,
+  ambiguous,
+  primary,
+  skillOptions,
+  skillById,
+  onToggleSelect,
+  onSetPrimary,
+  onUpdateMeta,
+  onClear,
+  onResolveAmbiguous,
+  onOpenLevel,
+}: RecommendCardProps) {
+  const skill = primary ? skillById.get(primary.skillId) : undefined;
+  const status = getLevelRecommendStatus(
+    level,
+    primary,
+    skill
+      ? {
+          id: skill.id,
+          stage: skill.stage as 'cross' | 'f2l' | 'oll' | 'pll' | 'full',
+          displayNameZh: skill.displayNameZh,
+          displayNameEn: '',
+          goal: '',
+          prerequisites: [],
+          masteryStandard: 'guided_only',
+          order: 0,
+          draft: skill.draft,
+        }
+      : undefined,
+  );
+
+  const guidanceOk = Boolean(level.guidanceFormula?.trim());
+
+  return (
+    <div
+      data-level-id={level.id}
+      className={`map-card ${primary ? 'is-mapped' : ''} ${selected ? 'is-selected' : ''} ${aiTouched ? 'ai-touched' : ''} ${ambiguous ? 'is-ambiguous' : ''}`}
+    >
+      <div className="map-card-top">
+        <label className="map-card-check">
+          <input type="checkbox" checked={selected} onChange={onToggleSelect} />
+        </label>
+        <div className="map-card-title-block">
+          <div className="map-card-title">{level.title}</div>
+          <div className="map-card-sub">{chapterLabel}</div>
+        </div>
+        {aiTouched && <span className="ai-touched-badge">AI</span>}
+        <button type="button" className="btn btn-sm" onClick={onOpenLevel}>打开关卡内容</button>
+      </div>
+
+      <div className="map-card-meta-row">
+        <span>公式状态：{guidanceOk ? 'Guidance ✓' : level.rotationFormula?.trim() ? '仅 Rotation' : '缺失'}</span>
+        <span className={status.ok ? 'rec-ok' : 'rec-bad'}>
+          推荐状态：{status.ok ? '可推荐' : '不可推荐'}
+        </span>
+      </div>
+
+      {ambiguous && ambiguous.length > 0 ? (
+        <div className="map-ambiguous">
+          <p>
+            此关卡存在 {ambiguous.length} 个能力标签，请选择其中一个作为主能力标签。
+          </p>
+          <div className="map-ambiguous-actions">
+            {ambiguous.map((candidate) => (
+              <button
+                key={candidate.skillId}
+                type="button"
+                className="btn btn-sm"
+                onClick={() => onResolveAmbiguous(candidate.skillId)}
+              >
+                {skillById.get(candidate.skillId)?.displayNameZh ?? candidate.skillId}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="map-primary-fields">
+          <label>
+            主能力标签
+            <SelectDropdown
+              size="sm"
+              value={primary?.skillId ?? ''}
+              options={skillOptions}
+              placeholder="选择主能力标签..."
+              searchable
+              onChange={onSetPrimary}
+            />
+          </label>
+          <label>
+            教学模式
+            <SelectDropdown
+              size="sm"
+              value={primary?.teachMode ?? 'guided'}
+              options={TEACH_MODES.map((m) => ({ value: m.value, label: m.label }))}
+              disabled={!primary}
+              onChange={(v) => onUpdateMeta({ teachMode: v as TeachMode })}
+            />
+          </label>
+          <label>
+            推荐难度
+            <input
+              className="text-input"
+              disabled={!primary}
+              value={primary ? String(primary.formulaDifficulty) : ''}
+              onChange={(e) => {
+                const n = Number(e.target.value.replace(/[^0-9]/g, ''));
+                if (!Number.isFinite(n)) return;
+                onUpdateMeta({ formulaDifficulty: Math.min(6, Math.max(1, n)) });
+              }}
+            />
+          </label>
+          <button type="button" className="btn btn-sm" disabled={!primary} onClick={onClear}>
+            解除主标签
+          </button>
+        </div>
+      )}
+
+      {!status.ok && status.reasons.length > 0 && (
+        <div className="map-block-reasons">
+          <strong>为什么不能进入推荐</strong>
+          <ul>
+            {status.reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

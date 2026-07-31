@@ -1,11 +1,27 @@
 import { create } from 'zustand';
-import type { LevelSkillMap, LevelSkillMapEntry, LevelSkillBinding } from '@/core/skill-graph/types';
+import type {
+  LevelSkillMap,
+  LevelSkillMapEntry,
+  LevelSkillBinding,
+  SkillDefinition,
+  TeachMode,
+} from '@/core/skill-graph/types';
 import { LEVEL_SKILL_MAP_VERSION } from '@/core/skill-graph/types';
-import { exportLevelSkillMapToJSON, importLevelSkillMapFromJSON } from '@/core/skill-graph/utils';
+import {
+  bindingFromSkill,
+  exportLevelSkillMapToJSON,
+  getPrimaryBinding,
+  importLevelSkillMapFromJSON,
+  normalizeDifficulty,
+  normalizeTeachMode,
+  splitMultiBindings,
+} from '@/core/skill-graph/utils';
 
 type LevelSkillMapState = {
   levelSkillMap: LevelSkillMap | null;
   savedLevelSkillMap: LevelSkillMap | null;
+  /** levelId → candidates when legacy multi-skill needs a primary pick */
+  ambiguous: Record<string, LevelSkillBinding[]>;
   isLoaded: boolean;
   isLoading: boolean;
   hasUnsavedChanges: boolean;
@@ -15,27 +31,46 @@ type LevelSkillMapState = {
   refreshMap: () => Promise<void>;
   importFromDisk: () => Promise<boolean>;
   exportToDisk: () => Promise<string | null>;
+  /** Export only when publish checks should gate externally; always writes App v1 JSON. */
   saveMap: () => Promise<string>;
   discardChanges: () => void;
 
-  /** Replace entire entry for a level (must include skills[]). */
-  updateLevelSkillEntry: (levelId: string, entry: LevelSkillMapEntry) => void;
-  deleteLevelSkillEntry: (levelId: string) => void;
-  getLevelSkillEntry: (levelId: string) => LevelSkillMapEntry | undefined;
+  getPrimary: (levelId: string) => LevelSkillBinding | null;
+  setPrimarySkill: (
+    levelId: string,
+    skill: Pick<SkillDefinition, 'id' | 'stage'>,
+    teachMode?: TeachMode,
+    formulaDifficulty?: number,
+  ) => void;
+  updatePrimaryMeta: (
+    levelId: string,
+    partial: { teachMode?: TeachMode; formulaDifficulty?: number },
+  ) => void;
+  clearPrimary: (levelId: string) => void;
+  batchSetPrimarySkill: (
+    levelIds: string[],
+    skill: Pick<SkillDefinition, 'id' | 'stage'>,
+  ) => void;
+  batchSetTeachMode: (levelIds: string[], teachMode: TeachMode) => void;
+  batchSetDifficulty: (levelIds: string[], formulaDifficulty: number) => void;
 
-  addLevelSkillBinding: (levelId: string, binding: LevelSkillBinding) => void;
-  updateLevelSkillBinding: (
+  resolveAmbiguous: (
     levelId: string,
     skillId: string,
-    partial: Partial<Omit<LevelSkillBinding, 'skillId'>> & { skillId?: string },
+    skills: SkillDefinition[],
   ) => void;
-  removeLevelSkillBinding: (levelId: string, skillId: string) => void;
 
+  getLevelSkillEntry: (levelId: string) => LevelSkillMapEntry | undefined;
   getMappedCount: () => number;
+  getAmbiguousLevelIds: () => string[];
+
   applyAiMappings: (
-    entries: Array<{ levelId: string; bindings: LevelSkillBinding[] }>,
-    mode: 'merge' | 'replace',
+    entries: Array<{ levelId: string; binding: LevelSkillBinding | null }>,
   ) => number;
+
+  /** @deprecated use setPrimarySkill — kept for transitional callers */
+  updateLevelSkillEntry: (levelId: string, entry: LevelSkillMapEntry) => void;
+  deleteLevelSkillEntry: (levelId: string) => void;
 };
 
 const cloneMap = (map: LevelSkillMap): LevelSkillMap => ({
@@ -43,7 +78,7 @@ const cloneMap = (map: LevelSkillMap): LevelSkillMap => ({
   mappings: Object.fromEntries(
     Object.entries(map.mappings).map(([id, entry]) => [
       id,
-      { skills: entry.skills.map((b) => ({ ...b })) },
+      { skills: entry.skills.slice(0, 1).map((b) => ({ ...b })) },
     ]),
   ),
 });
@@ -53,12 +88,14 @@ const applyMap = (
   map: LevelSkillMap,
   savedMap: LevelSkillMap | null,
   hasChanged: boolean,
+  ambiguous?: Record<string, LevelSkillBinding[]>,
 ) => {
   set({
     levelSkillMap: map,
     savedLevelSkillMap: savedMap,
     hasUnsavedChanges: hasChanged,
     loadError: null,
+    ...(ambiguous !== undefined ? { ambiguous } : {}),
   });
 };
 
@@ -75,7 +112,7 @@ const setLevelEntry = (
   if (!entry || entry.skills.length === 0) {
     delete nextMappings[levelId];
   } else {
-    nextMappings[levelId] = { skills: entry.skills.map((b) => ({ ...b })) };
+    nextMappings[levelId] = { skills: [{ ...entry.skills[0] }] };
   }
 
   const nextMap: LevelSkillMap = {
@@ -89,6 +126,7 @@ const setLevelEntry = (
 export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
   levelSkillMap: null,
   savedLevelSkillMap: null,
+  ambiguous: {},
   isLoaded: false,
   isLoading: false,
   hasUnsavedChanges: false,
@@ -96,8 +134,8 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
 
   importMapFromJSON: (json: string) => {
     try {
-      const map = importLevelSkillMapFromJSON(json);
-      applyMap(set, map, null, true);
+      const { map, ambiguous } = importLevelSkillMapFromJSON(json);
+      applyMap(set, map, null, true, ambiguous);
       set({ isLoaded: true });
     } catch (error) {
       set({
@@ -112,9 +150,9 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
 
     set({ isLoading: true, loadError: null });
     try {
-      let map: LevelSkillMap | null = null;
+      let raw: LevelSkillMap | null = null;
       try {
-        map = await Promise.race([
+        raw = await Promise.race([
           window.api.db.pullLevelSkillMap(),
           new Promise<null>((resolve) => {
             window.setTimeout(() => resolve(null), 8000);
@@ -124,18 +162,25 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
         // 云端不可用时回退本地
       }
 
-      if (!map) {
+      let map: LevelSkillMap;
+      let ambiguous: Record<string, LevelSkillBinding[]> = {};
+
+      if (raw) {
+        const split = splitMultiBindings(raw.mappings);
+        map = split.map;
+        ambiguous = split.ambiguous;
+      } else {
         const runtime = await window.api.levelSkillMap.loadRuntime();
         if (runtime?.content) {
-          map = importLevelSkillMapFromJSON(runtime.content);
+          const imported = importLevelSkillMapFromJSON(runtime.content);
+          map = imported.map;
+          ambiguous = imported.ambiguous;
+        } else {
+          map = { version: LEVEL_SKILL_MAP_VERSION, mappings: {} };
         }
       }
 
-      if (!map) {
-        map = { version: LEVEL_SKILL_MAP_VERSION, mappings: {} };
-      }
-
-      applyMap(set, map, cloneMap(map), false);
+      applyMap(set, map, cloneMap(map), false, ambiguous);
       set({ isLoaded: true, isLoading: false });
     } catch (error) {
       set({
@@ -165,6 +210,9 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
   exportToDisk: async () => {
     const map = get().levelSkillMap;
     if (!map) return null;
+    if (Object.keys(get().ambiguous).length > 0) {
+      throw new Error('仍有关卡待选择主能力标签，无法导出');
+    }
     const json = exportLevelSkillMapToJSON(map);
     return window.api.skillGraph.exportToDisk(json, 'level_skill_map.json');
   },
@@ -172,6 +220,9 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
   saveMap: async () => {
     const map = get().levelSkillMap;
     if (!map) throw new Error('Level skill map not loaded');
+    if (Object.keys(get().ambiguous).length > 0) {
+      throw new Error('仍有关卡待选择主能力标签，无法保存');
+    }
     const json = exportLevelSkillMapToJSON(map);
     await window.api.levelSkillMap.saveRuntime(json);
     try {
@@ -191,68 +242,93 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     applyMap(set, cloneMap(savedMap), savedMap, false);
   },
 
-  updateLevelSkillEntry: (levelId: string, entry: LevelSkillMapEntry) => {
-    setLevelEntry(get, set, levelId, entry);
+  getPrimary: (levelId) => getPrimaryBinding(get().levelSkillMap?.mappings[levelId]),
+
+  setPrimarySkill: (levelId, skill, teachMode, formulaDifficulty) => {
+    const current = get().getPrimary(levelId);
+    setLevelEntry(get, set, levelId, {
+      skills: [
+        bindingFromSkill(
+          skill,
+          teachMode ?? current?.teachMode ?? 'guided',
+          formulaDifficulty ?? current?.formulaDifficulty ?? 1,
+        ),
+      ],
+    });
+    const nextAmbiguous = { ...get().ambiguous };
+    delete nextAmbiguous[levelId];
+    set({ ambiguous: nextAmbiguous });
   },
 
-  deleteLevelSkillEntry: (levelId: string) => {
+  updatePrimaryMeta: (levelId, partial) => {
+    const current = get().getPrimary(levelId);
+    if (!current) return;
+    setLevelEntry(get, set, levelId, {
+      skills: [
+        {
+          ...current,
+          teachMode: partial.teachMode !== undefined ? normalizeTeachMode(partial.teachMode) : current.teachMode,
+          formulaDifficulty:
+            partial.formulaDifficulty !== undefined
+              ? normalizeDifficulty(partial.formulaDifficulty)
+              : current.formulaDifficulty,
+        },
+      ],
+    });
+  },
+
+  clearPrimary: (levelId) => {
     setLevelEntry(get, set, levelId, null);
   },
 
-  getLevelSkillEntry: (levelId: string) => {
-    const map = get().levelSkillMap;
-    return map?.mappings[levelId];
-  },
-
-  addLevelSkillBinding: (levelId, binding) => {
-    const map = get().levelSkillMap;
-    if (!map) return;
-    const current = map.mappings[levelId];
-    const skills = current ? [...current.skills] : [];
-    const idx = skills.findIndex((b) => b.skillId === binding.skillId);
-    if (idx >= 0) {
-      skills[idx] = { ...binding };
-    } else {
-      skills.push({ ...binding });
+  batchSetPrimarySkill: (levelIds, skill) => {
+    for (const levelId of levelIds) {
+      const current = get().getPrimary(levelId);
+      get().setPrimarySkill(
+        levelId,
+        skill,
+        current?.teachMode ?? 'guided',
+        current?.formulaDifficulty ?? 1,
+      );
     }
-    setLevelEntry(get, set, levelId, { skills });
   },
 
-  updateLevelSkillBinding: (levelId, skillId, partial) => {
-    const map = get().levelSkillMap;
-    if (!map) return;
-    const current = map.mappings[levelId];
-    if (!current) return;
-
-    const nextSkillId = partial.skillId ?? skillId;
-    const skills = current.skills.map((b) => ({ ...b }));
-    const idx = skills.findIndex((b) => b.skillId === skillId);
-    if (idx < 0) return;
-
-    // Changing skillId to one that already exists: replace that slot and drop duplicate.
-    if (nextSkillId !== skillId) {
-      const dup = skills.findIndex((b, i) => i !== idx && b.skillId === nextSkillId);
-      if (dup >= 0) skills.splice(dup, 1);
+  batchSetTeachMode: (levelIds, teachMode) => {
+    for (const levelId of levelIds) {
+      if (!get().getPrimary(levelId)) continue;
+      get().updatePrimaryMeta(levelId, { teachMode });
     }
-
-    const at = skills.findIndex((b) => b.skillId === skillId);
-    if (at < 0) return;
-    skills[at] = {
-      ...skills[at],
-      ...partial,
-      skillId: nextSkillId,
-    };
-    setLevelEntry(get, set, levelId, { skills });
   },
 
-  removeLevelSkillBinding: (levelId, skillId) => {
-    const map = get().levelSkillMap;
-    if (!map) return;
-    const current = map.mappings[levelId];
-    if (!current) return;
-    const skills = current.skills.filter((b) => b.skillId !== skillId);
-    setLevelEntry(get, set, levelId, skills.length ? { skills } : null);
+  batchSetDifficulty: (levelIds, formulaDifficulty) => {
+    for (const levelId of levelIds) {
+      if (!get().getPrimary(levelId)) continue;
+      get().updatePrimaryMeta(levelId, { formulaDifficulty });
+    }
   },
+
+  resolveAmbiguous: (levelId, skillId, skills) => {
+    const candidates = get().ambiguous[levelId];
+    if (!candidates?.length) return;
+    const picked = candidates.find((b) => b.skillId === skillId);
+    if (!picked) return;
+    const skill = skills.find((s) => s.id === skillId);
+    setLevelEntry(get, set, levelId, {
+      skills: [
+        {
+          skillId: picked.skillId,
+          cfopStage: skill?.stage ?? picked.cfopStage,
+          teachMode: picked.teachMode,
+          formulaDifficulty: picked.formulaDifficulty,
+        },
+      ],
+    });
+    const nextAmbiguous = { ...get().ambiguous };
+    delete nextAmbiguous[levelId];
+    set({ ambiguous: nextAmbiguous });
+  },
+
+  getLevelSkillEntry: (levelId: string) => get().levelSkillMap?.mappings[levelId],
 
   getMappedCount: () => {
     const map = get().levelSkillMap;
@@ -260,7 +336,9 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     return Object.values(map.mappings).filter((e) => e.skills.length > 0).length;
   },
 
-  applyAiMappings: (entries, mode) => {
+  getAmbiguousLevelIds: () => Object.keys(get().ambiguous),
+
+  applyAiMappings: (entries) => {
     const map = get().levelSkillMap;
     if (!map) throw new Error('Level skill map not loaded');
 
@@ -268,25 +346,18 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     let applied = 0;
 
     for (const entry of entries) {
-      const bindings = entry.bindings.map((b) => ({ ...b }));
-      if (bindings.length === 0) {
-        if (mode === 'replace') delete nextMappings[entry.levelId];
+      if (!entry.binding) {
+        delete nextMappings[entry.levelId];
+        applied += 1;
         continue;
       }
-
-      if (mode === 'replace') {
-        nextMappings[entry.levelId] = { skills: bindings };
-      } else {
-        const current = nextMappings[entry.levelId];
-        const merged = current ? [...current.skills] : [];
-        for (const binding of bindings) {
-          const idx = merged.findIndex((b) => b.skillId === binding.skillId);
-          if (idx >= 0) merged[idx] = binding;
-          else merged.push(binding);
-        }
-        nextMappings[entry.levelId] = { skills: merged };
-      }
+      nextMappings[entry.levelId] = { skills: [{ ...entry.binding }] };
       applied += 1;
+    }
+
+    const nextAmbiguous = { ...get().ambiguous };
+    for (const entry of entries) {
+      delete nextAmbiguous[entry.levelId];
     }
 
     const nextMap: LevelSkillMap = {
@@ -294,7 +365,15 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
       mappings: nextMappings,
     };
     const savedMap = get().savedLevelSkillMap ?? map;
-    applyMap(set, nextMap, savedMap, true);
+    applyMap(set, nextMap, savedMap, true, nextAmbiguous);
     return applied;
+  },
+
+  updateLevelSkillEntry: (levelId, entry) => {
+    setLevelEntry(get, set, levelId, entry);
+  },
+
+  deleteLevelSkillEntry: (levelId) => {
+    setLevelEntry(get, set, levelId, null);
   },
 }));

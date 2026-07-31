@@ -61,6 +61,7 @@ export default function App() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState<'catalog' | 'skills' | 'levelSkillMap'>('catalog');
   const selectedLevelId = useUiStore((state) => state.selectedLevelId);
+  const selectLevel = useUiStore((state) => state.selectLevel);
   const hasUnsavedChanges = useCatalogStore((state) => state.hasUnsavedChanges);
   const saveCatalog = useCatalogStore((state) => state.saveCatalog);
   const refreshCatalog = useCatalogStore((state) => state.refreshCatalog);
@@ -176,7 +177,7 @@ export default function App() {
               data-tour="tab-catalog"
               onClick={() => setEditMode('catalog')}
             >
-              关卡编辑
+              关卡内容
             </button>
             <button
               type="button"
@@ -184,7 +185,7 @@ export default function App() {
               data-tour="tab-skills"
               onClick={() => setEditMode('skills')}
             >
-              技能编辑
+              AI 能力标签
             </button>
             <button
               type="button"
@@ -192,7 +193,7 @@ export default function App() {
               data-tour="tab-map"
               onClick={() => setEditMode('levelSkillMap')}
             >
-              关卡映射
+              AI 推荐配置
             </button>
           </div>
           <HelpOnboardingMenu />
@@ -243,7 +244,7 @@ export default function App() {
               />
             </div>
             <div className="studio-column studio-column-main">
-              <EditorPanel />
+              <EditorPanel onOpenAiRecommend={() => setEditMode('levelSkillMap')} />
             </div>
           </>
         ) : editMode === 'skills' ? (
@@ -252,7 +253,7 @@ export default function App() {
           </div>
         ) : (
           <div className="studio-column studio-column-main" style={{ width: '100%' }}>
-            <LevelSkillMapPanel />
+            <LevelSkillMapPanel onOpenLevelContent={(id) => { selectLevel(id); setEditMode('catalog'); }} />
           </div>
         )}
         <div className={`studio-column llm-column ${llmCollapsed ? 'is-collapsed' : ''}`}>

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
+import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
+import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import {
   deriveLevelFormulaPreset,
   formatChapterLevelOrder,
@@ -13,6 +15,7 @@ import {
   type LevelFormulaTarget,
   type LevelGuidanceFailureThreshold,
 } from '@/core/levels';
+import { getLevelRecommendStatus } from '@/core/skill-graph/utils';
 import { INITIAL_BRIGHTNESS_MATRIX, type BrightnessMatrix, type StateMatrix } from '@/core/cube';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
 import { FormulaKeyboard } from './FormulaKeyboard';
@@ -29,13 +32,18 @@ const parsePositiveInteger = (text: string): number | null => {
 
 type Tab = 'meta' | 'formula' | 'brightness' | 'guidance';
 
-export function EditorPanel() {
+export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => void } = {}) {
   const selectedLevelId = useUiStore((s) => s.selectedLevelId);
   const selectLevel = useUiStore((s) => s.selectLevel);
   const formulaAdoptionRequest = useUiStore((s) => s.formulaAdoptionRequest);
   const clearFormulaAdoptionRequest = useUiStore((s) => s.clearFormulaAdoptionRequest);
   const { levels, chapters, hasUnsavedChanges, updateLevel, deleteLevel, saveCatalog } = useCatalogStore();
   const level = useMemo(() => levels.find((l) => l.id === selectedLevelId) ?? null, [levels, selectedLevelId]);
+  const getPrimary = useLevelSkillMapStore((s) => s.getPrimary);
+  const skills = useSkillGraphStore((s) => s.skills);
+  const refreshMap = useLevelSkillMapStore((s) => s.refreshMap);
+  const levelSkillMap = useLevelSkillMapStore((s) => s.levelSkillMap);
+  const isMapLoading = useLevelSkillMapStore((s) => s.isLoading);
 
   const [activeTab, setActiveTab] = useState<Tab>('meta');
   const [titleText, setTitleText] = useState('');
@@ -63,6 +71,29 @@ export function EditorPanel() {
   }, []);
 
   useEffect(() => {
+    if (!levelSkillMap && !isMapLoading) void refreshMap();
+  }, [levelSkillMap, isMapLoading, refreshMap]);
+
+  const aiRecommendSummary = useMemo(() => {
+    if (!level) return null;
+    const primary = getPrimary(level.id);
+    const skill = primary ? skills.find((s) => s.id === primary.skillId) : undefined;
+    const status = getLevelRecommendStatus(level, primary, skill);
+    return {
+      primary,
+      skill,
+      status,
+      label: skill
+        ? `${skill.stage.toUpperCase()} · ${skill.displayNameZh}`
+        : primary
+          ? primary.skillId
+          : '未配置',
+      teachMode: primary?.teachMode ?? '—',
+      difficulty: primary ? String(primary.formulaDifficulty) : '—',
+    };
+  }, [level, getPrimary, skills]);
+
+  useEffect(() => {
     if (!level) return;
     setTitleText(level.title);
     setDescriptionText(level.description);
@@ -88,12 +119,29 @@ export function EditorPanel() {
   useEffect(() => {
     if (!formulaAdoptionRequest || !level) return;
     if (formulaAdoptionRequest.kind === 'rotation') {
-      setFormulaText(formulaAdoptionRequest.formula);
-      setFormulaTarget(formulaAdoptionRequest.target);
+      const formula = formulaAdoptionRequest.formula;
+      const target = formulaAdoptionRequest.target;
+      setFormulaText(formula);
+      setFormulaTarget(target);
       setActiveTab('formula');
+      if (formulaAdoptionRequest.autoApply !== false) {
+        try {
+          const derived = deriveLevelFormulaPreset(formula, target);
+          setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+          setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+          setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
+          setPreviewMode('start');
+          setSaveError(null);
+          setSaveNotice(`AI 已应用旋转公式（${target.toUpperCase()}），起始/目标态已生成。请检查后保存关卡。`);
+        } catch (error) {
+          setSaveError(error instanceof Error ? error.message : String(error));
+          setSaveNotice('公式已写入编辑器，但自动应用失败，请手动点「应用公式」。');
+        }
+      }
     } else {
       setGuidanceFormulaText(formulaAdoptionRequest.formula);
       setActiveTab('guidance');
+      setSaveNotice('AI 已写入指引公式，请检查后保存关卡。');
     }
     clearFormulaAdoptionRequest();
   }, [formulaAdoptionRequest, level, clearFormulaAdoptionRequest]);
@@ -254,6 +302,7 @@ export function EditorPanel() {
       setStartStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(updatedLevel.goalStateMatrix));
       setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
+      useUiStore.getState().clearAiTouched();
       setSaveNotice('关卡已保存并同步到云端。');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
@@ -353,6 +402,34 @@ export function EditorPanel() {
           {minimumStarThresholds && (
             <p className="hint-text">评分保障：{minimumStarThresholds[0]} 步内 3 星，{minimumStarThresholds[1]} 步内至少 2 星；配置只能放宽奖励。</p>
           )}
+
+          <div className="ai-recommend-summary">
+            <div className="ai-recommend-summary-header">
+              <strong>AI 推荐配置</strong>
+              <button type="button" className="btn btn-sm" onClick={() => onOpenAiRecommend?.()}>
+                前往 AI 推荐配置
+              </button>
+            </div>
+            <div className="ai-recommend-summary-grid">
+              <div><span>主能力标签</span><strong>{aiRecommendSummary?.label ?? '未配置'}</strong></div>
+              <div><span>教学模式</span><strong>{aiRecommendSummary?.teachMode ?? '—'}</strong></div>
+              <div><span>推荐难度</span><strong>{aiRecommendSummary?.difficulty ?? '—'}</strong></div>
+              <div>
+                <span>推荐状态</span>
+                <strong className={aiRecommendSummary?.status.ok ? 'rec-ok' : 'rec-bad'}>
+                  {aiRecommendSummary?.status.ok ? '可推荐' : '不可推荐'}
+                </strong>
+              </div>
+            </div>
+            {aiRecommendSummary && !aiRecommendSummary.status.ok && aiRecommendSummary.status.reasons.length > 0 && (
+              <ul className="ai-recommend-reasons">
+                {aiRecommendSummary.status.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div><button className="btn btn-danger" onClick={handleDelete}>删除当前关卡</button></div>
         </div>
       )}

@@ -133,6 +133,7 @@ export function CatalogPanel() {
   } = useCatalogStore();
   const selectedLevelId = useUiStore((s) => s.selectedLevelId);
   const selectLevel = useUiStore((s) => s.selectLevel);
+  const aiTouchedLevelIds = useUiStore((s) => s.aiTouchedLevelIds);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<LevelManagerFilter>('all');
@@ -310,6 +311,7 @@ export function CatalogPanel() {
               }}
               onAppend={() => handleAppend(section.chapterId)}
               selectedLevelId={selectedLevelId}
+              aiTouchedLevelIds={aiTouchedLevelIds}
               busy={busy}
               guidanceByLevelId={guidanceByLevelId}
               onSelect={(id) => selectLevel(id)}
@@ -386,6 +388,7 @@ type ChapterSectionProps = {
   onDeleteChapter: () => void;
   onAppend: () => void;
   selectedLevelId: string | null;
+  aiTouchedLevelIds: string[];
   busy: string | null;
   guidanceByLevelId: Record<string, ReturnType<typeof getLevelGuidanceSummary>>;
   onSelect: (levelId: string) => void;
@@ -397,7 +400,8 @@ type ChapterSectionProps = {
 
 function ChapterSection({
   section, tone, expanded, onToggle, onEditChapter, onMoveChapter, onDeleteChapter, onAppend,
-  selectedLevelId, busy, guidanceByLevelId, onSelect, onDuplicate, onToggleHidden, onMove, onDelete,
+  selectedLevelId, aiTouchedLevelIds, busy, guidanceByLevelId,
+  onSelect, onDuplicate, onToggleHidden, onMove, onDelete,
 }: ChapterSectionProps) {
   return (
     <div className={`chapter-section chapter-tone-${tone}`}>
@@ -416,16 +420,36 @@ function ChapterSection({
             </div>
           </div>
         </button>
-        <ActionMenu
-          label="章节操作"
-          className="chapter-actions-menu"
-          items={[
-            { label: '上移章节', icon: 'up', disabled: !section.canMoveUp, onSelect: () => onMoveChapter('up') },
-            { label: '下移章节', icon: 'down', disabled: !section.canMoveDown, onSelect: () => onMoveChapter('down') },
-            { label: '编辑章节', icon: 'edit', onSelect: onEditChapter },
-            { label: '删除章节', icon: 'delete', danger: true, disabled: section.configuredCount > 0, onSelect: onDeleteChapter },
-          ]}
-        />
+        <div className="chapter-header-actions">
+          <button
+            type="button"
+            className="icon-btn"
+            title="上移章节"
+            aria-label="上移章节"
+            disabled={!section.canMoveUp || busy !== null}
+            onClick={() => onMoveChapter('up')}
+          >
+            <ActionIcon name="up" />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            title="下移章节"
+            aria-label="下移章节"
+            disabled={!section.canMoveDown || busy !== null}
+            onClick={() => onMoveChapter('down')}
+          >
+            <ActionIcon name="down" />
+          </button>
+          <ActionMenu
+            label="章节操作"
+            className="chapter-actions-menu"
+            items={[
+              { label: '编辑章节', icon: 'edit', onSelect: onEditChapter },
+              { label: '删除章节', icon: 'delete', danger: true, disabled: section.configuredCount > 0, onSelect: onDeleteChapter },
+            ]}
+          />
+        </div>
       </div>
 
       {expanded && (
@@ -436,6 +460,7 @@ function ChapterSection({
               key={item.key}
               item={item}
               selected={selectedLevelId === item.level?.id}
+              aiTouched={Boolean(item.level && aiTouchedLevelIds.includes(item.level.id))}
               busy={busy}
               guidance={item.level ? guidanceByLevelId[item.level.id] : undefined}
               onSelect={onSelect}
@@ -457,6 +482,7 @@ function ChapterSection({
 type LevelRowProps = {
   item: LevelManagerItem;
   selected: boolean;
+  aiTouched: boolean;
   busy: string | null;
   guidance: ReturnType<typeof getLevelGuidanceSummary> | undefined;
   onSelect: (levelId: string) => void;
@@ -466,17 +492,24 @@ type LevelRowProps = {
   onDelete: (item: LevelManagerItem) => void;
 };
 
-function LevelRow({ item, selected, busy, guidance, onSelect, onDuplicate, onToggleHidden, onMove, onDelete }: LevelRowProps) {
+function LevelRow({ item, selected, aiTouched, busy, guidance, onSelect, onDuplicate, onToggleHidden, onMove, onDelete }: LevelRowProps) {
   if (!item.level) return null;
   const level = item.level;
   const failureThreshold = resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold);
   const disabled = busy !== null;
 
   return (
-    <div className={`level-row ${selected ? 'level-row-selected' : ''}`} onClick={() => onSelect(level.id)}>
+    <div
+      className={`level-row ${selected ? 'level-row-selected' : ''} ${aiTouched ? 'level-row-ai-touched' : ''}`}
+      onClick={() => onSelect(level.id)}
+    >
       <div className="level-row-content">
         <div className="level-row-top">
-          <span className="level-title" title={`${item.orderLabel} ${level.title}`}><span className="level-order">{item.orderLabel}</span>{level.title}</span>
+          <span className="level-title" title={`${item.orderLabel} ${level.title}`}>
+            <span className="level-order">{item.orderLabel}</span>
+            {level.title}
+          </span>
+          {aiTouched && <span className="ai-touched-badge">AI</span>}
         </div>
         <div className="level-row-meta">
           {item.isHidden && <span className="level-meta-warning">隐藏 · </span>}
@@ -485,17 +518,37 @@ function LevelRow({ item, selected, busy, guidance, onSelect, onDuplicate, onTog
           <span>失败 {failureThreshold} 次解锁</span>
         </div>
       </div>
-      <ActionMenu
-        label="关卡操作"
-        className="level-actions-menu"
-        items={[
-          { label: '复制关卡', icon: 'copy', disabled, onSelect: () => onDuplicate(level.id) },
-          { label: item.isHidden ? '显示关卡' : '隐藏关卡', icon: item.isHidden ? 'show' : 'hide', disabled, onSelect: () => onToggleHidden(level.id, !item.isHidden) },
-          { label: '上移关卡', icon: 'up', disabled: disabled || !item.canMoveUp, onSelect: () => onMove(level.id, 'up') },
-          { label: '下移关卡', icon: 'down', disabled: disabled || !item.canMoveDown, onSelect: () => onMove(level.id, 'down') },
-          { label: '删除关卡', icon: 'delete', danger: true, disabled, onSelect: () => onDelete(item) },
-        ]}
-      />
+      <div className="level-row-actions" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          className="icon-btn"
+          title="上移关卡"
+          aria-label="上移关卡"
+          disabled={disabled || !item.canMoveUp}
+          onClick={() => onMove(level.id, 'up')}
+        >
+          <ActionIcon name="up" />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          title="下移关卡"
+          aria-label="下移关卡"
+          disabled={disabled || !item.canMoveDown}
+          onClick={() => onMove(level.id, 'down')}
+        >
+          <ActionIcon name="down" />
+        </button>
+        <ActionMenu
+          label="关卡操作"
+          className="level-actions-menu"
+          items={[
+            { label: '复制关卡', icon: 'copy', disabled, onSelect: () => onDuplicate(level.id) },
+            { label: item.isHidden ? '显示关卡' : '隐藏关卡', icon: item.isHidden ? 'show' : 'hide', disabled, onSelect: () => onToggleHidden(level.id, !item.isHidden) },
+            { label: '删除关卡', icon: 'delete', danger: true, disabled, onSelect: () => onDelete(item) },
+          ]}
+        />
+      </div>
     </div>
   );
 }

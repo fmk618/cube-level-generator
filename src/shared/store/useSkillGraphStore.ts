@@ -25,9 +25,10 @@ type SkillGraphState = {
   discardChanges: () => void;
   resetToDefault: () => Promise<void>;
 
-  createSkill: (input: Omit<SkillDefinition, 'id'>) => SkillDefinition;
+  createSkill: (input: Omit<SkillDefinition, 'id'> & { id?: string }) => SkillDefinition;
   updateSkill: (skillId: string, partial: Partial<SkillDefinition>) => SkillDefinition | null;
   deleteSkill: (skillId: string) => void;
+  getSkillsReferencing: (skillId: string) => string[];
   getSkillById: (skillId: string) => SkillDefinition | undefined;
   getSkillsByStage: (stage: SkillDefinition['stage']) => SkillDefinition[];
   applyAiSkillProposals: (
@@ -251,11 +252,17 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     const skillGraph = get().skillGraph;
     if (!skillGraph) throw new Error('Skill graph not loaded');
 
-    const skillId = generateSkillId(input.stage);
+    const skillId = (input.id?.trim() || generateSkillId(input.stage)).trim();
+    if (!skillId) throw new Error('标签 ID 不能为空');
+    if (skillGraph.skills.some((s) => s.id === skillId)) {
+      throw new Error(`标签 ID 已存在：${skillId}`);
+    }
+
+    const { id: _ignored, ...rest } = input;
     const newSkill: SkillDefinition = {
-      ...input,
+      ...rest,
       id: skillId,
-      draft: true,
+      draft: input.draft ?? true,
     };
 
     const nextSkillGraph: SkillGraphDocument = {
@@ -275,6 +282,10 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
 
     const currentSkill = skillGraph.skills.find((skill) => skill.id === skillId);
     if (!currentSkill) return null;
+
+    if (partial.id && partial.id !== skillId) {
+      throw new Error('已创建的标签 ID 不可修改');
+    }
 
     const updatedSkill: SkillDefinition = {
       ...currentSkill,
@@ -299,13 +310,12 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     const skillGraph = get().skillGraph;
     if (!skillGraph) return;
 
-    // Check if any other skill depends on this
     const dependents = skillGraph.skills.filter((skill) =>
       skill.prerequisites.includes(skillId),
     );
     if (dependents.length > 0) {
       throw new Error(
-        `Cannot delete skill "${skillId}" - it is required by: ${dependents.map((s) => s.id).join(', ')}`,
+        `无法删除「${skillId}」— 仍被前置依赖：${dependents.map((s) => s.id).join(', ')}`,
       );
     }
 
@@ -316,6 +326,14 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
 
     const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
     applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
+  },
+
+  getSkillsReferencing: (skillId) => {
+    const skillGraph = get().skillGraph;
+    if (!skillGraph) return [];
+    return skillGraph.skills
+      .filter((skill) => skill.prerequisites.includes(skillId))
+      .map((skill) => skill.id);
   },
 
   getSkillById: (skillId: string) => {

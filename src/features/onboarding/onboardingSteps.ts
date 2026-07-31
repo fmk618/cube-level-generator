@@ -20,7 +20,6 @@ async function prepareMode(
   let el = await waitForTourTarget(tourId, 4000);
   if (el) return;
 
-  // Retry once — React may still be committing the mode switch.
   ctx.setEditMode(mode);
   await new Promise((r) => window.setTimeout(r, 120));
   await nextFrame();
@@ -63,22 +62,20 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     {
       id: 'module-tabs',
       target: tourSelector('module-tabs'),
-      title: '三页联调总览',
+      title: '三页 + 发布检查',
       content:
-        '顶部三个标签是完整数据链路：关卡编辑（内容）→ 技能编辑（技能树）→ 关卡映射（关联）。调试时按这个顺序走，缺一不可。',
+        '流程：关卡内容 → AI 能力标签 → AI 推荐配置 → 发布检查。AI 用标签判断薄弱项，最终推荐并执行的始终是可玩关卡。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'catalog', 'module-tabs');
       },
     },
-
-    // —— 关卡编辑 ——
     {
       id: 'tab-catalog',
       target: tourSelector('tab-catalog'),
-      title: '① 关卡编辑',
+      title: '① 关卡内容',
       content:
-        '先进入关卡编辑。这里维护关卡本身：章节归属、起终状态、公式、亮度与引导等。没有关卡数据，后面的映射无从校验。',
+        '维护真实可玩数据：章节、起终状态、旋转/指引公式、亮度与步数星级。公式请只在这里配置。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'catalog', 'tab-catalog');
@@ -89,7 +86,7 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
       target: tourSelector('level-list'),
       title: '选择要调试的关卡',
       content:
-        '左侧按章节列出全部关卡。点选一条后，中间编辑区会载入该关卡，便于逐关检查状态与公式。',
+        '左侧按章节列出关卡。可用上下箭头排序；点选后中间编辑区载入该关。',
       placement: 'right',
       before: async () => {
         await prepareMode(ctx, 'catalog', 'level-list');
@@ -98,8 +95,8 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     {
       id: 'level-search',
       target: tourSelector('level-search'),
-      title: '快速定位关卡',
-      content: '可用名称、ID 或章节关键词搜索，批量排查时不必逐章翻找。',
+      title: '搜索关卡',
+      content: '用搜索快速定位章节或关卡标题 / ID。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'catalog', 'level-search');
@@ -108,9 +105,9 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     {
       id: 'level-editor',
       target: tourSelector('level-editor'),
-      title: '编辑关卡内容',
+      title: '编辑玩法与只读推荐摘要',
       content:
-        '中间是关卡主编辑区：改标题、起终态、公式与预览。改完记得保存，确保磁盘上的关卡数据与界面一致。',
+        '在基础信息里可看到只读「AI 推荐配置」摘要，并可跳转到推荐配置页。旋转公式、指引与 3D 预览仍在本页维护。',
       placement: 'left',
       before: async () => {
         await prepareMode(ctx, 'catalog', 'level-editor');
@@ -120,21 +117,18 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
       id: 'import-export',
       target: tourSelector('import-export'),
       title: '关卡导入 / 导出',
-      content:
-        '可从已有配置导入关卡，或导出当前目录做备份与跨环境同步。联调前建议先确认导入的是目标版本。',
+      content: '可从已有配置导入关卡，或导出当前目录做备份。',
       placement: 'top',
       before: async () => {
         await prepareMode(ctx, 'catalog', 'import-export');
       },
     },
-
-    // —— 技能编辑 ——
     {
       id: 'tab-skills',
       target: tourSelector('tab-skills'),
-      title: '② 技能编辑',
+      title: '② AI 能力标签',
       content:
-        '接下来切到技能编辑。技能树是映射的另一端：关卡要挂到具体 CFOP 技能（白十字 / F2L / OLL / PLL 等）上。',
+        '能力标签是内部判定维度，不是独立玩法，也不配公式。一关只绑一个主标签；一个标签可关联多关。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'skills', 'tab-skills');
@@ -143,9 +137,8 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     {
       id: 'skill-editor',
       target: tourSelector('skill-editor'),
-      title: '筛选与新建技能',
-      content:
-        '按阶段筛选技能，或新建一条。调试时先确认目标技能存在、阶段正确，再去做关卡映射。',
+      title: '筛选与新建标签',
+      content: '按 Stage 筛选，或新建标签（可填稳定 ID）。草稿标签不得进入推荐。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'skills', 'skill-editor');
@@ -154,9 +147,9 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     {
       id: 'skill-list',
       target: tourSelector('skill-list'),
-      title: '维护技能定义',
+      title: '维护标签定义',
       content:
-        '在列表里检查中英文名、训练目标与掌握标准。技能 ID / 阶段会写进映射表，改错会导致关卡挂不上。',
+        '编辑内部名称、能力定义、前置标签、筛选顺序与启用状态，并查看被哪些关卡引用。',
       placement: 'top',
       before: async () => {
         await prepareMode(ctx, 'skills', 'skill-list');
@@ -165,54 +158,30 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     {
       id: 'skill-save',
       target: tourSelector('skill-save'),
-      title: '保存 / 导出技能树',
-      content: '技能改动后点保存落盘，需要分发时再导出。映射页读取的是已保存的技能数据。',
+      title: '保存 / 导出能力标签',
+      content: '改动后点保存落盘；需要分发时再导出 skill_graph。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'skills', 'skill-save');
       },
     },
-
-    // —— 关卡映射 ——
     {
       id: 'tab-map',
       target: tourSelector('tab-map'),
-      title: '③ 关卡映射',
+      title: '③ AI 推荐配置',
       content:
-        '最后进入关卡映射：一个关卡可以绑定多个技能，每个技能各自设置教学模式（引导 / 挑战 / 演示）与难度。这是三页联调的验收页。',
+        '为每个关卡指定唯一主能力标签，并设置教学模式与推荐难度。综合关请绑综合标签（如 cross.integrate）。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'levelSkillMap', 'tab-map');
       },
     },
     {
-      id: 'skill-select',
-      target: tourSelector('map-list'),
-      title: '单关添加技能',
-      content:
-        '在卡片里点「点击选择技能」或「+ 添加技能」即可绑定；一关可绑多个技能，各自设置模式与难度。',
-      placement: 'top',
-      before: async () => {
-        await prepareMode(ctx, 'levelSkillMap', 'map-list');
-      },
-    },
-    {
-      id: 'assign-button',
-      target: tourSelector('map-list'),
-      title: '批量追加（可选）',
-      content:
-        '需要给多个关卡挂同一技能时：先勾选卡片左侧复选框，顶部会出现「批量追加」条，选技能后一键追加。平时单关编辑不必用它。',
-      placement: 'top',
-      before: async () => {
-        await prepareMode(ctx, 'levelSkillMap', 'map-list');
-      },
-    },
-    {
       id: 'map-list',
       target: tourSelector('map-list'),
-      title: '逐关校验映射',
+      title: '逐关配置主标签',
       content:
-        '卡片展示已绑技能列表：可改每条的技能 / 模式 / 难度，可移除单条或清除全部。联调目标：目标关卡都挂上正确技能。',
+        '选择主能力标签、教学模式与难度；可查看推荐状态与不可推荐原因。勾选多关可批量替换配置。',
       placement: 'top',
       before: async () => {
         await prepareMode(ctx, 'levelSkillMap', 'map-list');
@@ -221,21 +190,20 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
     {
       id: 'map-save',
       target: tourSelector('map-save'),
-      title: '保存 / 导出映射',
-      content: '映射调通后保存，并可导出给客户端或其他环境。至此三页数据链路就闭环了。',
+      title: '④ 发布检查与导出',
+      content:
+        '先点「发布检查」，通过后再「导出给 App」。导出为 App v1：version=1 且 map 下一关一条主标签。',
       placement: 'bottom',
       before: async () => {
         await prepareMode(ctx, 'levelSkillMap', 'map-save');
       },
     },
-
-    // —— 辅助 ——
     {
       id: 'ai-assistant',
       target: tourSelector('ai-assistant'),
-      title: 'AI 公式助手（可选）',
+      title: 'AI 助手（可选）',
       content:
-        '调试关卡公式时，可在这里按目标生成候选公式，再贴回关卡编辑区验证。它不替代三页主流程，只是加速公式排查。',
+        '可按页生成公式、章节/关卡、能力标签或主标签配置。提案需人工审核后再应用。',
       placement: 'left',
       before: async () => {
         ctx.ensureLlmExpanded();
@@ -248,7 +216,7 @@ export function buildOnboardingSteps(ctx: OnboardingTourContext): Step[] {
       target: 'body',
       title: '联调清单',
       content:
-        '验收时确认：① 关卡内容正确且已保存；② 技能树阶段/名称正确且已保存；③ 映射覆盖目标关卡（可一关多技能），模式与难度合理并已导出。以后可从「帮助 → 新手引导」重看。',
+        '验收：① 关卡内容正确；② 能力标签非玩法且已保存；③ 每关一个主标签；④ 发布检查通过并导出 App v1。可从「帮助 → 新手引导」重看。',
       placement: 'center',
       hideOverlay: false,
       skipBeacon: true,
