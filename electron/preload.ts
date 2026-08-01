@@ -39,6 +39,17 @@ const api = {
   levelSkillMap: {
     loadRuntime: (): Promise<ImportResult> => ipcRenderer.invoke('levelSkillMap:loadRuntime'),
     saveRuntime: (json: string): Promise<string> => ipcRenderer.invoke('levelSkillMap:saveRuntime', json),
+    importFromDisk: (): Promise<ImportResult> => ipcRenderer.invoke('levelSkillMap:importFromDisk'),
+    exportToDisk: (json: string, suggestedName: string): Promise<string | null> =>
+      ipcRenderer.invoke('levelSkillMap:exportToDisk', json, suggestedName),
+  },
+  migration: {
+    exportAppBundle: (files: {
+      catalog: string;
+      skillGraph: string;
+      levelSkillMap: string;
+    }): Promise<{ directory: string; filePaths: string[] } | null> =>
+      ipcRenderer.invoke('migration:exportAppBundle', files),
   },
   db: {
     ping: (): Promise<DbPingResult> => ipcRenderer.invoke('db:ping'),

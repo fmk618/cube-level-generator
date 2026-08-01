@@ -203,6 +203,16 @@ export function CatalogPanel() {
     });
   };
 
+  const handleImport = () => {
+    if (
+      hasUnsavedChanges
+      && !window.confirm('导入 JSON 会覆盖当前未保存的关卡草稿，确定继续吗？')
+    ) {
+      return;
+    }
+    void run('import', () => importFromDisk());
+  };
+
   const handleSubmitChapter = () => {
     if (!chapterDraft) return;
     const capacity = Number(chapterDraft.capacity);
@@ -339,13 +349,13 @@ export function CatalogPanel() {
           </div>
         </div>
         <div className="btn-grid">
-          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('import', () => importFromDisk())}>导入配置</button>
-          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('export', () => exportToDisk())}>导出配置</button>
+          <button className="btn btn-sm" disabled={busy !== null} onClick={handleImport}>导入 JSON</button>
+          <button className="btn btn-sm" disabled={busy !== null} onClick={() => run('export', () => exportToDisk())}>导出 JSON</button>
           <button className="btn btn-sm" disabled={busy !== null || !hasUnsavedChanges} onClick={() => run('discard', () => discardChanges())}>放弃草稿</button>
           <button className="btn btn-sm btn-danger" disabled={busy !== null} onClick={() => {
-            if (!window.confirm('确定要恢复默认关卡吗？这会覆盖当前草稿。')) return;
+            if (!window.confirm('确定要恢复内置关卡吗？这会覆盖当前草稿。')) return;
             void run('reset', () => resetToDefault());
-          }}>恢复默认</button>
+          }}>恢复内置</button>
         </div>
       </div>
 

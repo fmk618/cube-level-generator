@@ -41,6 +41,7 @@ export function SkillGraphPanel() {
   const deleteSkill = useSkillGraphStore((state) => state.deleteSkill);
   const createSkill = useSkillGraphStore((state) => state.createSkill);
   const exportToDisk = useSkillGraphStore((state) => state.exportToDisk);
+  const importFromDisk = useSkillGraphStore((state) => state.importFromDisk);
   const saveSkillGraph = useSkillGraphStore((state) => state.saveSkillGraph);
   const resetToDefault = useSkillGraphStore((state) => state.resetToDefault);
   const aiTouchedSkillIds = useUiStore((state) => state.aiTouchedSkillIds);
@@ -96,6 +97,22 @@ export function SkillGraphPanel() {
       setError(filePath ? '✓ 导出成功' : '导出已取消');
     } catch (err) {
       setError(err instanceof Error ? err.message : '导出失败');
+    }
+  };
+
+  const handleImport = async () => {
+    if (
+      hasUnsavedChanges
+      && !window.confirm('导入 JSON 会覆盖当前未保存的能力标签草稿，确定继续吗？')
+    ) {
+      return;
+    }
+    try {
+      setError(null);
+      const imported = await importFromDisk();
+      setError(imported ? '✓ 已导入 JSON，请检查后保存并同步' : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '导入失败');
     }
   };
 
@@ -171,7 +188,7 @@ export function SkillGraphPanel() {
               <p>{loadError}</p>
               <div className="skill-empty-actions">
                 <button className="btn btn-sm btn-primary" onClick={() => void refreshSkillGraph()}>重试</button>
-                <button className="btn btn-sm" onClick={() => void resetToDefault()}>恢复默认</button>
+                <button className="btn btn-sm" onClick={() => void resetToDefault()}>恢复内置</button>
               </div>
             </>
           ) : (
@@ -204,10 +221,11 @@ export function SkillGraphPanel() {
           <span className="skill-badge">{skills.length} 个标签</span>
         </div>
         <div className="skill-header-actions" id="skill-export" data-tour="skill-save">
-          <button className="btn btn-sm" onClick={() => void handleExport()}>导出</button>
+          <button className="btn btn-sm" onClick={() => void handleImport()}>导入 JSON</button>
+          <button className="btn btn-sm" onClick={() => void handleExport()}>导出 JSON</button>
           {hasUnsavedChanges && (
             <button className="btn btn-sm btn-primary" onClick={() => void handleSave()} disabled={saving}>
-              {saving ? '保存中...' : '保存'}
+              {saving ? '保存中...' : '保存并同步'}
             </button>
           )}
         </div>
@@ -431,7 +449,7 @@ function SkillCard({
           </div>
           <div className="skill-form-actions">
             <button className="btn btn-sm" onClick={onClose}>取消</button>
-            <button className="btn btn-sm btn-primary" onClick={handleSave}>保存</button>
+            <button className="btn btn-sm btn-primary" onClick={handleSave}>应用修改</button>
           </div>
         </div>
       ) : (
