@@ -166,12 +166,7 @@ export default function App() {
   return (
     <div className="studio-shell">
       <header className="studio-titlebar">
-        <div className="titlebar-identity">
-          <div className="titlebar-copy">
-            <strong>cube-level-generator</strong>
-          </div>
-        </div>
-        <div className="titlebar-actions" id="global-editor-actions">
+        <nav className="titlebar-nav" aria-label="编辑模块">
           <div className="editor-mode-tabs" data-tour="module-tabs">
             <button
               type="button"
@@ -198,6 +193,13 @@ export default function App() {
               AI 推荐配置
             </button>
           </div>
+        </nav>
+        <div className="titlebar-identity">
+          <div className="titlebar-copy">
+            <strong>cube-level-generator</strong>
+          </div>
+        </div>
+        <div className="titlebar-actions" id="global-editor-actions">
           <button type="button" className="btn btn-sm" onClick={() => setMigrationOpen(true)}>
             从 App 迁移
           </button>
@@ -208,7 +210,7 @@ export default function App() {
                 {hasUnsavedChanges && <span className="save-state"><i />未保存</span>}
                 <button
                   type="button"
-                  className="btn btn-primary titlebar-save"
+                  className="btn btn-sm btn-primary titlebar-save"
                   disabled={!hasUnsavedChanges || savingCatalog}
                   onClick={() => void handleCatalogSave()}
                 >
