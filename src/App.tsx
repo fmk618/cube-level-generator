@@ -6,6 +6,7 @@ import { SkillGraphPanel } from '@/features/skill-graph/SkillGraphPanel';
 import { LevelSkillMapPanel } from '@/features/skill-graph/LevelSkillMapPanel';
 import { OnboardingTour } from '@/features/onboarding/OnboardingTour';
 import { HelpOnboardingMenu } from '@/features/onboarding/HelpOnboardingMenu';
+import { AppDataImportWizard } from '@/features/migration/AppDataImportWizard';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
@@ -60,6 +61,7 @@ export default function App() {
   const [savingCatalog, setSavingCatalog] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState<'catalog' | 'skills' | 'levelSkillMap'>('catalog');
+  const [migrationOpen, setMigrationOpen] = useState(false);
   const selectedLevelId = useUiStore((state) => state.selectedLevelId);
   const selectLevel = useUiStore((state) => state.selectLevel);
   const hasUnsavedChanges = useCatalogStore((state) => state.hasUnsavedChanges);
@@ -196,20 +198,25 @@ export default function App() {
               AI 推荐配置
             </button>
           </div>
+          <button type="button" className="btn btn-sm" onClick={() => setMigrationOpen(true)}>
+            从 App 迁移
+          </button>
           <HelpOnboardingMenu />
-          {!selectedLevelId && editMode === 'catalog' && (
-            <>
-              {hasUnsavedChanges && <span className="save-state"><i />未保存</span>}
-              <button
-                type="button"
-                className="btn btn-primary titlebar-save"
-                disabled={!hasUnsavedChanges || savingCatalog}
-                onClick={() => void handleCatalogSave()}
-              >
-                {savingCatalog ? <><span className="spinner" />保存中</> : '保存关卡'}
-              </button>
-            </>
-          )}
+          <div className="titlebar-save-slot">
+            {!selectedLevelId && editMode === 'catalog' ? (
+              <>
+                {hasUnsavedChanges && <span className="save-state"><i />未保存</span>}
+                <button
+                  type="button"
+                  className="btn btn-primary titlebar-save"
+                  disabled={!hasUnsavedChanges || savingCatalog}
+                  onClick={() => void handleCatalogSave()}
+                >
+                  {savingCatalog ? <><span className="spinner" />保存中</> : '保存并同步'}
+                </button>
+              </>
+            ) : null}
+          </div>
         </div>
       </header>
       {saveError && <div className="global-save-error">{saveError}</div>}
@@ -286,6 +293,14 @@ export default function App() {
           />
         </div>
       </main>
+      <AppDataImportWizard
+        open={migrationOpen}
+        onClose={() => setMigrationOpen(false)}
+        onOpenPage={(page) => {
+          setMigrationOpen(false);
+          setEditMode(page);
+        }}
+      />
       <OnboardingTour
         editMode={editMode}
         setEditMode={setEditMode}

@@ -119,7 +119,7 @@ ipcMain.handle('catalog:getRuntimePath', () => CATALOG_FILE());
 ipcMain.handle('catalog:importFromDisk', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: '导入关卡文件',
+    title: '导入关卡内容',
     filters: [{ name: 'JSON', extensions: ['json'] }],
     properties: ['openFile'],
   });
@@ -131,7 +131,7 @@ ipcMain.handle('catalog:importFromDisk', async () => {
 ipcMain.handle('catalog:exportToDisk', async (_event, json: string, suggestedName: string) => {
   if (!mainWindow) return null;
   const result = await dialog.showSaveDialog(mainWindow, {
-    title: '导出关卡文件',
+    title: '导出关卡内容',
     defaultPath: suggestedName,
     filters: [{ name: 'JSON', extensions: ['json'] }],
   });
@@ -166,7 +166,7 @@ ipcMain.handle('skillGraph:saveRuntime', async (_event, json: string) => {
 ipcMain.handle('skillGraph:importFromDisk', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: '导入 Skill 树文件',
+    title: '导入 AI 能力标签',
     filters: [{ name: 'JSON', extensions: ['json'] }],
     properties: ['openFile'],
   });
@@ -178,7 +178,7 @@ ipcMain.handle('skillGraph:importFromDisk', async () => {
 ipcMain.handle('skillGraph:exportToDisk', async (_event, json: string, suggestedName: string) => {
   if (!mainWindow) return null;
   const result = await dialog.showSaveDialog(mainWindow, {
-    title: '导出 Skill 树文件',
+    title: '导出 AI 能力标签',
     defaultPath: suggestedName,
     filters: [{ name: 'JSON', extensions: ['json'] }],
   });
@@ -200,6 +200,77 @@ ipcMain.handle('levelSkillMap:saveRuntime', async (_event, json: string) => {
   }
   await writeFileAtomically(LEVEL_SKILL_MAP_FILE(), json);
   return LEVEL_SKILL_MAP_FILE();
+});
+
+ipcMain.handle('levelSkillMap:importFromDisk', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '导入 AI 推荐配置',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const content = await fs.readFile(result.filePaths[0], 'utf-8');
+  return { filePath: result.filePaths[0], content };
+});
+
+ipcMain.handle('levelSkillMap:exportToDisk', async (_event, json: string, suggestedName: string) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: '导出 AI 推荐配置',
+    defaultPath: suggestedName,
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  await fs.writeFile(result.filePath, json, 'utf-8');
+  return result.filePath;
+});
+
+ipcMain.handle('migration:exportAppBundle', async (_event, files: {
+  catalog: string;
+  skillGraph: string;
+  levelSkillMap: string;
+}) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '选择 App 数据导出文件夹',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  const directory = result.filePaths[0];
+  const outputs = [
+    { name: 'game_levels_english.json', content: files.catalog },
+    { name: 'skill_graph_cfop.json', content: files.skillGraph },
+    { name: 'level_skill_map.json', content: files.levelSkillMap },
+  ];
+  const existing = [];
+  for (const output of outputs) {
+    if (await readJsonFileIfExists(path.join(directory, output.name)) !== null) {
+      existing.push(output.name);
+    }
+  }
+  if (existing.length > 0) {
+    const confirmation = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: '确认覆盖导出文件',
+      message: `目标文件夹已有 ${existing.length} 个同名文件。`,
+      detail: `${existing.join('\n')}\n\n是否用当前已校验的数据覆盖？`,
+      buttons: ['取消', '覆盖'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (confirmation.response !== 1) return null;
+  }
+
+  await Promise.all(outputs.map((output) => (
+    writeFileAtomically(path.join(directory, output.name), output.content)
+  )));
+  return {
+    directory,
+    filePaths: outputs.map((output) => path.join(directory, output.name)),
+  };
 });
 
 ipcMain.handle('db:ping', async () => pingDb());

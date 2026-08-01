@@ -138,9 +138,11 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
       applyMap(set, map, null, true, ambiguous);
       set({ isLoaded: true });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       set({
-        loadError: error instanceof Error ? error.message : String(error),
+        loadError: message,
       });
+      throw new Error(message);
     }
   },
 
@@ -193,15 +195,16 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
   importFromDisk: async () => {
     set({ isLoading: true });
     try {
-      const result = await window.api.skillGraph.importFromDisk();
+      const result = await window.api.levelSkillMap.importFromDisk();
       if (!result) return false;
       get().importMapFromJSON(result.content);
       return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       set({
-        loadError: error instanceof Error ? error.message : String(error),
+        loadError: message,
       });
-      return false;
+      throw new Error(message);
     } finally {
       set({ isLoading: false });
     }
@@ -214,7 +217,7 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
       throw new Error('仍有关卡待选择主能力标签，无法导出');
     }
     const json = exportLevelSkillMapToJSON(map);
-    return window.api.skillGraph.exportToDisk(json, 'level_skill_map.json');
+    return window.api.levelSkillMap.exportToDisk(json, 'level_skill_map.json');
   },
 
   saveMap: async () => {

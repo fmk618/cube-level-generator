@@ -1,0 +1,345 @@
+.migration-overlay {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(24, 24, 27, 0.46);
+  backdrop-filter: blur(5px);
+}
+
+.migration-dialog {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(820px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-overlay);
+}
+
+.migration-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.migration-direction {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 9px 16px;
+  color: var(--text-secondary);
+  background: var(--preview-accent-soft);
+  border-bottom: 1px solid var(--preview-accent-border);
+  font-size: 11px;
+}
+
+.migration-direction span {
+  font-weight: 600;
+}
+
+.migration-direction strong {
+  color: var(--preview-accent);
+}
+
+.migration-header h2,
+.migration-header p {
+  margin: 0;
+}
+
+.migration-header h2 {
+  margin-top: 2px;
+  font-size: 20px;
+}
+
+.migration-header p {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.migration-eyebrow {
+  color: var(--preview-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.migration-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  font-size: 23px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.migration-close:hover {
+  color: var(--text-primary);
+  background: var(--surface-secondary);
+}
+
+.migration-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 12px;
+  overflow-y: auto;
+  background: var(--surface-secondary);
+  border-right: 1px solid var(--border);
+}
+
+.migration-steps button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  color: var(--text-secondary);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.migration-steps button > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.migration-steps button div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.migration-steps button strong {
+  color: inherit;
+  font-size: 12px;
+}
+
+.migration-steps button small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.migration-steps button.is-active {
+  color: var(--text-primary);
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.migration-steps button.is-active > span {
+  color: #ffffff;
+  background: var(--preview-accent);
+  border-color: var(--preview-accent);
+}
+
+.migration-steps button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.migration-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  min-height: 390px;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.migration-guidance strong {
+  font-size: 15px;
+}
+
+.migration-guidance p {
+  max-width: 580px;
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+}
+
+.migration-file,
+.migration-summary,
+.migration-save-note,
+.migration-notice,
+.migration-result,
+.migration-legacy {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: var(--radius-control);
+}
+
+.migration-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+}
+
+.migration-file span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.migration-file strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migration-summary {
+  color: var(--text-primary);
+  background: var(--primary-light);
+}
+
+.migration-save-note {
+  color: var(--text-secondary);
+  background: var(--surface-secondary);
+  border-left: 3px solid var(--border-strong);
+}
+
+.migration-notice.is-ok,
+.migration-result.is-ready {
+  color: #15803d;
+  background: var(--success-light);
+  border: 1px solid #bbf7d0;
+}
+
+.migration-notice.is-error,
+.migration-result.is-blocked {
+  color: #b91c1c;
+  background: var(--danger-light);
+  border: 1px solid #fecaca;
+}
+
+.migration-notice.is-warning,
+.migration-legacy {
+  color: #9a3412;
+  background: var(--warning-light);
+  border: 1px solid #fed7aa;
+}
+
+.migration-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.migration-inline-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  color: #9a3412;
+  background: var(--warning-light);
+  border: 1px solid #fed7aa;
+  border-radius: var(--radius-control);
+}
+
+.migration-inline-action span {
+  font-size: 12px;
+}
+
+.migration-inline-action .btn {
+  flex: 0 0 auto;
+}
+
+.migration-issues {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  color: #b91c1c;
+  background: var(--danger-light);
+  border-radius: var(--radius-control);
+}
+
+.migration-result strong {
+  font-size: 15px;
+}
+
+.migration-result p {
+  margin: 4px 0 0;
+}
+
+.migration-review-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.migration-review-grid div {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.migration-review-grid span,
+.migration-review-grid small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.migration-review-grid strong {
+  margin: 2px 0;
+  font-size: 22px;
+}
+
+@media (max-width: 720px) {
+  .migration-dialog {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+  }
+
+  .migration-steps {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .migration-steps button {
+    min-width: 142px;
+  }
+
+  .migration-review-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

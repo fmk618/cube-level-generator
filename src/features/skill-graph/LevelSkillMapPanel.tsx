@@ -56,6 +56,7 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
   const batchSetDifficulty = useLevelSkillMapStore((state) => state.batchSetDifficulty);
   const resolveAmbiguous = useLevelSkillMapStore((state) => state.resolveAmbiguous);
   const exportToDisk = useLevelSkillMapStore((state) => state.exportToDisk);
+  const importFromDisk = useLevelSkillMapStore((state) => state.importFromDisk);
   const hasUnsavedChanges = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
   const saveMap = useLevelSkillMapStore((state) => state.saveMap);
   const refreshMap = useLevelSkillMapStore((state) => state.refreshMap);
@@ -152,6 +153,23 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
     }
   };
 
+  const handleImport = async () => {
+    if (
+      hasUnsavedChanges
+      && !window.confirm('导入 JSON 会覆盖当前未保存的推荐配置草稿，确定继续吗？')
+    ) {
+      return;
+    }
+    try {
+      setError(null);
+      setPublishIssues(null);
+      const imported = await importFromDisk();
+      setError(imported ? '✓ 已导入 JSON，请先运行发布检查' : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '导入失败');
+    }
+  };
+
   const handleSave = async () => {
     try {
       setError(null);
@@ -203,10 +221,11 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
           </p>
         </div>
         <div className="map-header-actions" data-tour="map-save">
+          <button type="button" className="btn btn-sm" onClick={() => void handleImport()}>导入 JSON</button>
           <button type="button" className="btn btn-sm" onClick={runPublishCheck}>发布检查</button>
-          <button type="button" className="btn btn-sm" onClick={() => void handleExport()}>导出给 App</button>
+          <button type="button" className="btn btn-sm" onClick={() => void handleExport()}>导出 JSON</button>
           {hasUnsavedChanges && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存</button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存并同步</button>
           )}
         </div>
       </div>
