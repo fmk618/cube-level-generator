@@ -236,7 +236,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         const catalog = get().catalog;
         if (!catalog) return null;
         const json = exportLevelsToJSON(catalog);
-        return window.api.catalog.exportToDisk(json, 'game_levels.json');
+        return window.api.catalog.exportToDisk(json, 'game_levels_english.json');
     },
 
     saveCatalog: async () => {

@@ -154,6 +154,15 @@ button {
   min-width: 220px;
 }
 
+.titlebar-save-slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 180px;
+  min-width: 180px;
+  gap: 12px;
+}
+
 .titlebar-copy {
   display: flex;
   align-items: center;

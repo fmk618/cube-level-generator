@@ -21,6 +21,15 @@ declare global {
       levelSkillMap: {
         loadRuntime: () => Promise<{ filePath: string; content: string } | null>;
         saveRuntime: (json: string) => Promise<string>;
+        importFromDisk: () => Promise<{ filePath: string; content: string } | null>;
+        exportToDisk: (json: string, suggestedName: string) => Promise<string | null>;
+      };
+      migration: {
+        exportAppBundle: (files: {
+          catalog: string;
+          skillGraph: string;
+          levelSkillMap: string;
+        }) => Promise<{ directory: string; filePaths: string[] } | null>;
       };
       db: {
         ping: () => Promise<{

@@ -178,9 +178,11 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       applySkillGraph(set, skillGraph, null, true);
       set({ isLoaded: true });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       set({
-        loadError: error instanceof Error ? error.message : String(error),
+        loadError: message,
       });
+      throw new Error(message);
     }
   },
 
@@ -193,10 +195,11 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       set({ runtimeFilePath: result.filePath });
       return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       set({
-        loadError: error instanceof Error ? error.message : String(error),
+        loadError: message,
       });
-      return false;
+      throw new Error(message);
     } finally {
       set({ isLoading: false });
     }
