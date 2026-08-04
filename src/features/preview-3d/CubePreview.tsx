@@ -1,7 +1,7 @@
 import { Suspense, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, ContactShadows } from '@react-three/drei';
-import { CubeScene } from './CubeScene';
+import { CubeScene, type CubePlayRequest } from './CubeScene';
 import type { BrightnessMatrix, ColorMatrix, StateMatrix } from '@/core/cube';
 
 export type CubePreviewProps = {
@@ -9,9 +9,17 @@ export type CubePreviewProps = {
   brightnessMatrix: BrightnessMatrix;
   colorMatrix?: ColorMatrix;
   className?: string;
+  playRequest?: CubePlayRequest | null;
+  onPlayComplete?: (requestId: number) => void;
 };
 
-function SceneContent({ stateMatrix, brightnessMatrix, colorMatrix }: Omit<CubePreviewProps, 'className'>) {
+function SceneContent({
+  stateMatrix,
+  brightnessMatrix,
+  colorMatrix,
+  playRequest,
+  onPlayComplete,
+}: Omit<CubePreviewProps, 'className'>) {
   return (
     <>
       <ambientLight intensity={0.6} />
@@ -26,7 +34,13 @@ function SceneContent({ stateMatrix, brightnessMatrix, colorMatrix }: Omit<CubeP
       />
       <directionalLight position={[-3, 2, -4]} intensity={0.3} />
       <directionalLight position={[0, 4, 6]} intensity={0.2} />
-      <CubeScene stateMatrix={stateMatrix} brightnessMatrix={brightnessMatrix} colorMatrix={colorMatrix} />
+      <CubeScene
+        stateMatrix={stateMatrix}
+        brightnessMatrix={brightnessMatrix}
+        colorMatrix={colorMatrix}
+        playRequest={playRequest}
+        onPlayComplete={onPlayComplete}
+      />
       <ContactShadows
         position={[0, -1.2, 0]}
         opacity={0.25}
@@ -48,7 +62,14 @@ function LoadingFallback() {
   );
 }
 
-export function CubePreview({ stateMatrix, brightnessMatrix, colorMatrix, className }: CubePreviewProps) {
+export function CubePreview({
+  stateMatrix,
+  brightnessMatrix,
+  colorMatrix,
+  className,
+  playRequest = null,
+  onPlayComplete,
+}: CubePreviewProps) {
   const [view, setView] = useState<'perspective' | 'front' | 'top'>('perspective');
   const [zoom, setZoom] = useState(0);
   const [revision, setRevision] = useState(0);
@@ -79,7 +100,13 @@ export function CubePreview({ stateMatrix, brightnessMatrix, colorMatrix, classN
       >
         <fog attach="fog" args={['#f5f5f4', 8, 18]} />
         <Suspense fallback={<LoadingFallback />}>
-          <SceneContent stateMatrix={stateMatrix} brightnessMatrix={brightnessMatrix} colorMatrix={colorMatrix} />
+          <SceneContent
+            stateMatrix={stateMatrix}
+            brightnessMatrix={brightnessMatrix}
+            colorMatrix={colorMatrix}
+            playRequest={playRequest}
+            onPlayComplete={onPlayComplete}
+          />
         </Suspense>
       </Canvas>
       <div className="cube-view-controls" aria-label="3D 预览视角控制">

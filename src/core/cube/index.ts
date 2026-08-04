@@ -15,6 +15,7 @@ export {
     rotateStateMatrixLayer, rotateLocationMatrixLayer, rotateColorMatrixLayer,
     cloneStateMatrix, cloneColorMatrix, cloneLocationMatrix, cloneBrightnessMatrix,
     brightnessMatrixToArray, brightnessArrayToMatrix,
+    qFromAxisAngle, qMul,
 } from './matrixOps';
 
 export {
