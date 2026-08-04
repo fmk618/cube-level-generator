@@ -329,6 +329,12 @@ export function CatalogPanel() {
               onToggleHidden={handleToggleHidden}
               onMove={handleMoveLevel}
               onDelete={handleDelete}
+              onRenameChapter={(title) => {
+                void run(`chapter-rename:${section.chapterId}`, () => updateChapter(section.chapterId, { title }));
+              }}
+              onRenameLevel={(levelId, title) => {
+                void run(`level-rename:${levelId}`, () => updateLevel(levelId, { title }));
+              }}
             />
           ))}
           <button
@@ -406,30 +412,87 @@ type ChapterSectionProps = {
   onToggleHidden: (levelId: string, nextHidden: boolean) => void;
   onMove: (levelId: string, direction: LevelMoveDirection) => void;
   onDelete: (item: LevelManagerItem) => void;
+  onRenameChapter: (title: string) => void;
+  onRenameLevel: (levelId: string, title: string) => void;
 };
 
 function ChapterSection({
   section, tone, expanded, onToggle, onEditChapter, onMoveChapter, onDeleteChapter, onAppend,
   selectedLevelId, aiTouchedLevelIds, busy, guidanceByLevelId,
-  onSelect, onDuplicate, onToggleHidden, onMove, onDelete,
+  onSelect, onDuplicate, onToggleHidden, onMove, onDelete, onRenameChapter, onRenameLevel,
 }: ChapterSectionProps) {
+  const [editingChapterTitle, setEditingChapterTitle] = useState(false);
+  const [chapterTitleDraft, setChapterTitleDraft] = useState(section.chapterLabel);
+
+  useEffect(() => {
+    if (!editingChapterTitle) setChapterTitleDraft(section.chapterLabel);
+  }, [section.chapterLabel, editingChapterTitle]);
+
+  const commitChapterTitle = () => {
+    const next = chapterTitleDraft.trim();
+    setEditingChapterTitle(false);
+    if (!next || next === section.chapterLabel) {
+      setChapterTitleDraft(section.chapterLabel);
+      return;
+    }
+    onRenameChapter(next);
+  };
+
   return (
     <div className={`chapter-section chapter-tone-${tone}`}>
       <div className="chapter-header">
-        <button className="chapter-header-toggle" onClick={onToggle}>
-          <span className={`chevron ${expanded ? 'chevron-down' : ''}`} aria-hidden>
-            <svg viewBox="0 0 24 24" fill="none">
-              <path d="m9 5 7 7-7 7" />
-            </svg>
-          </span>
-          <div className="chapter-copy">
+        <div className="chapter-header-main">
+          <button type="button" className="chapter-header-toggle" onClick={onToggle} aria-label={expanded ? '折叠章节' : '展开章节'}>
+            <span className={`chevron ${expanded ? 'chevron-down' : ''}`} aria-hidden>
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="m9 5 7 7-7 7" />
+              </svg>
+            </span>
+          </button>
+          <div
+            className="chapter-copy"
+            onClick={() => {
+              if (!editingChapterTitle) onToggle();
+            }}
+            role="presentation"
+          >
             <div className="chapter-eyebrow">{section.partName}</div>
-            <div className="chapter-title" title={section.chapterLabel}>{section.chapterLabel}</div>
+            {editingChapterTitle ? (
+              <input
+                className="text-input inline-title-input"
+                value={chapterTitleDraft}
+                autoFocus
+                onChange={(event) => setChapterTitleDraft(event.target.value)}
+                onBlur={commitChapterTitle}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitChapterTitle();
+                  }
+                  if (event.key === 'Escape') {
+                    setChapterTitleDraft(section.chapterLabel);
+                    setEditingChapterTitle(false);
+                  }
+                }}
+              />
+            ) : (
+              <div
+                className="chapter-title"
+                title={`${section.chapterLabel}（双击编辑）`}
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setEditingChapterTitle(true);
+                }}
+              >
+                {section.chapterLabel}
+              </div>
+            )}
             <div className="chapter-subtitle">
               {section.configuredCount} 个关卡 · 容量 {section.capacity} · {section.hiddenCount} 个隐藏
             </div>
           </div>
-        </button>
+        </div>
         <div className="chapter-header-actions">
           <button
             type="button"
@@ -478,6 +541,7 @@ function ChapterSection({
               onToggleHidden={onToggleHidden}
               onMove={onMove}
               onDelete={onDelete}
+              onRename={(title) => item.level && onRenameLevel(item.level.id, title)}
             />
           ))}
           <button className="btn btn-ghost btn-block catalog-add-button" onClick={onAppend}>
@@ -500,13 +564,34 @@ type LevelRowProps = {
   onToggleHidden: (levelId: string, nextHidden: boolean) => void;
   onMove: (levelId: string, direction: LevelMoveDirection) => void;
   onDelete: (item: LevelManagerItem) => void;
+  onRename: (title: string) => void;
 };
 
-function LevelRow({ item, selected, aiTouched, busy, guidance, onSelect, onDuplicate, onToggleHidden, onMove, onDelete }: LevelRowProps) {
+function LevelRow({
+  item, selected, aiTouched, busy, guidance,
+  onSelect, onDuplicate, onToggleHidden, onMove, onDelete, onRename,
+}: LevelRowProps) {
+  const [editing, setEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(item.level?.title ?? '');
+
+  useEffect(() => {
+    if (!editing && item.level) setTitleDraft(item.level.title);
+  }, [item.level?.title, editing, item.level]);
+
   if (!item.level) return null;
   const level = item.level;
   const failureThreshold = resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold);
   const disabled = busy !== null;
+
+  const commitTitle = () => {
+    const next = titleDraft.trim();
+    setEditing(false);
+    if (!next || next === level.title) {
+      setTitleDraft(level.title);
+      return;
+    }
+    onRename(next);
+  };
 
   return (
     <div
@@ -515,10 +600,41 @@ function LevelRow({ item, selected, aiTouched, busy, guidance, onSelect, onDupli
     >
       <div className="level-row-content">
         <div className="level-row-top">
-          <span className="level-title" title={`${item.orderLabel} ${level.title}`}>
-            <span className="level-order">{item.orderLabel}</span>
-            {level.title}
-          </span>
+          {editing ? (
+            <div className="level-title-edit" onClick={(event) => event.stopPropagation()}>
+              <span className="level-order">{item.orderLabel}</span>
+              <input
+                className="text-input inline-title-input"
+                value={titleDraft}
+                autoFocus
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={commitTitle}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitTitle();
+                  }
+                  if (event.key === 'Escape') {
+                    setTitleDraft(level.title);
+                    setEditing(false);
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <span
+              className="level-title"
+              title={`${item.orderLabel} ${level.title}（双击编辑）`}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setEditing(true);
+              }}
+            >
+              <span className="level-order">{item.orderLabel}</span>
+              {level.title}
+            </span>
+          )}
           {aiTouched && <span className="ai-touched-badge">AI</span>}
         </div>
         <div className="level-row-meta">
