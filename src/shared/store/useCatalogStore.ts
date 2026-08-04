@@ -47,7 +47,7 @@ type CatalogState = {
     runtimeFilePath: string | null;
     loadError: string | null;
 
-    refreshCatalog: () => Promise<void>;
+    refreshCatalog: (options?: { force?: boolean; persistLocal?: boolean }) => Promise<void>;
     importCatalogFromJSON: (json: string) => void;
     importFromDisk: () => Promise<boolean>;
     exportToDisk: () => Promise<string | null>;
@@ -184,13 +184,16 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
     runtimeFilePath: null,
     loadError: null,
 
-    refreshCatalog: async () => {
+    refreshCatalog: async (options) => {
+        const force = options?.force === true;
+        const persistLocal = options?.persistLocal === true;
         const state = get();
-        if (state.hasUnsavedChanges && state.catalog) return;
+        if (!force && state.hasUnsavedChanges && state.catalog) return;
 
         set({ isLoading: true, loadError: null });
         try {
             let catalog: LevelCatalogDocument | null = null;
+            let fromCloud = false;
             try {
                 const cloud = await Promise.race([
                     window.api.db.pullCatalog(),
@@ -198,18 +201,26 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
                         window.setTimeout(() => resolve(null), 8000);
                     }),
                 ]);
-                if (cloud) catalog = normalizeLevelCatalogDocument(cloud);
+                if (cloud) {
+                    catalog = normalizeLevelCatalogDocument(cloud);
+                    fromCloud = true;
+                }
             } catch {
                 // 云端不可用时回退本地
             }
 
             if (!catalog) {
+                if (force && persistLocal) {
+                    throw new Error('无法从云端拉取关卡目录，请检查网络与数据库连接');
+                }
                 const runtimeJson = await window.api.catalog.loadRuntime();
                 const json = runtimeJson ?? await window.api.catalog.loadDefault();
                 catalog = importLevelsFromJSON(json);
             }
 
-            const runtimeFilePath = await window.api.catalog.getRuntimePath();
+            const runtimeFilePath = persistLocal && fromCloud
+                ? await window.api.catalog.saveRuntime(exportLevelsToJSON(catalog))
+                : await window.api.catalog.getRuntimePath();
             applyCatalog(set, catalog, catalog, false);
             set({ isLoading: false, runtimeFilePath });
         } catch (error) {
@@ -217,6 +228,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
                 isLoading: false,
                 loadError: error instanceof Error ? error.message : String(error),
             });
+            throw error;
         }
     },
 
