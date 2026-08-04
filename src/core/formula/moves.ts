@@ -148,6 +148,11 @@ const expandToken = (token: string): LayerMove[] => {
     return Array.from({ length: repeat }).flatMap(() => expandBaseToken(base, dir));
 };
 
+/** 将单个公式记号展开为逐层 90° 转动（供 3D 预览动画使用） */
+export const expandTokenToLayerMoves = (token: string): LayerMove[] => expandToken(token);
+
+export type FormulaLayerMove = LayerMove;
+
 export const applyTokensToState = (stateMatrix: StateMatrix, tokens: string[]): StateMatrix =>
     tokens.reduce((current, token) => {
         const expanded = expandToken(token);

@@ -3,12 +3,14 @@ const QUICK_TOKENS = ['U', 'D', 'F', 'B', 'L', 'R', 'M', 'E', 'S', 'x', 'y', 'z'
 type FormulaKeyboardProps = {
   value: string;
   onChange: (next: string) => void;
+  onTokenAppended?: (token: string) => void;
 };
 
-export function FormulaKeyboard({ value, onChange }: FormulaKeyboardProps) {
+export function FormulaKeyboard({ value, onChange, onTokenAppended }: FormulaKeyboardProps) {
   const append = (token: string) => {
     const trimmed = value.trimEnd();
     onChange(trimmed.length > 0 ? `${trimmed} ${token}` : token);
+    onTokenAppended?.(token);
   };
 
   const applyModifierToLast = (modifier: "'" | '2') => {
@@ -44,7 +46,7 @@ export function FormulaKeyboard({ value, onChange }: FormulaKeyboardProps) {
         <button type="button" className="formula-key formula-key-danger" onClick={backspace}>⌫</button>
         <button type="button" className="formula-key formula-key-danger" onClick={() => onChange('')}>清空</button>
       </div>
-      <p className="hint-text">小写 u/d/f/b/l/r 为宽转，M/E/S 为切片，x/y/z 为整体旋转；也可以直接在输入框里打字（支持 R2、(R U)2 等写法）。</p>
+      <p className="hint-text">小写 u/d/f/b/l/r 为宽转，M/E/S 为切片，x/y/z 为整体旋转；也可以直接在输入框里打字（支持 R2、(R U)2 等写法）。点击按键时 3D 预览会播放对应转体。</p>
     </div>
   );
 }

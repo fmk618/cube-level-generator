@@ -65,12 +65,50 @@
 
 .skill-create-inline {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.skill-create-form {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.skill-create-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.skill-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.skill-create-field > span,
+.skill-create-field > label > span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.skill-stage-chips {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
-.skill-create-select {
-  width: 120px;
+.skill-create-actions {
+  display: flex;
+  gap: 8px;
 }
 
 /* List */

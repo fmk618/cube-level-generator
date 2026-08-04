@@ -14,6 +14,7 @@ import {
     type LevelFormulaTarget,
     type LevelId,
 } from '@/core/levels';
+import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 
 export type LevelMoveDirection = 'up' | 'down';
 
@@ -242,17 +243,25 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
     saveCatalog: async () => {
         const catalog = get().catalog;
         if (!catalog) throw new Error('关卡目录尚未加载。');
+        const sync = useCloudSyncStore.getState();
+        sync.beginLocal('正在保存关卡到本地…');
         const json = exportLevelsToJSON(catalog);
         const filePath = await window.api.catalog.saveRuntime(json);
-        try {
-            await window.api.db.pushCatalog(catalog);
-        } catch (error) {
-            throw new Error(
-                `本地已保存，但云端同步失败：${error instanceof Error ? error.message : String(error)}`,
-            );
-        }
         applyCatalog(set, catalog, catalog, false);
         set({ runtimeFilePath: filePath });
+        sync.markCloud('本地已保存，正在同步云端…', 45);
+
+        const snapshot = catalog;
+        void (async () => {
+            try {
+                sync.setProgress(70, '正在上传关卡到云端…');
+                await window.api.db.pushCatalog(snapshot);
+                sync.finishOk('关卡已保存并同步到云端');
+            } catch (error) {
+                sync.finishError(error instanceof Error ? error.message : String(error));
+            }
+        })();
+
         return filePath;
     },
 
