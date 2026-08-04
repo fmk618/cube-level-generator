@@ -133,6 +133,13 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     document.addEventListener('mouseup', onUp);
   }, [previewHeight]);
 
+  const handleTabBarResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offsetY = event.clientY - rect.top;
+    if (offsetY > 8) return;
+    startWorkspaceResize(event);
+  }, [startWorkspaceResize]);
+
   useEffect(() => {
     if (!levelSkillMap && !isMapLoading) void refreshMap();
   }, [levelSkillMap, isMapLoading, refreshMap]);
@@ -493,7 +500,11 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         />
 
         <div className="editor-workspace">
-          <div className="tab-bar">
+          <div
+            className="tab-bar"
+            onMouseDown={handleTabBarResizeStart}
+            title="在顶部边框拖拽可调整下方编辑区高度"
+          >
             {(['meta', 'formula', 'brightness', 'guidance'] as Tab[]).map((tab) => (
               <button key={tab} className={`tab tab-${tab} ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>
                 {tab === 'meta' ? '基础信息' : tab === 'formula' ? '旋转公式' : tab === 'brightness' ? '点亮控制' : '指引校验'}
