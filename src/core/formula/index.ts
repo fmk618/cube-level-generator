@@ -21,6 +21,8 @@ export {
     mapTokensByOrientation,
     mapTokensByOrientationWithSource,
     stringifyFormulaTokens,
+    expandTokenToLayerMoves,
+    type FormulaLayerMove,
 } from './moves';
 export {
     buildF2LGoalStateMatrix,

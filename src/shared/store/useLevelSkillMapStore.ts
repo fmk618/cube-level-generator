@@ -16,6 +16,7 @@ import {
   normalizeTeachMode,
   splitMultiBindings,
 } from '@/core/skill-graph/utils';
+import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 
 type LevelSkillMapState = {
   levelSkillMap: LevelSkillMap | null;
@@ -226,16 +227,24 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     if (Object.keys(get().ambiguous).length > 0) {
       throw new Error('仍有关卡待选择主能力标签，无法保存');
     }
+    const sync = useCloudSyncStore.getState();
+    sync.beginLocal('正在保存推荐配置到本地…');
     const json = exportLevelSkillMapToJSON(map);
     await window.api.levelSkillMap.saveRuntime(json);
-    try {
-      await window.api.db.pushLevelSkillMap(map);
-    } catch (error) {
-      throw new Error(
-        `本地已保存，但云端同步失败：${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
     applyMap(set, map, cloneMap(map), false);
+    sync.markCloud('本地已保存，正在同步云端…', 45);
+
+    const snapshot = map;
+    void (async () => {
+      try {
+        sync.setProgress(70, '正在上传推荐配置到云端…');
+        await window.api.db.pushLevelSkillMap(snapshot);
+        sync.finishOk('推荐配置已保存并同步到云端');
+      } catch (error) {
+        sync.finishError(error instanceof Error ? error.message : String(error));
+      }
+    })();
+
     return 'saved';
   },
 
