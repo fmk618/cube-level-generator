@@ -174,7 +174,7 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
       setError(null);
       await saveMap();
       clearAiTouched();
-      setError('✓ 已保存并同步到云端（App v1）');
+      setError('✓ 已保存到本地，云端后台同步中（App v1）');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
     }
@@ -224,7 +224,7 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
           <button type="button" className="btn btn-sm" onClick={runPublishCheck}>发布检查</button>
           <button type="button" className="btn btn-sm" onClick={() => void handleExport()}>导出 JSON</button>
           {hasUnsavedChanges && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存并同步</button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存到本地</button>
           )}
         </div>
       </div>

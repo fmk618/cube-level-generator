@@ -146,7 +146,7 @@ export function SkillGraphPanel() {
       setError(null);
       await saveSkillGraph();
       clearAiTouched();
-      setError('✓ 已保存并同步到云端');
+      setError('✓ 已保存到本地，云端后台同步中');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
     } finally {
@@ -190,6 +190,11 @@ export function SkillGraphPanel() {
     }
     try {
       setError(null);
+      const displayNameZh = newDisplayNameZh.trim();
+      if (!displayNameZh) {
+        setError('请填写内部名称');
+        return;
+      }
       const maxOrder =
         Math.max(0, ...skills.filter((s) => s.stage === newSkillStage).map((s) => s.order)) + 1;
       const created = createSkill({
@@ -212,6 +217,15 @@ export function SkillGraphPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败');
     }
+  };
+
+  const resetCreateForm = () => {
+    setShowCreate(false);
+    setNewSkillId('');
+    setNewDisplayNameZh('');
+    setNewDisplayNameEn('');
+    setNewGoal('');
+    setNewSkillStage('cross');
   };
 
   const handleDeleteSkill = (skillId: string) => {
@@ -318,7 +332,7 @@ export function SkillGraphPanel() {
           <button className="btn btn-sm" onClick={() => void handleExport()}>导出 JSON</button>
           {hasUnsavedChanges && (
             <button className="btn btn-sm btn-primary" onClick={() => void handleSave()} disabled={saving}>
-              {saving ? '保存中...' : '保存并同步'}
+              {saving ? '保存中...' : '保存到本地'}
             </button>
           )}
         </div>
