@@ -16,7 +16,7 @@ import {
   type LevelFormulaTarget,
   type LevelGuidanceFailureThreshold,
 } from '@/core/levels';
-import { getLevelRecommendStatus } from '@/core/skill-graph/utils';
+import { getLevelRecommendStatus, getTeachModeLabel } from '@/core/skill-graph/utils';
 import { INITIAL_BRIGHTNESS_MATRIX, type BrightnessMatrix, type StateMatrix } from '@/core/cube';
 import { expandTokenToLayerMoves } from '@/core/formula';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
@@ -535,7 +535,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             </div>
             <div className="ai-recommend-summary-grid">
               <div><span>主能力标签</span><strong>{aiRecommendSummary?.label ?? '未配置'}</strong></div>
-              <div><span>教学模式</span><strong>{aiRecommendSummary?.teachMode ?? '—'}</strong></div>
+              <div><span>教学模式</span><strong>{aiRecommendSummary?.teachMode ? getTeachModeLabel(aiRecommendSummary.teachMode) : '—'}</strong></div>
               <div><span>推荐难度</span><strong>{aiRecommendSummary?.difficulty ?? '—'}</strong></div>
               <div>
                 <span>推荐状态</span>

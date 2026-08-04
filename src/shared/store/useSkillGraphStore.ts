@@ -1,9 +1,12 @@
 import { create } from 'zustand';
-import type { SkillGraphDocument, SkillDefinition } from '@/core/skill-graph/types';
+import type { SkillGraphDocument, SkillDefinition, StageDefinition } from '@/core/skill-graph/types';
 import {
   exportSkillGraphToJSON,
   importSkillGraphFromJSON,
   isSkillGraphDocumentShape,
+  isValidStageId,
+  normalizeStageId,
+  resolveStages,
   validateSkillGraph,
 } from '@/core/skill-graph/utils';
 import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
@@ -28,6 +31,9 @@ type SkillGraphState = {
 
   createSkill: (input: Omit<SkillDefinition, 'id'> & { id?: string }) => SkillDefinition;
   updateSkill: (skillId: string, partial: Partial<SkillDefinition>) => SkillDefinition | null;
+  addStage: (input: { id: string; label: string }) => StageDefinition;
+  updateStage: (stageId: string, partial: { label?: string; order?: number }) => void;
+  removeStage: (stageId: string) => void;
   deleteSkill: (skillId: string) => void;
   getSkillsReferencing: (skillId: string) => string[];
   getSkillById: (skillId: string) => SkillDefinition | undefined;
@@ -54,6 +60,23 @@ const generateSkillId = (stage: string): string => {
 const cloneSkillGraph = (doc: SkillGraphDocument): SkillGraphDocument => ({
   version: doc.version,
   skills: doc.skills.map((skill) => ({ ...skill })),
+  ...(doc.stages ? { stages: doc.stages.map((stage) => ({ ...stage })) } : {}),
+});
+
+const withSkills = (
+  skillGraph: SkillGraphDocument,
+  skills: SkillDefinition[],
+): SkillGraphDocument => ({
+  ...skillGraph,
+  skills,
+});
+
+const withStages = (
+  skillGraph: SkillGraphDocument,
+  stages: StageDefinition[],
+): SkillGraphDocument => ({
+  ...skillGraph,
+  stages: stages.map((stage) => ({ ...stage })),
 });
 
 const applySkillGraph = (
@@ -62,10 +85,12 @@ const applySkillGraph = (
   savedSkillGraph: SkillGraphDocument | null,
   hasChanged: boolean,
 ) => {
+  const stageOrder = new Map(
+    resolveStages(skillGraph).map((stage) => [stage.id, stage.order] as const),
+  );
   const skills = [...skillGraph.skills].sort((a, b) => {
-    const stageOrder = { cross: 0, f2l: 1, oll: 2, pll: 3, full: 4 };
     const stageDiff =
-      (stageOrder[a.stage] ?? 999) - (stageOrder[b.stage] ?? 999);
+      (stageOrder.get(a.stage) ?? 999) - (stageOrder.get(b.stage) ?? 999);
     if (stageDiff !== 0) return stageDiff;
     return a.order - b.order;
   });
@@ -277,10 +302,7 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       draft: input.draft ?? true,
     };
 
-    const nextSkillGraph: SkillGraphDocument = {
-      version: skillGraph.version,
-      skills: [...skillGraph.skills, newSkill],
-    };
+    const nextSkillGraph = withSkills(skillGraph, [...skillGraph.skills, newSkill]);
 
     const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
     applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
@@ -305,17 +327,95 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       id: currentSkill.id,
     };
 
-    const nextSkillGraph: SkillGraphDocument = {
-      version: skillGraph.version,
-      skills: skillGraph.skills.map((skill) =>
-        skill.id === skillId ? updatedSkill : skill,
-      ),
-    };
+    const nextSkillGraph = withSkills(
+      skillGraph,
+      skillGraph.skills.map((skill) => (skill.id === skillId ? updatedSkill : skill)),
+    );
 
     const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
     applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
 
     return nextSkillGraph.skills.find((skill) => skill.id === skillId) ?? null;
+  },
+
+  addStage: (input) => {
+    const skillGraph = get().skillGraph;
+    if (!skillGraph) throw new Error('Skill graph not loaded');
+
+    const id = normalizeStageId(input.id, '');
+    if (!id || !isValidStageId(id)) {
+      throw new Error('阶段 ID 需为小写字母开头，仅含 a-z / 0-9 / _，最长 32');
+    }
+    const label = input.label.trim();
+    if (!label) throw new Error('阶段显示名不能为空');
+
+    const stages = resolveStages(skillGraph);
+    if (stages.some((stage) => stage.id === id)) {
+      throw new Error(`阶段 ID 已存在：${id}`);
+    }
+
+    const nextStage: StageDefinition = {
+      id,
+      label: label.slice(0, 24),
+      order: Math.max(0, ...stages.map((stage) => stage.order)) + 1,
+    };
+    const nextSkillGraph = withStages(skillGraph, [...stages, nextStage]);
+    const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
+    applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
+    return nextStage;
+  },
+
+  updateStage: (stageId, partial) => {
+    const skillGraph = get().skillGraph;
+    if (!skillGraph) return;
+
+    const stages = resolveStages(skillGraph);
+    if (!stages.some((stage) => stage.id === stageId)) {
+      throw new Error(`找不到阶段：${stageId}`);
+    }
+
+    const nextStages = stages.map((stage) => {
+      if (stage.id !== stageId) return stage;
+      return {
+        ...stage,
+        label:
+          typeof partial.label === 'string' && partial.label.trim()
+            ? partial.label.trim().slice(0, 24)
+            : stage.label,
+        order:
+          typeof partial.order === 'number' && Number.isFinite(partial.order)
+            ? Math.round(partial.order)
+            : stage.order,
+      };
+    });
+
+    const nextSkillGraph = withStages(skillGraph, nextStages);
+    const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
+    applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
+  },
+
+  removeStage: (stageId) => {
+    const skillGraph = get().skillGraph;
+    if (!skillGraph) return;
+
+    const stages = resolveStages(skillGraph);
+    if (stages.length <= 1) {
+      throw new Error('至少保留一个阶段');
+    }
+    if (!stages.some((stage) => stage.id === stageId)) {
+      throw new Error(`找不到阶段：${stageId}`);
+    }
+    const usedBy = skillGraph.skills.filter((skill) => skill.stage === stageId);
+    if (usedBy.length > 0) {
+      throw new Error(`无法删除：仍有 ${usedBy.length} 个能力标签使用该阶段`);
+    }
+
+    const nextSkillGraph = withStages(
+      skillGraph,
+      stages.filter((stage) => stage.id !== stageId),
+    );
+    const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
+    applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
   },
 
   deleteSkill: (skillId) => {
@@ -331,10 +431,10 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       );
     }
 
-    const nextSkillGraph: SkillGraphDocument = {
-      version: skillGraph.version,
-      skills: skillGraph.skills.filter((skill) => skill.id !== skillId),
-    };
+    const nextSkillGraph = withSkills(
+      skillGraph,
+      skillGraph.skills.filter((skill) => skill.id !== skillId),
+    );
 
     const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
     applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
@@ -399,10 +499,7 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       }
     }
 
-    const nextSkillGraph: SkillGraphDocument = {
-      version: skillGraph.version,
-      skills,
-    };
+    const nextSkillGraph = withSkills(skillGraph, skills);
     const savedSkillGraph = get().savedSkillGraph ?? skillGraph;
     applySkillGraph(set, nextSkillGraph, savedSkillGraph, true);
     return { created, updated };

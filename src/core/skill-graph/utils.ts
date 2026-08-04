@@ -8,9 +8,81 @@ import type {
   LevelSkillMapImportResult,
   SkillDefinition,
   SkillStage,
+  StageDefinition,
   TeachMode,
 } from './types';
 import { LEVEL_SKILL_MAP_VERSION } from './types';
+
+export const BUILTIN_STAGES: StageDefinition[] = [
+  { id: 'cross', label: '白十字', order: 0 },
+  { id: 'f2l', label: '两层', order: 1 },
+  { id: 'oll', label: 'OLL', order: 2 },
+  { id: 'pll', label: 'PLL', order: 3 },
+  { id: 'full', label: '进阶', order: 4 },
+];
+
+// 兼容旧代码引用
+export const SKILL_STAGES: SkillStage[] = BUILTIN_STAGES.map((s) => s.id);
+
+export const isValidStageId = (value: string): boolean =>
+  /^[a-z][a-z0-9_]{0,31}$/.test(value);
+
+export const normalizeStageId = (value: unknown, fallback: SkillStage = 'cross'): SkillStage => {
+  if (typeof value !== 'string') return fallback;
+  const id = value.trim().toLowerCase();
+  return isValidStageId(id) ? id : fallback;
+};
+
+export const normalizeStages = (value: unknown): StageDefinition[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const next: StageDefinition[] = [];
+  const seen = new Set<string>();
+  for (const [index, item] of value.entries()) {
+    if (!item || typeof item !== 'object') continue;
+    const raw = item as Record<string, unknown>;
+    const id = normalizeStageId(raw.id, '');
+    if (!id || seen.has(id)) continue;
+    const label =
+      typeof raw.label === 'string' && raw.label.trim()
+        ? raw.label.trim().slice(0, 24)
+        : id;
+    const order =
+      typeof raw.order === 'number' && Number.isFinite(raw.order)
+        ? Math.round(raw.order)
+        : index;
+    seen.add(id);
+    next.push({ id, label, order });
+  }
+  if (next.length === 0) return undefined;
+  return next.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+};
+
+/** 从旧版 stageLabels 迁移，或回退到内置五段 */
+export const stagesFromLegacyLabels = (value: unknown): StageDefinition[] | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  let changed = false;
+  const stages = BUILTIN_STAGES.map((stage) => {
+    const label = raw[stage.id];
+    if (typeof label === 'string' && label.trim() && label.trim() !== stage.label) {
+      changed = true;
+      return { ...stage, label: label.trim().slice(0, 24) };
+    }
+    return { ...stage };
+  });
+  return changed ? stages : undefined;
+};
+
+export const resolveStages = (doc?: Pick<SkillGraphDocument, 'stages'> | null): StageDefinition[] => {
+  const custom = normalizeStages(doc?.stages);
+  if (custom && custom.length > 0) return custom;
+  return BUILTIN_STAGES.map((stage) => ({ ...stage }));
+};
+
+export const resolveStageLabel = (
+  stages: StageDefinition[],
+  stageId: SkillStage,
+): string => stages.find((stage) => stage.id === stageId)?.label ?? stageId;
 
 export const exportSkillGraphToJSON = (document: SkillGraphDocument): string => {
   return JSON.stringify(document, null, 2);
@@ -27,20 +99,33 @@ export const importSkillGraphFromJSON = (json: string): SkillGraphDocument => {
     const parsed = JSON.parse(json) as unknown;
     if (!parsed || typeof parsed !== 'object') throw new Error('Invalid skill graph format');
 
-    const doc = parsed as SkillGraphDocument;
+    const doc = parsed as SkillGraphDocument & { stageLabels?: unknown };
     if (!Array.isArray(doc.skills)) throw new Error('Missing skills array');
+    const stages =
+      normalizeStages(doc.stages) ?? stagesFromLegacyLabels(doc.stageLabels);
 
     return {
       version: doc.version || 1,
       skills: doc.skills.map((skill) => validateSkill(skill)),
+      ...(stages ? { stages } : {}),
     };
   } catch (error) {
     throw new Error(`Failed to parse skill graph: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
-const STAGES: SkillStage[] = ['cross', 'f2l', 'oll', 'pll', 'full'];
 const TEACH_MODES: TeachMode[] = ['guided', 'challenge', 'demo'];
+
+export const TEACH_MODE_OPTIONS: { value: TeachMode; label: string }[] = [
+  { value: 'guided', label: 'Guided（引导）' },
+  { value: 'challenge', label: 'Challenge（挑战）' },
+  { value: 'demo', label: 'Demo（演示）' },
+];
+
+export const getTeachModeLabel = (mode: TeachMode | string | undefined): string => {
+  const normalized = normalizeTeachMode(mode);
+  return TEACH_MODE_OPTIONS.find((option) => option.value === normalized)?.label ?? normalized;
+};
 
 export const normalizeTeachMode = (value: unknown): TeachMode =>
   TEACH_MODES.includes(value as TeachMode) ? (value as TeachMode) : 'guided';
@@ -52,7 +137,7 @@ export const normalizeDifficulty = (value: unknown): number => {
 };
 
 export const normalizeStage = (value: unknown, fallback: SkillStage = 'cross'): SkillStage =>
-  STAGES.includes(value as SkillStage) ? (value as SkillStage) : fallback;
+  normalizeStageId(value, fallback);
 
 export const normalizeBinding = (raw: unknown): LevelSkillBinding | null => {
   if (!raw || typeof raw !== 'object') return null;
@@ -200,7 +285,9 @@ const validateSkill = (skill: unknown): SkillDefinition => {
 
   const s = skill as Record<string, unknown>;
   if (typeof s.id !== 'string') throw new Error('Skill must have string id');
-  if (!['cross', 'f2l', 'oll', 'pll', 'full'].includes(s.stage as string)) throw new Error('Invalid stage');
+  if (typeof s.stage !== 'string' || !isValidStageId(s.stage.trim().toLowerCase())) {
+    throw new Error('Invalid stage');
+  }
   if (typeof s.displayNameZh !== 'string') throw new Error('Skill must have displayNameZh');
   if (typeof s.displayNameEn !== 'string') throw new Error('Skill must have displayNameEn');
   if (typeof s.goal !== 'string') throw new Error('Skill must have goal');
@@ -212,7 +299,7 @@ const validateSkill = (skill: unknown): SkillDefinition => {
 
   return {
     id: s.id,
-    stage: s.stage as SkillDefinition['stage'],
+    stage: normalizeStageId(s.stage),
     displayNameZh: s.displayNameZh,
     displayNameEn: s.displayNameEn,
     goal: s.goal,
