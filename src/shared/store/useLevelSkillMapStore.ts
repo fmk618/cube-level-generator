@@ -29,7 +29,7 @@ type LevelSkillMapState = {
   loadError: string | null;
 
   importMapFromJSON: (json: string) => void;
-  refreshMap: () => Promise<void>;
+  refreshMap: (options?: { force?: boolean; persistLocal?: boolean }) => Promise<void>;
   importFromDisk: () => Promise<boolean>;
   exportToDisk: () => Promise<string | null>;
   /** Export only when publish checks should gate externally; always writes App v1 JSON. */
@@ -147,9 +147,11 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     }
   },
 
-  refreshMap: async () => {
+  refreshMap: async (options) => {
+    const force = options?.force === true;
+    const persistLocal = options?.persistLocal === true;
     const state = get();
-    if (state.hasUnsavedChanges && state.levelSkillMap) return;
+    if (!force && state.hasUnsavedChanges && state.levelSkillMap) return;
 
     set({ isLoading: true, loadError: null });
     try {
@@ -167,12 +169,17 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
 
       let map: LevelSkillMap;
       let ambiguous: Record<string, LevelSkillBinding[]> = {};
+      let fromCloud = false;
 
       if (raw) {
         const split = splitMultiBindings(raw.mappings);
         map = split.map;
         ambiguous = split.ambiguous;
+        fromCloud = true;
       } else {
+        if (force && persistLocal) {
+          throw new Error('无法从云端拉取推荐配置，请检查网络与数据库连接');
+        }
         const runtime = await window.api.levelSkillMap.loadRuntime();
         if (runtime?.content) {
           const imported = importLevelSkillMapFromJSON(runtime.content);
@@ -183,6 +190,10 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
         }
       }
 
+      if (persistLocal && fromCloud) {
+        await window.api.levelSkillMap.saveRuntime(exportLevelSkillMapToJSON(map));
+      }
+
       applyMap(set, map, cloneMap(map), false, ambiguous);
       set({ isLoaded: true, isLoading: false });
     } catch (error) {
@@ -190,6 +201,7 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
         isLoading: false,
         loadError: error instanceof Error ? error.message : String(error),
       });
+      throw error;
     }
   },
 

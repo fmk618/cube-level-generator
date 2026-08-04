@@ -319,7 +319,10 @@ export const validateSkillGraph = (doc: SkillGraphDocument): string[] => {
       errors.push(`Duplicate skill id: ${skill.id}`);
     }
     skillIds.add(skill.id);
+  }
 
+  // 先收集全部 id，再校验前置依赖（云端按 stage 排序时 full 会排在 pll 前）
+  for (const skill of doc.skills) {
     for (const prereq of skill.prerequisites) {
       if (!skillIds.has(prereq)) {
         errors.push(`Skill ${skill.id} references undefined prerequisite: ${prereq}`);

@@ -190,11 +190,6 @@ export function SkillGraphPanel() {
     }
     try {
       setError(null);
-      const displayNameZh = newDisplayNameZh.trim();
-      if (!displayNameZh) {
-        setError('请填写内部名称');
-        return;
-      }
       const maxOrder =
         Math.max(0, ...skills.filter((s) => s.stage === newSkillStage).map((s) => s.order)) + 1;
       const created = createSkill({
@@ -217,15 +212,6 @@ export function SkillGraphPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败');
     }
-  };
-
-  const resetCreateForm = () => {
-    setShowCreate(false);
-    setNewSkillId('');
-    setNewDisplayNameZh('');
-    setNewDisplayNameEn('');
-    setNewGoal('');
-    setNewSkillStage('cross');
   };
 
   const handleDeleteSkill = (skillId: string) => {

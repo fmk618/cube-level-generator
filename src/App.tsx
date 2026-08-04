@@ -60,12 +60,15 @@ export default function App() {
   const [assistantWidth, setAssistantWidth] = useState(readAssistantWidth);
   const [llmCollapsed, setLlmCollapsed] = useState(false);
   const [savingCatalog, setSavingCatalog] = useState(false);
+  const [pullingRemote, setPullingRemote] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState<'catalog' | 'skills' | 'levelSkillMap'>('catalog');
   const [migrationOpen, setMigrationOpen] = useState(false);
   const selectedLevelId = useUiStore((state) => state.selectedLevelId);
   const selectLevel = useUiStore((state) => state.selectLevel);
   const hasUnsavedChanges = useCatalogStore((state) => state.hasUnsavedChanges);
+  const skillsUnsaved = useSkillGraphStore((state) => state.hasUnsavedChanges);
+  const mapUnsaved = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
   const saveCatalog = useCatalogStore((state) => state.saveCatalog);
   const refreshCatalog = useCatalogStore((state) => state.refreshCatalog);
   const refreshSkillGraph = useSkillGraphStore((state) => state.refreshSkillGraph);
@@ -75,6 +78,11 @@ export default function App() {
   const syncProgress = useCloudSyncStore((state) => state.progress);
   const syncError = useCloudSyncStore((state) => state.error);
   const resetSync = useCloudSyncStore((state) => state.reset);
+  const beginLocal = useCloudSyncStore((state) => state.beginLocal);
+  const markCloud = useCloudSyncStore((state) => state.markCloud);
+  const setProgress = useCloudSyncStore((state) => state.setProgress);
+  const finishOk = useCloudSyncStore((state) => state.finishOk);
+  const finishError = useCloudSyncStore((state) => state.finishError);
 
   useEffect(() => {
     document.documentElement.dataset.platform = window.platform;
@@ -169,6 +177,35 @@ export default function App() {
     }
   };
 
+  const handlePullRemote = async () => {
+    if (pullingRemote) return;
+    if (hasUnsavedChanges || skillsUnsaved || mapUnsaved) {
+      const ok = window.confirm(
+        '本地有未保存的修改，拉取远程将用云端数据覆盖当前编辑内容，是否继续？',
+      );
+      if (!ok) return;
+    }
+
+    setPullingRemote(true);
+    setSaveError(null);
+    beginLocal('正在连接云端…');
+    try {
+      markCloud('正在拉取关卡目录…', 20);
+      await refreshCatalog({ force: true, persistLocal: true });
+      setProgress(45, '正在拉取能力标签…');
+      await refreshSkillGraph({ force: true, persistLocal: true });
+      setProgress(70, '正在拉取推荐配置…');
+      await refreshMap({ force: true, persistLocal: true });
+      finishOk('已从云端拉取并更新本地');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSaveError(message);
+      finishError(message, '拉取远程失败');
+    } finally {
+      setPullingRemote(false);
+    }
+  };
+
   const syncBarVisible = syncPhase !== 'idle';
   const syncBarClass =
     syncPhase === 'error' ? 'is-error'
@@ -212,6 +249,15 @@ export default function App() {
           </div>
         </div>
         <div className="titlebar-actions" id="global-editor-actions">
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={pullingRemote || syncPhase === 'local' || syncPhase === 'cloud'}
+            onClick={() => void handlePullRemote()}
+            title="从云端拉取关卡、能力标签与推荐配置，并覆盖本地缓存"
+          >
+            {pullingRemote ? <><span className="spinner" />拉取中</> : '拉取远程'}
+          </button>
           <button type="button" className="btn btn-sm" onClick={() => setMigrationOpen(true)}>
             从 App 迁移
           </button>

@@ -11,7 +11,7 @@ type CloudSyncState = {
   markCloud: (label?: string, progress?: number) => void;
   setProgress: (progress: number, label?: string) => void;
   finishOk: (label?: string) => void;
-  finishError: (message: string) => void;
+  finishError: (message: string, label?: string) => void;
   reset: () => void;
 };
 
@@ -69,10 +69,10 @@ export const useCloudSyncStore = create<CloudSyncState>((set, get) => ({
     });
   },
 
-  finishError: (message) => {
+  finishError: (message, label) => {
     set({
       phase: 'error',
-      label: '本地已保存，云端同步失败',
+      label: label ?? '本地已保存，云端同步失败',
       progress: 100,
       error: message,
     });
