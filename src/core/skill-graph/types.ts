@@ -1,6 +1,13 @@
-export type SkillStage = 'cross' | 'f2l' | 'oll' | 'pll' | 'full';
+// 阶段 ID 允许内置 CFOP 与自定义字符串；导出到 App 时原样写入 cfopStage
+export type SkillStage = string;
 export type MasteryStandard = 'guided_only' | 'guided_and_one_star' | 'two_stars';
 export type TeachMode = 'guided' | 'challenge' | 'demo';
+
+export interface StageDefinition {
+  id: SkillStage;
+  label: string;
+  order: number;
+}
 
 export interface SkillDefinition {
   id: string;
@@ -17,6 +24,8 @@ export interface SkillDefinition {
 export interface SkillGraphDocument {
   version: number;
   skills: SkillDefinition[];
+  // 可增删改的阶段列表；缺省时使用内置 CFOP 五段
+  stages?: StageDefinition[];
 }
 
 /** Single primary binding for a level (App v1: one skill per level). */

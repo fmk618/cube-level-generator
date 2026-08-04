@@ -5,17 +5,9 @@ import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import type { MasteryStandard, SkillDefinition, SkillStage } from '@/core/skill-graph/types';
+import { resolveStageLabel, resolveStages } from '@/core/skill-graph/utils';
 import '../../styles/skill-graph-panel.css';
 
-const SKILL_STAGES: SkillStage[] = ['cross', 'f2l', 'oll', 'pll', 'full'];
-const STAGE_LABELS: Record<SkillStage, string> = {
-  cross: '白十字',
-  f2l: '两层',
-  oll: 'OLL',
-  pll: 'PLL',
-  full: '进阶',
-};
-const STAGE_OPTIONS = SKILL_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }));
 const MASTERY_OPTIONS = [
   { value: 'guided_only', label: '仅需引导通过' },
   { value: 'guided_and_one_star', label: '引导 + 一星' },
@@ -27,7 +19,16 @@ export function SkillGraphPanel() {
   const [filterStage, setFilterStage] = useState<SkillStage | 'all'>('all');
   const [newSkillStage, setNewSkillStage] = useState<SkillStage>('cross');
   const [newSkillId, setNewSkillId] = useState('');
+  const [newDisplayNameZh, setNewDisplayNameZh] = useState('');
+  const [newDisplayNameEn, setNewDisplayNameEn] = useState('');
+  const [newGoal, setNewGoal] = useState('');
+  const [newMasteryStandard, setNewMasteryStandard] = useState<MasteryStandard>('guided_and_one_star');
+  const [newDraft, setNewDraft] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [justCreatedSkillId, setJustCreatedSkillId] = useState<string | null>(null);
+  const [managingStages, setManagingStages] = useState(false);
+  const [newStageId, setNewStageId] = useState('');
+  const [newStageLabel, setNewStageLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -38,6 +39,9 @@ export function SkillGraphPanel() {
   const isLoading = useSkillGraphStore((state) => state.isLoading);
   const refreshSkillGraph = useSkillGraphStore((state) => state.refreshSkillGraph);
   const updateSkill = useSkillGraphStore((state) => state.updateSkill);
+  const addStage = useSkillGraphStore((state) => state.addStage);
+  const updateStage = useSkillGraphStore((state) => state.updateStage);
+  const removeStage = useSkillGraphStore((state) => state.removeStage);
   const deleteSkill = useSkillGraphStore((state) => state.deleteSkill);
   const createSkill = useSkillGraphStore((state) => state.createSkill);
   const exportToDisk = useSkillGraphStore((state) => state.exportToDisk);
@@ -48,6 +52,26 @@ export function SkillGraphPanel() {
   const clearAiTouched = useUiStore((state) => state.clearAiTouched);
   const levelSkillMap = useLevelSkillMapStore((state) => state.levelSkillMap);
   const levels = useCatalogStore((state) => state.levels);
+
+  const stages = useMemo(() => resolveStages(skillGraph), [skillGraph]);
+  const stageOptions = useMemo(
+    () => stages.map((stage) => ({ value: stage.id, label: stage.label })),
+    [stages],
+  );
+
+  useEffect(() => {
+    if (stages.length === 0) return;
+    if (!stages.some((stage) => stage.id === newSkillStage)) {
+      setNewSkillStage(stages[0].id);
+    }
+  }, [stages, newSkillStage]);
+
+  useEffect(() => {
+    if (filterStage === 'all') return;
+    if (!stages.some((stage) => stage.id === filterStage)) {
+      setFilterStage('all');
+    }
+  }, [stages, filterStage]);
 
   useEffect(() => {
     if (!skillGraph && !isLoading) void refreshSkillGraph();
@@ -130,25 +154,61 @@ export function SkillGraphPanel() {
     }
   };
 
+  useEffect(() => {
+    if (!justCreatedSkillId) return;
+    const timer = window.setTimeout(() => {
+      const el = document.querySelector(`[data-skill-id="${CSS.escape(justCreatedSkillId)}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+    const clearTimer = window.setTimeout(() => setJustCreatedSkillId(null), 8000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [justCreatedSkillId]);
+
+  const resetCreateForm = () => {
+    setNewSkillId('');
+    setNewDisplayNameZh('');
+    setNewDisplayNameEn('');
+    setNewGoal('');
+    setNewMasteryStandard('guided_and_one_star');
+    setNewDraft(false);
+    if (stages[0]) setNewSkillStage(stages[0].id);
+  };
+
   const handleCreate = () => {
+    const displayNameZh = newDisplayNameZh.trim();
+    const goal = newGoal.trim();
+    if (!displayNameZh) {
+      setError('请填写内部名称');
+      return;
+    }
+    if (!goal) {
+      setError('请填写能力定义');
+      return;
+    }
     try {
       setError(null);
       const maxOrder =
         Math.max(0, ...skills.filter((s) => s.stage === newSkillStage).map((s) => s.order)) + 1;
-      createSkill({
+      const created = createSkill({
         id: newSkillId.trim() || undefined,
         stage: newSkillStage,
-        displayNameZh: '新能力标签（待编辑）',
-        displayNameEn: 'New Capability Tag',
-        goal: '请描述 AI 在判断什么能力',
+        displayNameZh,
+        displayNameEn: newDisplayNameEn.trim() || displayNameZh,
+        goal,
         prerequisites: [],
-        masteryStandard: 'guided_and_one_star',
+        masteryStandard: newMasteryStandard,
         order: maxOrder,
-        draft: true,
+        draft: newDraft,
       });
+      setFilterStage(newSkillStage);
+      setJustCreatedSkillId(created.id);
+      setEditingSkillId(null);
       setShowCreate(false);
-      setNewSkillId('');
-      setError('✓ 已创建（草稿），请完善字段后启用');
+      resetCreateForm();
+      setError(`✓ 已创建「${created.displayNameZh}」，已定位到新卡片`);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败');
     }
@@ -175,6 +235,39 @@ export function SkillGraphPanel() {
       updateSkill(skillId, partial);
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新失败');
+    }
+  };
+
+  const handleAddStage = () => {
+    try {
+      setError(null);
+      const created = addStage({ id: newStageId, label: newStageLabel });
+      setNewStageId('');
+      setNewStageLabel('');
+      setFilterStage(created.id);
+      setError('✓ 已新增阶段（请保存并同步）');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '新增阶段失败');
+    }
+  };
+
+  const handleRenameStage = (stageId: string, label: string) => {
+    try {
+      setError(null);
+      updateStage(stageId, { label });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重命名阶段失败');
+    }
+  };
+
+  const handleRemoveStage = (stageId: string) => {
+    try {
+      setError(null);
+      removeStage(stageId);
+      if (filterStage === stageId) setFilterStage('all');
+      setError('✓ 已删除阶段（请保存并同步）');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除阶段失败');
     }
   };
 
@@ -247,44 +340,176 @@ export function SkillGraphPanel() {
         </div>
       )}
 
-      <div className="skill-toolbar" id="skill-filter" data-tour="skill-editor">
-        <div className="skill-filter-chips">
-          <button className={`chip ${filterStage === 'all' ? 'chip-active' : ''}`} onClick={() => setFilterStage('all')}>全部</button>
-          {SKILL_STAGES.map((stage) => (
-            <button
-              key={stage}
-              className={`chip ${filterStage === stage ? 'chip-active' : ''}`}
-              onClick={() => setFilterStage(stage)}
-            >
-              {STAGE_LABELS[stage]}
-            </button>
-          ))}
-        </div>
-
-        <div className="skill-create-inline" id="skill-create">
-          {showCreate ? (
-            <>
-              <SelectDropdown
-                size="sm"
-                className="skill-create-select"
-                value={newSkillStage}
-                options={STAGE_OPTIONS}
-                onChange={(v) => setNewSkillStage(v as SkillStage)}
-              />
-              <input
-                className="text-input skill-create-id"
-                placeholder="标签 ID（可选）"
-                value={newSkillId}
-                onChange={(e) => setNewSkillId(e.target.value)}
-              />
-              <button className="btn btn-sm btn-primary" onClick={handleCreate}>创建</button>
-              <button className="btn btn-sm" onClick={() => setShowCreate(false)}>取消</button>
-            </>
+      <div className={`skill-toolbar ${managingStages ? 'is-managing-stages' : ''}`} id="skill-filter" data-tour="skill-editor">
+        <div className="skill-filter-block">
+          {managingStages ? (
+            <div className="skill-stage-manager">
+              <div className="skill-stage-manager-list">
+                {stages.map((stage) => (
+                  <div key={stage.id} className="skill-stage-manager-row">
+                    <code className="skill-stage-id">{stage.id}</code>
+                    <input
+                      className="text-input text-input--sm"
+                      value={stage.label}
+                      maxLength={24}
+                      onChange={(e) => handleRenameStage(stage.id, e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger"
+                      onClick={() => handleRemoveStage(stage.id)}
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="skill-stage-add-row">
+                <input
+                  className="text-input text-input--sm"
+                  placeholder="阶段 ID，如 beginner"
+                  value={newStageId}
+                  onChange={(e) => setNewStageId(e.target.value.toLowerCase())}
+                />
+                <input
+                  className="text-input text-input--sm"
+                  placeholder="显示名，如 入门"
+                  value={newStageLabel}
+                  maxLength={24}
+                  onChange={(e) => setNewStageLabel(e.target.value)}
+                />
+                <button type="button" className="btn btn-sm btn-primary" onClick={handleAddStage}>
+                  新增阶段
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setManagingStages(false)}>
+                  完成
+                </button>
+              </div>
+              <p className="hint-text">可新增自定义阶段（如入门/综合）。App 会按阶段 ID 写入 cfopStage；自定义 ID 需 App 同步识别。</p>
+            </div>
           ) : (
-            <button className="btn btn-sm" onClick={() => setShowCreate(true)}>+ 新建标签</button>
+            <div className="skill-filter-chips" id="skill-create">
+              <button className={`chip ${filterStage === 'all' ? 'chip-active' : ''}`} onClick={() => setFilterStage('all')}>
+                全部
+              </button>
+              {stages.map((stage) => (
+                <button
+                  key={stage.id}
+                  className={`chip ${filterStage === stage.id ? 'chip-active' : ''}`}
+                  onClick={() => setFilterStage(stage.id)}
+                >
+                  {stage.label}
+                </button>
+              ))}
+              <button type="button" className="btn btn-sm skill-rename-stages-btn" onClick={() => setManagingStages(true)}>
+                管理阶段
+              </button>
+              {!showCreate && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary skill-create-chip-btn"
+                  onClick={() => setShowCreate(true)}
+                >
+                  + 新建标签
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
+
+      {showCreate && (
+        <div className="skill-create-panel">
+          <div className="skill-create-panel-header">
+            <strong>新建能力标签</strong>
+            <span>一次填完核心字段，创建后会高亮定位到新卡片</span>
+          </div>
+          <div className="skill-create-form-grid">
+            <label className="form-field">
+              <span>阶段</span>
+              <SelectDropdown
+                size="sm"
+                value={newSkillStage}
+                options={stageOptions}
+                onChange={(v) => setNewSkillStage(v)}
+              />
+            </label>
+            <label className="form-field">
+              <span>标签 ID（可选，创建后不可改）</span>
+              <input
+                className="text-input"
+                placeholder="留空则自动生成"
+                value={newSkillId}
+                onChange={(e) => setNewSkillId(e.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>内部名称</span>
+              <input
+                className="text-input"
+                placeholder="例如：双层转"
+                value={newDisplayNameZh}
+                onChange={(e) => setNewDisplayNameZh(e.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>英文内部名称</span>
+              <input
+                className="text-input"
+                placeholder="例如：Double Turn"
+                value={newDisplayNameEn}
+                onChange={(e) => setNewDisplayNameEn(e.target.value)}
+              />
+            </label>
+            <label className="form-field full-width">
+              <span>能力定义</span>
+              <textarea
+                className="text-input"
+                rows={2}
+                placeholder="描述 AI 在判断什么能力"
+                value={newGoal}
+                onChange={(e) => setNewGoal(e.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>状态聚合规则</span>
+              <SelectDropdown
+                size="sm"
+                value={newMasteryStandard}
+                options={MASTERY_OPTIONS}
+                onChange={(v) => setNewMasteryStandard(v as MasteryStandard)}
+              />
+            </label>
+            <label className="form-field">
+              <span>启用状态</span>
+              <SelectDropdown
+                size="sm"
+                value={newDraft ? 'draft' : 'enabled'}
+                options={[
+                  { value: 'enabled', label: '启用（可进推荐）' },
+                  { value: 'draft', label: '草稿' },
+                ]}
+                onChange={(v) => setNewDraft(v === 'draft')}
+              />
+            </label>
+          </div>
+          <div className="skill-create-panel-actions">
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => {
+                setShowCreate(false);
+                resetCreateForm();
+              }}
+            >
+              取消
+            </button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={handleCreate}>
+              创建标签
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="skill-list" id="skill-list" data-tour="skill-list">
         {filteredSkills.length === 0 ? (
@@ -295,10 +520,13 @@ export function SkillGraphPanel() {
               key={skill.id}
               skill={skill}
               allSkills={skills}
+              stageOptions={stageOptions}
+              stageLabel={resolveStageLabel(stages, skill.stage)}
               referencedLevelIds={referencedBySkillId.get(skill.id) ?? []}
               levelTitleById={levelTitleById}
               isEditing={editingSkillId === skill.id}
               isAiTouched={aiTouchedSkillIds.includes(skill.id)}
+              isJustCreated={justCreatedSkillId === skill.id}
               onEdit={() => setEditingSkillId(skill.id)}
               onClose={() => setEditingSkillId(null)}
               onUpdate={handleUpdateSkill}
@@ -314,10 +542,13 @@ export function SkillGraphPanel() {
 interface SkillCardProps {
   skill: SkillDefinition;
   allSkills: SkillDefinition[];
+  stageOptions: { value: string; label: string }[];
+  stageLabel: string;
   referencedLevelIds: string[];
   levelTitleById: Map<string, string>;
   isEditing: boolean;
   isAiTouched: boolean;
+  isJustCreated: boolean;
   onEdit: () => void;
   onClose: () => void;
   onUpdate: (skillId: string, partial: Partial<SkillDefinition>) => void;
@@ -327,10 +558,13 @@ interface SkillCardProps {
 function SkillCard({
   skill,
   allSkills,
+  stageOptions,
+  stageLabel,
   referencedLevelIds,
   levelTitleById,
   isEditing,
   isAiTouched,
+  isJustCreated,
   onEdit,
   onClose,
   onUpdate,
@@ -379,11 +613,12 @@ function SkillCard({
   return (
     <div
       data-skill-id={skill.id}
-      className={`skill-card ${isEditing ? 'editing' : ''} ${isAiTouched ? 'ai-touched' : ''} ${skill.draft ? 'is-draft' : ''}`}
+      className={`skill-card ${isEditing ? 'editing' : ''} ${isAiTouched ? 'ai-touched' : ''} ${isJustCreated ? 'just-created' : ''} ${skill.draft ? 'is-draft' : ''}`}
     >
       <div className="skill-card-top">
-        <span className="skill-stage-badge">{skill.stage}</span>
+        <span className="skill-stage-badge">{stageLabel}</span>
         <span className="skill-card-name">{skill.displayNameZh}</span>
+        {isJustCreated && <span className="skill-just-created-badge">刚创建</span>}
         {skill.draft && <span className="skill-draft-badge">草稿</span>}
         {isAiTouched && <span className="ai-touched-badge">AI</span>}
         <div className="skill-card-actions">
@@ -404,7 +639,7 @@ function SkillCard({
           </div>
           <div className="form-field">
             <label>Stage</label>
-            <SelectDropdown size="sm" value={stage} options={STAGE_OPTIONS} onChange={(v) => setStage(v as SkillStage)} />
+            <SelectDropdown size="sm" value={stage} options={stageOptions} onChange={(v) => setStage(v as SkillStage)} />
           </div>
           <div className="form-field">
             <label>内部名称</label>

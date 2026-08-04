@@ -1,5 +1,6 @@
 import type { LevelChapterConfig, LevelDefinition } from '@/core/levels';
 import type { LevelSkillMap, SkillDefinition, SkillStage } from '@/core/skill-graph/types';
+import { isValidStageId } from '@/core/skill-graph/utils';
 
 export type AiEditMode = 'catalog' | 'skills' | 'levelSkillMap';
 
@@ -16,13 +17,12 @@ export type LevelSummaryForAi = {
 
 export type MapScope = 'unmapped' | 'selected' | 'all';
 
-const STAGE_LIST = 'cross | f2l | oll | pll | full';
+const STAGE_LIST = 'cross | f2l | oll | pll | full | 自定义小写 id';
 const MASTERY_LIST = 'guided_only | guided_and_one_star | two_stars';
 const TEACH_LIST = 'guided | challenge | demo';
-const VALID_STAGES: SkillStage[] = ['cross', 'f2l', 'oll', 'pll', 'full'];
 
 export function isValidSkillStage(value: string): value is SkillStage {
-  return VALID_STAGES.includes(value as SkillStage);
+  return isValidStageId(value.trim().toLowerCase());
 }
 
 export function buildLevelSummaries(

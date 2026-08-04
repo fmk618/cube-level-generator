@@ -7,17 +7,14 @@ import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import type { LevelDefinition } from '@/core/levels';
 import {
   getLevelRecommendStatus,
+  resolveStageLabel,
+  resolveStages,
+  TEACH_MODE_OPTIONS,
   validateLevelSkillMapForPublish,
   type PublishCheckIssue,
 } from '@/core/skill-graph/utils';
 import type { TeachMode } from '@/core/skill-graph/types';
 import '../../styles/level-skill-map-panel.css';
-
-const TEACH_MODES = [
-  { value: 'guided', label: 'Guided' },
-  { value: 'challenge', label: 'Challenge' },
-  { value: 'demo', label: 'Demo' },
-] as const;
 
 type LevelSkillMapPanelProps = {
   onOpenLevelContent?: (levelId: string) => void;
@@ -85,21 +82,23 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
     if (!levelSkillMap && !isMapLoading) void refreshMap();
   }, [levelSkillMap, isMapLoading, refreshMap]);
 
+  const stages = useMemo(() => resolveStages(skillGraph), [skillGraph]);
+
   const skillOptions = useMemo(
     () =>
       skills
         .filter((s) => !s.draft)
-        .map((s) => ({ value: s.id, label: `${STAGE_SHORT[s.stage] ?? s.stage} · ${s.displayNameZh}` })),
-    [skills],
+        .map((s) => ({ value: s.id, label: `${resolveStageLabel(stages, s.stage)} · ${s.displayNameZh}` })),
+    [skills, stages],
   );
 
   const skillOptionsWithDraft = useMemo(
     () =>
       skills.map((s) => ({
         value: s.id,
-        label: `${STAGE_SHORT[s.stage] ?? s.stage} · ${s.displayNameZh}${s.draft ? '（草稿）' : ''}`,
+        label: `${resolveStageLabel(stages, s.stage)} · ${s.displayNameZh}${s.draft ? '（草稿）' : ''}`,
       })),
-    [skills],
+    [skills, stages],
   );
 
   const skillById = useMemo(() => {
@@ -307,7 +306,7 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
           <SelectDropdown
             size="sm"
             value={batchTeachMode}
-            options={TEACH_MODES.map((m) => ({ value: m.value, label: m.label }))}
+            options={TEACH_MODE_OPTIONS}
             onChange={(v) => setBatchTeachMode(v as TeachMode)}
           />
           <button
@@ -373,14 +372,6 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
     </div>
   );
 }
-
-const STAGE_SHORT: Record<string, string> = {
-  cross: 'Cross',
-  f2l: 'F2L',
-  oll: 'OLL',
-  pll: 'PLL',
-  full: 'Full',
-};
 
 type RecommendCardProps = {
   level: LevelDefinition;
@@ -496,7 +487,7 @@ function RecommendCard({
             <SelectDropdown
               size="sm"
               value={primary?.teachMode ?? 'guided'}
-              options={TEACH_MODES.map((m) => ({ value: m.value, label: m.label }))}
+              options={TEACH_MODE_OPTIONS}
               disabled={!primary}
               onChange={(v) => onUpdateMeta({ teachMode: v as TeachMode })}
             />

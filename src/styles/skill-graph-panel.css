@@ -57,16 +57,158 @@
   flex-wrap: wrap;
 }
 
+.skill-toolbar.is-managing-stages {
+  align-items: stretch;
+}
+
 .skill-filter-chips {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+  width: 100%;
+}
+
+.skill-filter-block {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.skill-rename-stages-btn {
+  margin-left: 4px;
+}
+
+.skill-create-chip-btn {
+  margin-left: auto;
+}
+
+.skill-stage-label-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skill-stage-label-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.skill-stage-label-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skill-stage-label-field span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.skill-stage-label-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skill-stage-manager {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skill-stage-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skill-stage-manager-row,
+.skill-stage-add-row {
+  display: grid;
+  grid-template-columns: 110px minmax(120px, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.skill-stage-add-row {
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto auto;
+}
+
+.skill-stage-id {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skill-create-inline {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.skill-create-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 var(--panel-pad) 12px;
+  padding: 14px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-card);
+}
+
+.skill-create-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skill-create-panel-header strong {
+  color: #1d4ed8;
+  font-size: 13px;
+}
+
+.skill-create-panel-header span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.skill-create-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.skill-create-form-grid .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skill-create-form-grid .form-field > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.skill-create-form-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.skill-create-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .skill-create-select {
@@ -137,6 +279,23 @@
   background: #fff7ed;
   border-color: #fb923c;
   box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.35);
+}
+
+.skill-card.just-created {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.28);
+}
+
+.skill-just-created-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-tag);
+  background: #2563eb;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .ai-touched-badge {
@@ -434,6 +593,10 @@
   .skill-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .skill-create-form-grid {
+    grid-template-columns: 1fr;
   }
 
   .skill-card-meta {
