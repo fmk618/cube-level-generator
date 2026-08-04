@@ -11,6 +11,7 @@ import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
+import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 
 const CATALOG_WIDTH_KEY = 'catalog-panel-width';
 const DEFAULT_CATALOG_WIDTH = 300;
@@ -69,6 +70,11 @@ export default function App() {
   const refreshCatalog = useCatalogStore((state) => state.refreshCatalog);
   const refreshSkillGraph = useSkillGraphStore((state) => state.refreshSkillGraph);
   const refreshMap = useLevelSkillMapStore((state) => state.refreshMap);
+  const syncPhase = useCloudSyncStore((state) => state.phase);
+  const syncLabel = useCloudSyncStore((state) => state.label);
+  const syncProgress = useCloudSyncStore((state) => state.progress);
+  const syncError = useCloudSyncStore((state) => state.error);
+  const resetSync = useCloudSyncStore((state) => state.reset);
 
   useEffect(() => {
     document.documentElement.dataset.platform = window.platform;
@@ -163,6 +169,12 @@ export default function App() {
     }
   };
 
+  const syncBarVisible = syncPhase !== 'idle';
+  const syncBarClass =
+    syncPhase === 'error' ? 'is-error'
+      : syncPhase === 'done' ? 'is-done'
+        : '';
+
   return (
     <div className="studio-shell">
       <header className="studio-titlebar">
@@ -212,13 +224,28 @@ export default function App() {
                   disabled={!hasUnsavedChanges || savingCatalog}
                   onClick={() => void handleCatalogSave()}
                 >
-                  {savingCatalog ? <><span className="spinner" />保存中</> : '保存并同步'}
+                  {savingCatalog ? <><span className="spinner" />保存中</> : '保存到本地'}
                 </button>
               </>
             ) : null}
           </div>
         </div>
       </header>
+      {syncBarVisible && (
+        <div className={`cloud-sync-bar ${syncBarClass}`} role="status" aria-live="polite">
+          <span className="cloud-sync-label">
+            {syncPhase === 'error' && syncError ? `${syncLabel}：${syncError}` : syncLabel}
+          </span>
+          <div className="cloud-sync-track" aria-hidden>
+            <div className="cloud-sync-fill" style={{ width: `${syncProgress}%` }} />
+          </div>
+          {syncPhase === 'error' && (
+            <button type="button" className="cloud-sync-dismiss" onClick={() => resetSync()}>
+              关闭
+            </button>
+          )}
+        </div>
+      )}
       {saveError && <div className="global-save-error">{saveError}</div>}
       <main
         className="studio-columns"

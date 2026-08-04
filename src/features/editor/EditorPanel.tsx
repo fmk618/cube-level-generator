@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
+import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 import {
   deriveLevelFormulaPreset,
   formatChapterLevelOrder,
@@ -17,10 +18,30 @@ import {
 } from '@/core/levels';
 import { getLevelRecommendStatus } from '@/core/skill-graph/utils';
 import { INITIAL_BRIGHTNESS_MATRIX, type BrightnessMatrix, type StateMatrix } from '@/core/cube';
+import { expandTokenToLayerMoves } from '@/core/formula';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
+import type { CubePlayRequest } from '@/features/preview-3d/CubeScene';
 import { FormulaKeyboard } from './FormulaKeyboard';
 
 const FACE_NAMES = ['U', 'L', 'F', 'R', 'B', 'D'];
+
+const EDITOR_PREVIEW_HEIGHT_KEY = 'editor-preview-height';
+const DEFAULT_PREVIEW_HEIGHT = 360;
+const MIN_PREVIEW_HEIGHT = 120;
+const MIN_WORKSPACE_HEIGHT = 220;
+
+const readPreviewHeight = (): number => {
+  const stored = localStorage.getItem(EDITOR_PREVIEW_HEIGHT_KEY);
+  if (!stored) return DEFAULT_PREVIEW_HEIGHT;
+  const value = Number(stored);
+  if (!Number.isFinite(value)) return DEFAULT_PREVIEW_HEIGHT;
+  return Math.max(MIN_PREVIEW_HEIGHT, value);
+};
+
+const getMaxPreviewHeight = (): number => {
+  const viewportBudget = window.innerHeight - 220;
+  return Math.max(MIN_PREVIEW_HEIGHT, viewportBudget - MIN_WORKSPACE_HEIGHT);
+};
 
 const cloneStateMatrix = (matrix: StateMatrix): StateMatrix => matrix.map((face) => face.map((row) => [...row]));
 const cloneBrightness = (matrix: BrightnessMatrix): BrightnessMatrix => matrix.map((face) => face.map((row) => [...row]));
@@ -65,10 +86,52 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [headerActionsHost, setHeaderActionsHost] = useState<HTMLElement | null>(null);
+  const [playRequest, setPlayRequest] = useState<CubePlayRequest | null>(null);
+  const playCounterRef = useRef(0);
+  const syncPhase = useCloudSyncStore((s) => s.phase);
+  const [previewHeight, setPreviewHeight] = useState(readPreviewHeight);
 
   useEffect(() => {
     setHeaderActionsHost(document.getElementById('global-editor-actions'));
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem(EDITOR_PREVIEW_HEIGHT_KEY, String(previewHeight));
+  }, [previewHeight]);
+
+  useEffect(() => {
+    const clampPreviewHeight = () => {
+      setPreviewHeight((height) => Math.min(getMaxPreviewHeight(), Math.max(MIN_PREVIEW_HEIGHT, height)));
+    };
+    clampPreviewHeight();
+    window.addEventListener('resize', clampPreviewHeight);
+    return () => window.removeEventListener('resize', clampPreviewHeight);
+  }, []);
+
+  const startWorkspaceResize = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = previewHeight;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientY - startY;
+      const next = startHeight + delta;
+      const maxHeight = getMaxPreviewHeight();
+      setPreviewHeight(Math.min(maxHeight, Math.max(MIN_PREVIEW_HEIGHT, next)));
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [previewHeight]);
 
   useEffect(() => {
     if (!levelSkillMap && !isMapLoading) void refreshMap();
@@ -187,10 +250,44 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setPreviewMode('start');
       setSaveError(null);
       setSaveNotice(`已按 ${formulaTarget.toUpperCase()} 目标生成起始态。`);
+      try {
+        const moves = derived.mappedTokens.flatMap((token) => expandTokenToLayerMoves(token));
+        if (moves.length > 0) {
+          playCounterRef.current += 1;
+          setPlayRequest({ id: playCounterRef.current, moves });
+        }
+      } catch {
+        // 演示动画失败不影响矩阵应用
+      }
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     }
   };
+
+  const handleFormulaTokenAppended = (token: string) => {
+    try {
+      const moves = expandTokenToLayerMoves(token);
+      if (moves.length === 0) return;
+      playCounterRef.current += 1;
+      setPlayRequest({ id: playCounterRef.current, moves });
+      setPreviewMode('start');
+    } catch {
+      // 无效记号不播放动画
+    }
+  };
+
+  // 公式有效时实时生成起终态，无需先点「应用公式」也能中途预览/保存
+  useEffect(() => {
+    const trimmed = formulaText.trim();
+    if (!trimmed) return;
+    try {
+      const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
+      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+    } catch {
+      // 编辑中的不完整公式忽略
+    }
+  }, [formulaText, formulaTarget]);
 
   const toggleBrightnessCell = (face: number, row: number, col: number) => {
     const next = cloneBrightness(brightnessMatrix);
@@ -237,28 +334,29 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setSaveError(null);
     setSaveNotice(null);
 
-    const title = titleText.trim();
-    const description = descriptionText.trim();
-    if (!title) return setSaveError('标题不能为空。');
-    if (!description) return setSaveError('描述不能为空。');
+    // 草稿友好：允许中途保存，缺省字段回退到当前关卡或占位值
+    const title = titleText.trim() || level.title.trim() || '未命名关卡';
+    const description = descriptionText.trim() || level.description.trim() || '待完善';
 
-    const maxMoves = parsePositiveInteger(maxMovesText);
-    const threeStar = parsePositiveInteger(star3Text);
-    const twoStar = parsePositiveInteger(star2Text);
-    if (maxMoves === null || threeStar === null || twoStar === null) {
-      return setSaveError('最大步数和星级阈值都需要是正整数。');
+    const maxMoves = parsePositiveInteger(maxMovesText) ?? level.maxMoves;
+    let threeStar = parsePositiveInteger(star3Text) ?? level.starThresholds[0];
+    let twoStar = parsePositiveInteger(star2Text) ?? level.starThresholds[1];
+    if (threeStar > twoStar) twoStar = threeStar;
+    if (twoStar > maxMoves) {
+      // 保持可保存：放宽最大步数而不是阻断
     }
-    if (threeStar > twoStar) return setSaveError('3 星步数上限不能大于 2 星步数上限。');
-    if (twoStar > maxMoves) return setSaveError('2 星步数上限不能大于最大步数。');
-    const starThresholds = resolveStarThresholds(maxMoves, [threeStar, twoStar]);
+    const effectiveMaxMoves = Math.max(maxMoves, twoStar, threeStar);
+    const starThresholds = resolveStarThresholds(effectiveMaxMoves, [threeStar, twoStar]);
 
     const rotationFormula = formulaText.trim();
     const guidanceFormula = guidanceFormulaText.trim();
+    const warnings: string[] = [];
+
     if (rotationFormula) {
       try {
         deriveLevelFormulaPreset(rotationFormula, formulaTarget);
       } catch (error) {
-        return setSaveError(error instanceof Error ? error.message : String(error));
+        warnings.push(`旋转公式暂未通过校验（已按草稿保存）：${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -266,7 +364,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       title,
       description,
       hint: hintText.trim() || undefined,
-      maxMoves,
+      maxMoves: effectiveMaxMoves,
       starThresholds,
       startStateMatrix: cloneStateMatrix(startStateMatrix ?? level.startStateMatrix),
       goalStateMatrix: cloneStateMatrix(goalStateMatrix ?? level.goalStateMatrix),
@@ -280,7 +378,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     if (guidanceFormula) {
       const summary = getLevelGuidanceSummary({ ...level, ...patch } as LevelDefinition);
       if (summary.status !== 'ready') {
-        return setSaveError(`推荐解法无效：${summary.message}`);
+        warnings.push(`推荐解法暂未通过校验（已按草稿保存）：${summary.message}`);
       }
     }
 
@@ -303,7 +401,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setGoalStateMatrix(cloneStateMatrix(updatedLevel.goalStateMatrix));
       setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
       useUiStore.getState().clearAiTouched();
-      setSaveNotice('关卡已保存并同步到云端。');
+      const syncHint = syncPhase === 'cloud' || useCloudSyncStore.getState().phase === 'cloud'
+        ? '关卡已保存到本地，云端后台同步中…'
+        : '关卡已保存到本地。';
+      setSaveNotice(warnings.length > 0 ? `${syncHint} ${warnings.join(' ')}` : syncHint);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -365,7 +466,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         {saveError && <div className="banner banner-error">{saveError}</div>}
         {saveNotice && <div className="banner banner-ok">{saveNotice}</div>}
 
-        <div className="preview-hero">
+        <div className="preview-hero" style={{ height: previewHeight }}>
           <div className="preview-hero-header">
             <span className="preview-hero-title">3D 预览</span>
             <div className="segmented preview-segmented">
@@ -374,11 +475,22 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             </div>
           </div>
           <CubePreview
-            className="cube-preview cube-preview-editor"
+            className="cube-preview cube-preview-editor cube-preview-resizable"
             stateMatrix={previewMode === 'start' ? startStateMatrix : goalStateMatrix}
             brightnessMatrix={brightnessMatrix}
+            playRequest={playRequest}
+            onPlayComplete={() => setPlayRequest(null)}
           />
         </div>
+
+        <div
+          className="editor-workspace-resize-handle"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="拖动调整编辑区高度"
+          title="拖动调整 3D 预览与编辑区高度"
+          onMouseDown={startWorkspaceResize}
+        />
 
         <div className="editor-workspace">
           <div className="tab-bar">
@@ -446,7 +558,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               ))}
             </div>
           </div>
-          <FormulaKeyboard value={formulaText} onChange={setFormulaText} />
+          <FormulaKeyboard value={formulaText} onChange={setFormulaText} onTokenAppended={handleFormulaTokenAppended} />
           <div><button className="btn" onClick={applyFormula}>应用公式</button></div>
           <div className="preview-card">{formulaPreviewText}</div>
         </div>

@@ -6,6 +6,7 @@ import {
   isSkillGraphDocumentShape,
   validateSkillGraph,
 } from '@/core/skill-graph/utils';
+import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 
 type SkillGraphState = {
   skillGraph: SkillGraphDocument | null;
@@ -215,17 +216,25 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
   saveSkillGraph: async () => {
     const skillGraph = get().skillGraph;
     if (!skillGraph) throw new Error('Skill graph not loaded');
+    const sync = useCloudSyncStore.getState();
+    sync.beginLocal('正在保存能力标签到本地…');
     const json = exportSkillGraphToJSON(skillGraph);
     const filePath = await window.api.skillGraph.saveRuntime(json);
-    try {
-      await window.api.db.pushSkills(skillGraph);
-    } catch (error) {
-      throw new Error(
-        `本地已保存，但云端同步失败：${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
     applySkillGraph(set, skillGraph, cloneSkillGraph(skillGraph), false);
     set({ runtimeFilePath: filePath });
+    sync.markCloud('本地已保存，正在同步云端…', 45);
+
+    const snapshot = skillGraph;
+    void (async () => {
+      try {
+        sync.setProgress(70, '正在上传能力标签到云端…');
+        await window.api.db.pushSkills(snapshot);
+        sync.finishOk('能力标签已保存并同步到云端');
+      } catch (error) {
+        sync.finishError(error instanceof Error ? error.message : String(error));
+      }
+    })();
+
     return filePath;
   },
 
