@@ -14,6 +14,7 @@ const COLUMN_MIGRATIONS = [
   // 自定义阶段 ID 可能超过 16 字符
   'ALTER TABLE skills MODIFY COLUMN stage VARCHAR(64) NOT NULL',
   'ALTER TABLE level_skill_bindings MODIFY COLUMN cfop_stage VARCHAR(64) NOT NULL',
+  'ALTER TABLE levels ADD COLUMN goal_state_matrices JSON NULL',
 ];
 
 function isIgnorableMigrationError(error: unknown): boolean {

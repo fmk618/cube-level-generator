@@ -136,10 +136,10 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
         await conn.query(
           `INSERT INTO levels (
             id, chapter_id, level_order, title, description,
-            start_state_matrix, goal_state_matrix, brightness_matrix,
+            start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
             max_moves, star_thresholds, hint, rotation_formula, rotation_target,
             guidance_formula, guidance_failure_threshold, hidden, sync_uuid
-          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             chapter_id = VALUES(chapter_id),
             level_order = VALUES(level_order),
@@ -147,6 +147,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             description = VALUES(description),
             start_state_matrix = VALUES(start_state_matrix),
             goal_state_matrix = VALUES(goal_state_matrix),
+            goal_state_matrices = VALUES(goal_state_matrices),
             brightness_matrix = VALUES(brightness_matrix),
             max_moves = VALUES(max_moves),
             star_thresholds = VALUES(star_thresholds),
@@ -165,6 +166,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             level.description,
             JSON.stringify(level.startStateMatrix),
             JSON.stringify(level.goalStateMatrix),
+            level.goalStateMatrices != null ? JSON.stringify(level.goalStateMatrices) : null,
             JSON.stringify(level.brightnessMatrix),
             level.maxMoves,
             JSON.stringify(level.starThresholds),
@@ -195,7 +197,7 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
   );
   const [levelRows] = await pool.query<RowDataPacket[]>(
     `SELECT id, chapter_id, level_order, title, description,
-            start_state_matrix, goal_state_matrix, brightness_matrix,
+            start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
             max_moves, star_thresholds, hint, rotation_formula, rotation_target,
             guidance_formula, guidance_failure_threshold, hidden
      FROM levels
@@ -223,6 +225,9 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
       description: String(row.description ?? ''),
       startStateMatrix: parseJsonField(row.start_state_matrix, []),
       goalStateMatrix: parseJsonField(row.goal_state_matrix, []),
+      goalStateMatrices: row.goal_state_matrices != null
+        ? parseJsonField(row.goal_state_matrices, [])
+        : undefined,
       brightnessMatrix: parseJsonField(row.brightness_matrix, []),
       maxMoves: Number(row.max_moves),
       starThresholds: parseJsonField<[number, number]>(row.star_thresholds, [0, 0]),

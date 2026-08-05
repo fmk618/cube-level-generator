@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS levels (
   description TEXT NOT NULL,
   start_state_matrix JSON NOT NULL,
   goal_state_matrix JSON NOT NULL,
+  goal_state_matrices JSON NULL,
   brightness_matrix JSON NOT NULL,
   max_moves INT NOT NULL,
   star_thresholds JSON NOT NULL,

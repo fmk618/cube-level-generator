@@ -23,6 +23,8 @@ export interface LevelDefinition {
     description: string;
     startStateMatrix: StateMatrix;
     goalStateMatrix: StateMatrix;
+    /** 多个等效目标态（如绕 Y 轴四向）；命中任一即过关 */
+    goalStateMatrices?: StateMatrix[];
     brightnessMatrix: BrightnessMatrix;
     maxMoves: number;
     starThresholds: [number, number];

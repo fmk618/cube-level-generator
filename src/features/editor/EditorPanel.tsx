@@ -6,12 +6,15 @@ import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 import {
+  buildYawEquivalentGoalStates,
   deriveLevelFormulaPreset,
   formatChapterLevelOrder,
   formatGuidanceFailureThresholdLabel,
   getLevelGuidanceSummary,
   getMinimumStarThresholds,
+  isYawEquivalentGoalSet,
   LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
+  normalizeLevelGoalStates,
   resolveLevelGuidanceFailureThreshold,
   resolveStarThresholds,
   type LevelDefinition,
@@ -20,7 +23,7 @@ import {
 } from '@/core/levels';
 import { getLevelRecommendStatus, getTeachModeLabel } from '@/core/skill-graph/utils';
 import { INITIAL_BRIGHTNESS_MATRIX, type BrightnessMatrix, type StateMatrix } from '@/core/cube';
-import { expandTokenToLayerMoves } from '@/core/formula';
+import { expandTokenToLayerMoves, applyTokensToState } from '@/core/formula';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
 import type { CubePlayRequest } from '@/features/preview-3d/CubeScene';
 import { FormulaKeyboard } from './FormulaKeyboard';
@@ -53,6 +56,18 @@ const parsePositiveInteger = (text: string): number | null => {
   return Number.isInteger(value) && value > 0 ? value : null;
 };
 
+const resolveGoalVariantList = (
+  primary: StateMatrix,
+  matrices: StateMatrix[] | undefined,
+): StateMatrix[] => {
+  if (matrices && matrices.length > 0) {
+    return matrices.map(cloneStateMatrix);
+  }
+  return [cloneStateMatrix(primary)];
+};
+
+const formatGoalVariantLabel = (index: number): string => `目标${index + 1}`;
+
 type Tab = 'meta' | 'formula' | 'brightness' | 'guidance';
 
 export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => void } = {}) {
@@ -81,8 +96,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [guidanceFailureThreshold, setGuidanceFailureThreshold] = useState<LevelGuidanceFailureThreshold>(3);
   const [startStateMatrix, setStartStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrix, setGoalStateMatrix] = useState<StateMatrix | null>(null);
+  const [goalStateMatrices, setGoalStateMatrices] = useState<StateMatrix[] | undefined>(undefined);
   const [brightnessMatrix, setBrightnessMatrix] = useState<BrightnessMatrix>(cloneBrightness(INITIAL_BRIGHTNESS_MATRIX));
   const [previewMode, setPreviewMode] = useState<'start' | 'goal'>('start');
+  const [selectedGoalVariantIndex, setSelectedGoalVariantIndex] = useState(0);
   const [selectedFace, setSelectedFace] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
@@ -179,8 +196,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold));
     setStartStateMatrix(cloneStateMatrix(level.startStateMatrix));
     setGoalStateMatrix(cloneStateMatrix(level.goalStateMatrix));
+    setGoalStateMatrices(level.goalStateMatrices?.map(cloneStateMatrix) ?? undefined);
     setBrightnessMatrix(cloneBrightness(level.brightnessMatrix));
     setPreviewMode('start');
+    setSelectedGoalVariantIndex(0);
     setActiveTab('meta');
     setSaveError(null);
     setSaveNotice(null);
@@ -201,6 +220,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           const derived = deriveLevelFormulaPreset(formula, target);
           setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
           setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+          setGoalStateMatrices(undefined);
+          setSelectedGoalVariantIndex(0);
           setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
           setPreviewMode('start');
           setSaveError(null);
@@ -219,6 +240,32 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   }, [formulaAdoptionRequest, level, clearFormulaAdoptionRequest]);
 
   const chapter = level ? chapters.find((c) => c.id === level.chapterId) : undefined;
+
+  const allGoalVariants = useMemo(() => {
+    if (!goalStateMatrix) return [];
+    return resolveGoalVariantList(goalStateMatrix, goalStateMatrices);
+  }, [goalStateMatrix, goalStateMatrices]);
+
+  const isYawGoalSet = useMemo(() => {
+    if (!goalStateMatrix || !goalStateMatrices || goalStateMatrices.length <= 1) return false;
+    return isYawEquivalentGoalSet(goalStateMatrix, goalStateMatrices);
+  }, [goalStateMatrix, goalStateMatrices]);
+
+  const previewStateMatrix = useMemo(() => {
+    if (!startStateMatrix || !goalStateMatrix) return null;
+    if (previewMode === 'start') return startStateMatrix;
+    return allGoalVariants[selectedGoalVariantIndex] ?? goalStateMatrix;
+  }, [previewMode, startStateMatrix, goalStateMatrix, allGoalVariants, selectedGoalVariantIndex]);
+
+  const syncGoalVariants = useCallback((variants: StateMatrix[]) => {
+    const cloned = variants.map(cloneStateMatrix);
+    setGoalStateMatrix(cloned[0]);
+    if (cloned.length <= 1) {
+      setGoalStateMatrices(undefined);
+    } else {
+      setGoalStateMatrices(cloned);
+    }
+  }, []);
 
   const formulaPreviewText = useMemo(() => {
     const trimmed = formulaText.trim();
@@ -255,6 +302,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
       setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+      setGoalStateMatrices(undefined);
+      setSelectedGoalVariantIndex(0);
       setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
       setPreviewMode('start');
       setSaveError(null);
@@ -293,10 +342,78 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
       setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+      setGoalStateMatrices(undefined);
+      setSelectedGoalVariantIndex(0);
     } catch {
       // 编辑中的不完整公式忽略
     }
   }, [formulaText, formulaTarget]);
+
+  const handleGenerateYawGoalStates = () => {
+    if (!goalStateMatrix) return;
+    const yawVariants = buildYawEquivalentGoalStates(goalStateMatrix);
+    const list = allGoalVariants.map(cloneStateMatrix);
+
+    if (list.length > 1 && !isYawGoalSet) {
+      const confirmed = window.confirm(
+        '将用「目标1 绕 Y 轴四向」替换当前所有目标，是否继续？',
+      );
+      if (!confirmed) return;
+      syncGoalVariants(yawVariants);
+    } else if (list.length > yawVariants.length) {
+      const confirmed = window.confirm(
+        `将按目标1 重新生成前 ${yawVariants.length} 个 Y 轴四向目标，${formatGoalVariantLabel(yawVariants.length)} 及之后会保留。是否继续？`,
+      );
+      if (!confirmed) return;
+      syncGoalVariants([...yawVariants, ...list.slice(yawVariants.length)]);
+    } else {
+      syncGoalVariants(yawVariants);
+    }
+
+    setSelectedGoalVariantIndex(0);
+    setPreviewMode('goal');
+    setSaveNotice(
+      list.length > yawVariants.length
+        ? `已更新 Y 轴四向目标（前 ${yawVariants.length} 个），其余手动目标已保留。`
+        : `已生成 Y 轴四向等效目标（共 ${yawVariants.length} 个），请在下方逐个核对。`,
+    );
+    setSaveError(null);
+  };
+
+  const handleAddGoalVariant = () => {
+    if (!goalStateMatrix) return;
+    const list = allGoalVariants.map(cloneStateMatrix);
+    const source = list[selectedGoalVariantIndex] ?? list[list.length - 1];
+    const next = [...list, cloneStateMatrix(source)];
+    syncGoalVariants(next);
+    setSelectedGoalVariantIndex(next.length - 1);
+    setPreviewMode('goal');
+    setSaveNotice(`已添加${formatGoalVariantLabel(next.length - 1)}。可用缩略图上的 Y 旋转该目标，或在大预览中核对。`);
+    setSaveError(null);
+  };
+
+  const handleSelectGoalVariant = (index: number) => {
+    setPreviewMode('goal');
+    setSelectedGoalVariantIndex(index);
+  };
+
+  const handleRotateGoalVariantYaw = (index: number) => {
+    const list = allGoalVariants.map(cloneStateMatrix);
+    if (!list[index]) return;
+    list[index] = applyTokensToState(list[index], ['y']);
+    syncGoalVariants(list);
+    setSelectedGoalVariantIndex(index);
+    setPreviewMode('goal');
+  };
+
+  const handleRemoveGoalVariant = (index: number) => {
+    if (allGoalVariants.length <= 1) return;
+    const list = allGoalVariants.filter((_, variantIndex) => variantIndex !== index);
+    syncGoalVariants(list);
+    setSelectedGoalVariantIndex(Math.min(index, list.length - 1));
+  };
+
+  const goalVariantCount = allGoalVariants.length;
 
   const toggleBrightnessCell = (face: number, row: number, col: number) => {
     const next = cloneBrightness(brightnessMatrix);
@@ -330,12 +447,13 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       || guidanceFailureThreshold !== resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
       || JSON.stringify(startStateMatrix) !== JSON.stringify(level.startStateMatrix)
       || JSON.stringify(goalStateMatrix) !== JSON.stringify(level.goalStateMatrix)
+      || JSON.stringify(goalStateMatrices ?? null) !== JSON.stringify(level.goalStateMatrices ?? null)
       || JSON.stringify(brightnessMatrix) !== JSON.stringify(level.brightnessMatrix)
     );
   }, [
     level, titleText, descriptionText, hintText, maxMovesText, star3Text, star2Text,
     formulaText, formulaTarget, guidanceFormulaText, guidanceFailureThreshold,
-    startStateMatrix, goalStateMatrix, brightnessMatrix,
+    startStateMatrix, goalStateMatrix, goalStateMatrices, brightnessMatrix,
   ]);
 
   const handleSave = async () => {
@@ -369,6 +487,11 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       }
     }
 
+    const normalizedGoals = normalizeLevelGoalStates({
+      goalStateMatrix: cloneStateMatrix(goalStateMatrix ?? level.goalStateMatrix),
+      goalStateMatrices: goalStateMatrices?.map(cloneStateMatrix),
+    });
+
     const patch: Partial<LevelDefinition> = {
       title,
       description,
@@ -376,7 +499,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       maxMoves: effectiveMaxMoves,
       starThresholds,
       startStateMatrix: cloneStateMatrix(startStateMatrix ?? level.startStateMatrix),
-      goalStateMatrix: cloneStateMatrix(goalStateMatrix ?? level.goalStateMatrix),
+      ...normalizedGoals,
       brightnessMatrix: cloneBrightness(brightnessMatrix),
       rotationFormula: rotationFormula || undefined,
       rotationTarget: rotationFormula ? formulaTarget : undefined,
@@ -408,6 +531,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(updatedLevel.guidanceFailureThreshold));
       setStartStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(updatedLevel.goalStateMatrix));
+      setGoalStateMatrices(updatedLevel.goalStateMatrices?.map(cloneStateMatrix) ?? undefined);
       setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
       useUiStore.getState().clearAiTouched();
       const syncHint = syncPhase === 'cloud' || useCloudSyncStore.getState().phase === 'cloud'
@@ -480,12 +604,25 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             <span className="preview-hero-title">3D 预览</span>
             <div className="segmented preview-segmented">
               <button type="button" className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('start')}>初始态</button>
-              <button type="button" className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('goal')}>目标态</button>
+              {allGoalVariants.length > 1 ? (
+                allGoalVariants.map((_, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className={`chip ${previewMode === 'goal' && selectedGoalVariantIndex === index ? 'chip-active' : ''}`}
+                    onClick={() => handleSelectGoalVariant(index)}
+                  >
+                    {formatGoalVariantLabel(index)}
+                  </button>
+                ))
+              ) : (
+                <button type="button" className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('goal')}>目标态</button>
+              )}
             </div>
           </div>
           <CubePreview
             className="cube-preview cube-preview-editor cube-preview-resizable"
-            stateMatrix={previewMode === 'start' ? startStateMatrix : goalStateMatrix}
+            stateMatrix={previewStateMatrix ?? goalStateMatrix}
             brightnessMatrix={brightnessMatrix}
             playRequest={playRequest}
             onPlayComplete={() => setPlayRequest(null)}
@@ -572,7 +709,124 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             </div>
           </div>
           <FormulaKeyboard value={formulaText} onChange={setFormulaText} onTokenAppended={handleFormulaTokenAppended} />
-          <div><button className="btn" onClick={applyFormula}>应用公式</button></div>
+          <div className="field-row">
+            <button className="btn" onClick={applyFormula}>应用公式</button>
+          </div>
+
+          <div className="goal-variant-paths">
+            <div className={`goal-variant-path ${isYawGoalSet ? 'goal-variant-path-active' : ''}`}>
+              <div className="goal-variant-path-title">快捷：Y 轴四向等效</div>
+              <p className="hint-text">
+                常见情况——玩家把整个魔方绕竖直轴转 90° 仍算过关。一键生成目标1～4，生成后仍可在右侧继续添加其他目标。
+              </p>
+              <button
+                className="btn"
+                type="button"
+                onClick={handleGenerateYawGoalStates}
+              >
+                {isYawGoalSet && allGoalVariants.length > 4
+                  ? '重新生成前四个 Y 轴四向'
+                  : isYawGoalSet
+                    ? '重新生成 Y 轴四向'
+                    : allGoalVariants.length > 1
+                      ? '替换为 Y 轴四向'
+                      : '一键生成目标1～4'}
+              </button>
+            </div>
+            <div className={`goal-variant-path ${allGoalVariants.length > 1 && !isYawGoalSet ? 'goal-variant-path-active' : ''}`}>
+              <div className="goal-variant-path-title">手动添加更多目标</div>
+              <p className="hint-text">
+                除 Y 轴四向外还有其他过关朝向时，可继续添加目标5、目标6… 用缩略图上的 Y 旋转或在大预览中核对。
+              </p>
+              <button
+                className="btn"
+                type="button"
+                onClick={handleAddGoalVariant}
+              >
+                {allGoalVariants.length <= 1
+                  ? '添加目标2'
+                  : `添加${formatGoalVariantLabel(allGoalVariants.length)}`}
+              </button>
+            </div>
+          </div>
+
+          <p className="hint-text goal-variant-summary">
+            {goalVariantCount <= 1
+              ? '当前：仅目标1。可先一键生成 Y 轴四向，或按需手动添加更多目标。'
+              : isYawGoalSet && goalVariantCount > 4
+                ? `当前：Y 轴四向（前 4 个）+ 手动补充（${goalVariantCount - 4} 个），共 ${goalVariantCount} 个可过关目标。`
+                : isYawGoalSet
+                  ? `当前：Y 轴四向等效（${goalVariantCount} 个）。若有其他朝向，可继续手动添加。`
+                  : `当前：自定义多目标（${goalVariantCount} 个）。保存后 App 命中任一目标即可结算。`}
+          </p>
+
+          <div className="goal-variant-section">
+            <div className="goal-variant-section-header">
+              <strong>目标态预览（{goalVariantCount}）</strong>
+              {previewMode === 'goal' && allGoalVariants.length > 0 && (
+                <div className="goal-variant-actions">
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => handleRotateGoalVariantYaw(selectedGoalVariantIndex)}
+                  >
+                    当前目标绕 Y 转 90°
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="goal-variant-grid">
+              {allGoalVariants.map((variant, index) => (
+                <div
+                  key={index}
+                  className={`goal-variant-card ${previewMode === 'goal' && selectedGoalVariantIndex === index ? 'is-selected' : ''}`}
+                  onClick={() => handleSelectGoalVariant(index)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleSelectGoalVariant(index);
+                    }
+                  }}
+                >
+                  <div className="goal-variant-card-header">
+                    <span>{formatGoalVariantLabel(index)}</span>
+                    <div className="goal-variant-card-actions">
+                      <button
+                        type="button"
+                        title="绕 Y 轴转 90°"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleRotateGoalVariantYaw(index);
+                        }}
+                      >
+                        Y
+                      </button>
+                      <button
+                        type="button"
+                        title="删除此目标"
+                        disabled={allGoalVariants.length <= 1}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleRemoveGoalVariant(index);
+                        }}
+                      >
+                        删
+                      </button>
+                    </div>
+                  </div>
+                  <CubePreview
+                    className="cube-preview cube-preview-thumb"
+                    stateMatrix={variant}
+                    brightnessMatrix={brightnessMatrix}
+                    hideViewControls
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="preview-card">{formulaPreviewText}</div>
         </div>
       )}

@@ -15,6 +15,7 @@ export type CloudLevel = {
   description: string;
   startStateMatrix: unknown;
   goalStateMatrix: unknown;
+  goalStateMatrices?: unknown;
   brightnessMatrix: unknown;
   maxMoves: number;
   starThresholds: [number, number];

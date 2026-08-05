@@ -6,7 +6,7 @@ import type {
 import { applyTokensToState, mapTokensByOrientation, parseFormulaTokens } from '../formula/moves';
 import { notationToFace } from '../formula/notationToFace';
 import { INITIAL_COLOR_MATRIX } from '../cube';
-import { isLevelGoalReached } from './goalEvaluation';
+import { isLevelGoalReachedForLevel } from './goalStates';
 import { resolveLevelGuidanceFailureThreshold } from './utils';
 
 export type LevelGuidanceStatus = 'ready' | 'missing' | 'invalid';
@@ -102,9 +102,9 @@ export const getLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceSu
         }
 
         const result = applyTokensToState(level.startStateMatrix, mappedTokens);
-        if (!isLevelGoalReached(
+        if (!isLevelGoalReachedForLevel(
             result,
-            level.goalStateMatrix,
+            level,
             level.brightnessMatrix,
             INITIAL_COLOR_MATRIX,
         )) {

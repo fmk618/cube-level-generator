@@ -37,6 +37,13 @@ export {
 } from './formulaPreset';
 
 export { isLevelGoalReached } from './goalEvaluation';
+export {
+    buildYawEquivalentGoalStates,
+    isYawEquivalentGoalSet,
+    isLevelGoalReachedForLevel,
+    normalizeLevelGoalStates,
+    resolveLevelGoalStates,
+} from './goalStates';
 
 export { buildLevelForChapter } from './factory';
 

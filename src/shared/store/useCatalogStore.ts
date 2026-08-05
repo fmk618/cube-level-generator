@@ -14,6 +14,7 @@ import {
     type LevelFormulaTarget,
     type LevelId,
 } from '@/core/levels';
+import type { StateMatrix } from '@/core/cube';
 import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 
 export type LevelMoveDirection = 'up' | 'down';
@@ -70,6 +71,9 @@ type CatalogState = {
     applyAiChapterProposals: (proposals: AiChapterCreateInput[]) => { chapterIds: string[]; levelIds: string[] };
 };
 
+const cloneStateMatrices = (matrices: StateMatrix[]): StateMatrix[] =>
+    matrices.map((matrix) => matrix.map((face) => face.map((row) => [...row])));
+
 const cloneCatalog = (catalog: LevelCatalogDocument): LevelCatalogDocument =>
     normalizeLevelCatalogDocument({
         version: catalog.version,
@@ -78,6 +82,9 @@ const cloneCatalog = (catalog: LevelCatalogDocument): LevelCatalogDocument =>
             ...level,
             startStateMatrix: level.startStateMatrix.map((face) => face.map((row) => [...row])),
             goalStateMatrix: level.goalStateMatrix.map((face) => face.map((row) => [...row])),
+            goalStateMatrices: level.goalStateMatrices
+                ? cloneStateMatrices(level.goalStateMatrices)
+                : undefined,
             brightnessMatrix: level.brightnessMatrix.map((face) => face.map((row) => [...row])),
         })),
     });
@@ -402,6 +409,9 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
             title: `${sourceLevel.title} 副本`,
             startStateMatrix: sourceLevel.startStateMatrix.map((face) => face.map((row) => [...row])),
             goalStateMatrix: sourceLevel.goalStateMatrix.map((face) => face.map((row) => [...row])),
+            goalStateMatrices: sourceLevel.goalStateMatrices
+                ? cloneStateMatrices(sourceLevel.goalStateMatrices)
+                : undefined,
             brightnessMatrix: sourceLevel.brightnessMatrix.map((face) => face.map((row) => [...row])),
             starThresholds: [...sourceLevel.starThresholds],
         };
