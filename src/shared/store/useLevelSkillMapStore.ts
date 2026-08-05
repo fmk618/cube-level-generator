@@ -194,6 +194,11 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
         await window.api.levelSkillMap.saveRuntime(exportLevelSkillMapToJSON(map));
       }
 
+      if (!force && get().hasUnsavedChanges) {
+        set({ isLoading: false });
+        return;
+      }
+
       applyMap(set, map, cloneMap(map), false, ambiguous);
       set({ isLoaded: true, isLoading: false });
     } catch (error) {

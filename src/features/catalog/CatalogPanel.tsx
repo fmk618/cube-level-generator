@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useCatalogStore, type LevelMoveDirection } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import {
   buildLevelManagerViewModel,
+  formatGuidanceFailureThresholdLabel,
   getLevelGuidanceSummary,
-  resolveLevelGuidanceFailureThreshold,
   type LevelManagerFilter,
   type LevelManagerItem,
   type LevelManagerSection,
@@ -127,7 +128,7 @@ function ActionMenu({
 export function CatalogPanel() {
   const {
     levels, chapters, isLoaded, isLoading, loadError, hasUnsavedChanges, runtimeFilePath,
-    refreshCatalog, discardChanges, resetToDefault, importFromDisk, exportToDisk,
+    discardChanges, resetToDefault, importFromDisk, exportToDisk,
     createChapter, updateChapter, moveChapter, deleteChapter,
     createLevelForChapter, duplicateLevel, moveLevel, deleteLevel, updateLevel,
   } = useCatalogStore();
@@ -141,11 +142,6 @@ export function CatalogPanel() {
   const [chapterDraft, setChapterDraft] = useState<ChapterDraft | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
-
-  useEffect(() => {
-    void refreshCatalog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const viewModel = useMemo(
     () => buildLevelManagerViewModel(levels, [], { searchTerm, filter, chapters }),
@@ -216,6 +212,10 @@ export function CatalogPanel() {
   const handleSubmitChapter = () => {
     if (!chapterDraft) return;
     const capacity = Number(chapterDraft.capacity);
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      setBanner('地图槽位容量必须是正整数');
+      return;
+    }
     void run('chapter-submit', () => {
       if (chapterDraft.id) {
         updateChapter(chapterDraft.id, {
@@ -365,9 +365,9 @@ export function CatalogPanel() {
         </div>
       </div>
 
-      {chapterDraft && (
+      {chapterDraft && createPortal(
         <div className="modal-backdrop" onClick={() => setChapterDraft(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>{chapterDraft.id ? '编辑章节' : '新增章节'}</h3>
             <label>章节短名称
               <input className="text-input" value={chapterDraft.partName} onChange={(e) => setChapterDraft({ ...chapterDraft, partName: e.target.value })} />
@@ -388,7 +388,8 @@ export function CatalogPanel() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -580,7 +581,6 @@ function LevelRow({
 
   if (!item.level) return null;
   const level = item.level;
-  const failureThreshold = resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold);
   const disabled = busy !== null;
 
   const commitTitle = () => {
@@ -641,7 +641,7 @@ function LevelRow({
           {item.isHidden && <span className="level-meta-warning">隐藏 · </span>}
           <span>{guidance?.status === 'ready' ? `${guidance.stepCount} 步` : guidance?.status === 'invalid' ? '解法无效' : '缺少解法'}</span>
           <span>·</span>
-          <span>失败 {failureThreshold} 次解锁</span>
+          <span>{formatGuidanceFailureThresholdLabel(level.guidanceFailureThreshold)}</span>
         </div>
       </div>
       <div className="level-row-actions" onClick={(event) => event.stopPropagation()}>

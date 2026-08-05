@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS levels (
 -- 技能
 CREATE TABLE IF NOT EXISTS skills (
   id VARCHAR(64) NOT NULL,
-  stage VARCHAR(16) NOT NULL,
+  stage VARCHAR(64) NOT NULL,
   display_name_zh VARCHAR(255) NOT NULL,
   display_name_en VARCHAR(255) NOT NULL,
   goal TEXT NOT NULL,
@@ -59,13 +59,25 @@ CREATE TABLE IF NOT EXISTS skills (
   KEY idx_skills_sync_uuid (sync_uuid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 能力标签阶段（含自定义阶段）
+CREATE TABLE IF NOT EXISTS skill_stages (
+  id VARCHAR(64) NOT NULL,
+  label VARCHAR(255) NOT NULL,
+  stage_order INT NOT NULL,
+  sync_uuid CHAR(36) NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_skill_stages_order (stage_order),
+  KEY idx_skill_stages_sync_uuid (sync_uuid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 关卡-技能绑定（row_uuid 由 levelId+skillId 稳定生成）
 CREATE TABLE IF NOT EXISTS level_skill_bindings (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   row_uuid CHAR(36) NULL,
   level_id VARCHAR(64) NOT NULL,
   skill_id VARCHAR(64) NOT NULL,
-  cfop_stage VARCHAR(16) NOT NULL,
+  cfop_stage VARCHAR(64) NOT NULL,
   teach_mode VARCHAR(32) NOT NULL,
   formula_difficulty INT NOT NULL,
   sync_uuid CHAR(36) NULL,

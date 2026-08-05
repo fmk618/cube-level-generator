@@ -221,6 +221,11 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
             const runtimeFilePath = persistLocal && fromCloud
                 ? await window.api.catalog.saveRuntime(exportLevelsToJSON(catalog))
                 : await window.api.catalog.getRuntimePath();
+            // 异步拉取期间若用户已开始编辑，勿覆盖草稿
+            if (!force && get().hasUnsavedChanges) {
+                set({ isLoading: false });
+                return;
+            }
             applyCatalog(set, catalog, catalog, false);
             set({ isLoading: false, runtimeFilePath });
         } catch (error) {
@@ -321,7 +326,9 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
             ...currentChapter,
             partName: partial.partName?.trim() ?? currentChapter.partName,
             title: partial.title?.trim() ?? currentChapter.title,
-            description: partial.description?.trim() || currentChapter.description,
+            description: Object.prototype.hasOwnProperty.call(partial, 'description')
+                ? (partial.description?.trim() || undefined)
+                : currentChapter.description,
             capacity: partial.capacity ?? currentChapter.capacity,
         };
         if (!updatedChapter.partName || !updatedChapter.title || !Number.isInteger(updatedChapter.capacity) || updatedChapter.capacity < 1) {

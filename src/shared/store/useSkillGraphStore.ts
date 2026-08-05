@@ -193,6 +193,11 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
         runtimeFilePath = await window.api.skillGraph.saveRuntime(exportSkillGraphToJSON(skillGraph));
       }
 
+      if (!force && get().hasUnsavedChanges) {
+        set({ isLoading: false });
+        return;
+      }
+
       applySkillGraph(set, skillGraph, cloneSkillGraph(skillGraph), false);
       set({
         isLoaded: true,
@@ -285,7 +290,10 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     set({ runtimeFilePath: filePath });
     sync.markCloud('本地已保存，正在同步云端…', 45);
 
-    const snapshot = skillGraph;
+    const snapshot = {
+      ...skillGraph,
+      stages: resolveStages(skillGraph),
+    };
     void (async () => {
       try {
         sync.setProgress(70, '正在上传能力标签到云端…');

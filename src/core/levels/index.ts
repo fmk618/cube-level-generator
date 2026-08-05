@@ -25,6 +25,8 @@ export {
     importLevelsFromJSON,
     normalizeLevelCatalogDocument,
     resolveLevelGuidanceFailureThreshold,
+    formatGuidanceFailureThresholdLabel,
+    LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
     sortLevelsBySlotOrder,
 } from './utils';
 

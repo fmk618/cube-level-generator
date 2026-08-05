@@ -8,8 +8,10 @@ import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 import {
   deriveLevelFormulaPreset,
   formatChapterLevelOrder,
+  formatGuidanceFailureThresholdLabel,
   getLevelGuidanceSummary,
   getMinimumStarThresholds,
+  LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
   resolveLevelGuidanceFailureThreshold,
   resolveStarThresholds,
   type LevelDefinition,
@@ -616,19 +618,29 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           <div className="chip-group">
             <span className="chip-group-label">指引解锁失败次数</span>
             <div className="chip-row">
-              {([0, 1, 2, 3] as LevelGuidanceFailureThreshold[]).map((threshold) => (
-                <button key={threshold} className={`chip ${guidanceFailureThreshold === threshold ? 'chip-active' : ''}`} onClick={() => setGuidanceFailureThreshold(threshold)}>
-                  {threshold} 次
+              {LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS.map((threshold) => (
+                <button
+                  key={threshold}
+                  className={`chip ${guidanceFailureThreshold === threshold ? 'chip-active' : ''}`}
+                  onClick={() => {
+                    setGuidanceFailureThreshold(threshold);
+                    if (level) {
+                      updateLevel(level.id, { guidanceFailureThreshold: threshold });
+                    }
+                  }}
+                >
+                  {threshold === -1 ? '不开启' : `${threshold} 次`}
                 </button>
               ))}
             </div>
           </div>
           <p className="hint-text">
-            {guidanceFailureThreshold === 0
-              ? '0 次表示本关永久关闭公式、箭头演示和流水灯提示。'
-              : guidanceFailureThreshold === 1
-                ? '1 次表示进入本关即可使用流水灯和公式指引。'
-                : `${guidanceFailureThreshold} 次表示连续失败 ${guidanceFailureThreshold - 1} 次后解锁指引。`}
+            {guidanceFailureThreshold === -1
+              ? '不开启：本关永不显示箭头演示与流水灯提示。'
+              : guidanceFailureThreshold === 0
+                ? '0 次：进入本关即开启箭头演示与流水灯提示。'
+                : `${guidanceFailureThreshold} 次：连续失败 ${guidanceFailureThreshold} 次后开启箭头演示与流水灯提示。`}
+            {' '}当前：{formatGuidanceFailureThresholdLabel(guidanceFailureThreshold)}
           </p>
           <FormulaKeyboard value={guidanceFormulaText} onChange={setGuidanceFormulaText} />
           <div className="preview-card">{guidancePreviewText}</div>

@@ -239,8 +239,28 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
 
 export async function pushSkills(doc: CloudSkillGraphDocument): Promise<void> {
   const syncUuid = newSyncUuid();
+  const stages = Array.isArray(doc.stages)
+    ? doc.stages.filter((stage) => stage && typeof stage.id === 'string' && stage.id.trim())
+    : [];
 
   await runWriteTransaction(async (conn) => {
+    for (const stage of stages) {
+      await conn.query(
+        `INSERT INTO skill_stages (id, label, stage_order, sync_uuid)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           label = VALUES(label),
+           stage_order = VALUES(stage_order),
+           sync_uuid = VALUES(sync_uuid)`,
+        [
+          String(stage.id).trim(),
+          String(stage.label ?? stage.id).trim() || String(stage.id).trim(),
+          Number(stage.order) || 0,
+          syncUuid,
+        ],
+      );
+    }
+
     for (let i = 0; i < doc.skills.length; i += BATCH_SIZE) {
       const chunk = doc.skills.slice(i, i + BATCH_SIZE);
       for (const skill of chunk) {
@@ -276,6 +296,7 @@ export async function pushSkills(doc: CloudSkillGraphDocument): Promise<void> {
     }
 
     await conn.query('DELETE FROM skills WHERE sync_uuid IS NULL OR sync_uuid <> ?', [syncUuid]);
+    await conn.query('DELETE FROM skill_stages WHERE sync_uuid IS NULL OR sync_uuid <> ?', [syncUuid]);
     await setMeta(conn, 'skill_graph_version', String(doc.version));
     await setMeta(conn, 'skill_graph_sync_uuid', syncUuid);
   });
@@ -292,7 +313,19 @@ export async function pullSkills(): Promise<CloudSkillGraphDocument | null> {
   );
   if (rows.length === 0) return null;
 
+  const [stageRows] = await pool.query<RowDataPacket[]>(
+    `SELECT id, label, stage_order
+     FROM skill_stages
+     ORDER BY stage_order ASC, id ASC`,
+  );
+
   const versionRaw = await getMeta('skill_graph_version');
+  const stages = stageRows.map((row: RowDataPacket) => ({
+    id: String(row.id),
+    label: String(row.label ?? row.id),
+    order: Number(row.stage_order) || 0,
+  }));
+
   return {
     version: Number(versionRaw ?? 1),
     skills: rows.map((row: RowDataPacket) => ({
@@ -306,6 +339,7 @@ export async function pullSkills(): Promise<CloudSkillGraphDocument | null> {
       order: Number(row.skill_order),
       draft: Boolean(row.draft),
     })),
+    ...(stages.length > 0 ? { stages } : {}),
   };
 }
 

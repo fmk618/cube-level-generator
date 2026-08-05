@@ -44,9 +44,16 @@ export type CloudSkill = {
   draft?: boolean;
 };
 
+export type CloudSkillStage = {
+  id: string;
+  label: string;
+  order: number;
+};
+
 export type CloudSkillGraphDocument = {
   version: number;
   skills: CloudSkill[];
+  stages?: CloudSkillStage[];
 };
 
 export type CloudLevelSkillBinding = {

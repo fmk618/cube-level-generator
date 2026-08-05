@@ -86,18 +86,49 @@ export const calculateStars = (
     return 1;
 };
 
-const LEVEL_FILE_VERSION = 1;
+const LEVEL_FILE_VERSION = 2;
 const MIN_STICKER_ID = 0;
 const MAX_STICKER_ID = 53;
 export const DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD: LevelGuidanceFailureThreshold = 3;
 
+export const LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS: LevelGuidanceFailureThreshold[] = [
+    -1, 0, 1, 2, 3, 4, 5,
+];
+
+const isGuidanceFailureThreshold = (value: unknown): value is LevelGuidanceFailureThreshold =>
+    value === -1
+    || value === 0
+    || value === 1
+    || value === 2
+    || value === 3
+    || value === 4
+    || value === 5;
+
+/** v1：0=永久关闭，N=失败 N-1 次后开 → v2：-1=关闭，N=失败 N 次后开 */
+const migrateGuidanceFailureThresholdFromV1 = (
+    value: unknown,
+): LevelGuidanceFailureThreshold => {
+    if (value === 0) return -1;
+    if (value === 1) return 0;
+    if (value === 2) return 1;
+    if (value === 3) return 2;
+    return DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD;
+};
+
 export const resolveLevelGuidanceFailureThreshold = (
     value: unknown,
 ): LevelGuidanceFailureThreshold => (
-    value === 0 || value === 1 || value === 2 || value === 3
-        ? value
-        : DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD
+    isGuidanceFailureThreshold(value) ? value : DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD
 );
+
+export const formatGuidanceFailureThresholdLabel = (
+    value: unknown,
+): string => {
+    const threshold = resolveLevelGuidanceFailureThreshold(value);
+    if (threshold === -1) return '不开启指引';
+    if (threshold === 0) return '进入即开指引';
+    return `失败 ${threshold} 次解锁`;
+};
 
 const isPositiveInteger = (value: unknown): value is number =>
     typeof value === 'number' && Number.isInteger(value) && value > 0;
@@ -167,11 +198,21 @@ const normalizeChapterOrders = (
 export const normalizeLevelCatalogDocument = (
     document: LevelCatalogDocument,
 ): LevelCatalogDocument => {
+    const sourceVersion = typeof document.version === 'number' ? document.version : 1;
+    const sourceLevels = sourceVersion < 2
+        ? document.levels.map((level) => ({
+            ...level,
+            guidanceFailureThreshold: migrateGuidanceFailureThresholdFromV1(
+                level.guidanceFailureThreshold,
+            ),
+        }))
+        : document.levels;
+
     const chapters = normalizeChapters(document.chapters);
     return {
         version: LEVEL_FILE_VERSION,
         chapters,
-        levels: normalizeChapterOrders(document.levels, chapters).map((level) => ({
+        levels: normalizeChapterOrders(sourceLevels, chapters).map((level) => ({
             ...level,
             id: level.id.trim(),
             chapterId: level.chapterId.trim(),
@@ -213,8 +254,8 @@ export const importLevelsFromJSON = (json: string): LevelCatalogDocument => {
     if (!parsed || typeof parsed.version !== 'number') {
         throw new Error('Invalid level file format: missing version field');
     }
-    if (parsed.version !== LEVEL_FILE_VERSION) {
-        throw new Error(`Unsupported file version: ${parsed.version}, current supported: ${LEVEL_FILE_VERSION}`);
+    if (parsed.version !== 1 && parsed.version !== LEVEL_FILE_VERSION) {
+        throw new Error(`Unsupported file version: ${parsed.version}, current supported: 1-${LEVEL_FILE_VERSION}`);
     }
     if (!Array.isArray(parsed.levels)) {
         throw new Error('No levels array in level file');
@@ -312,7 +353,7 @@ const validateLevelDefinition = (
     }
     if (
         level.guidanceFailureThreshold !== undefined
-        && ![0, 1, 2, 3].includes(level.guidanceFailureThreshold)
+        && !isGuidanceFailureThreshold(level.guidanceFailureThreshold)
     ) {
         throw new Error(`Level ${level.id}: invalid guidanceFailureThreshold`);
     }

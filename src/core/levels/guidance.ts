@@ -25,11 +25,11 @@ export const getLevelGuidanceFailureThreshold = (
     resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
 );
 
-/** 需要连续失败几次才解锁：1→0(即开) / 2→1 / 3→2；0 表示永久关闭 */
+/** -1 永不开启；0 进入即开；1-5 连续失败 N 次后解锁 */
 export const getGuidanceFailuresRequiredToUnlock = (
     threshold: LevelGuidanceFailureThreshold,
 ): number | null => (
-    threshold === 0 ? null : threshold - 1
+    threshold === -1 ? null : threshold
 );
 
 const expandGuidanceSteps = (tokens: string[]): string[] => tokens.flatMap((token) => {
