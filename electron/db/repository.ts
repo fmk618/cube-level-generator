@@ -244,6 +244,11 @@ export async function pushSkills(doc: CloudSkillGraphDocument): Promise<void> {
     : [];
 
   await runWriteTransaction(async (conn) => {
+    // 阶段定义必须入库，否则仅有「空阶段」时另一台机器拉取不到
+    if (stages.length === 0) {
+      throw new Error('能力标签阶段列表为空，已中止云端同步，请检查阶段数据后重试');
+    }
+
     for (const stage of stages) {
       await conn.query(
         `INSERT INTO skill_stages (id, label, stage_order, sync_uuid)
@@ -299,6 +304,7 @@ export async function pushSkills(doc: CloudSkillGraphDocument): Promise<void> {
     await conn.query('DELETE FROM skill_stages WHERE sync_uuid IS NULL OR sync_uuid <> ?', [syncUuid]);
     await setMeta(conn, 'skill_graph_version', String(doc.version));
     await setMeta(conn, 'skill_graph_sync_uuid', syncUuid);
+    await setMeta(conn, 'skill_graph_stage_count', String(stages.length));
   });
 }
 
@@ -313,11 +319,18 @@ export async function pullSkills(): Promise<CloudSkillGraphDocument | null> {
   );
   if (rows.length === 0) return null;
 
-  const [stageRows] = await pool.query<RowDataPacket[]>(
-    `SELECT id, label, stage_order
-     FROM skill_stages
-     ORDER BY stage_order ASC, id ASC`,
-  );
+  let stageRows: RowDataPacket[] = [];
+  try {
+    const [result] = await pool.query<RowDataPacket[]>(
+      `SELECT id, label, stage_order
+       FROM skill_stages
+       ORDER BY stage_order ASC, id ASC`,
+    );
+    stageRows = result;
+  } catch (error) {
+    // 旧库尚未建表时 ensureSchema 应已处理；此处兜底避免整次拉取失败
+    console.warn('[pullSkills] skill_stages 读取失败', error);
+  }
 
   const versionRaw = await getMeta('skill_graph_version');
   const stages = stageRows.map((row: RowDataPacket) => ({

@@ -381,8 +381,18 @@ export function SkillGraphPanel() {
                 <button type="button" className="btn btn-sm btn-primary" onClick={handleAddStage}>
                   新增阶段
                 </button>
-                <button type="button" className="btn btn-sm" onClick={() => setManagingStages(false)}>
-                  完成
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  disabled={saving}
+                  onClick={() => {
+                    setManagingStages(false);
+                    if (hasUnsavedChanges) {
+                      void handleSave();
+                    }
+                  }}
+                >
+                  {hasUnsavedChanges ? (saving ? '保存中...' : '完成并保存') : '完成'}
                 </button>
               </div>
               <p className="hint-text">可新增自定义阶段（如入门/综合）。App 会按阶段 ID 写入 cfopStage；自定义 ID 需 App 同步识别。</p>
