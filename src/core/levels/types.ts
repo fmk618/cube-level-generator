@@ -3,7 +3,8 @@ import type { StateMatrix, BrightnessMatrix } from '../cube/types';
 export type LevelId = string;
 export type LevelChapterId = string;
 export type LevelFormulaTarget = 'f2l' | 'oll' | 'pll';
-export type LevelGuidanceFailureThreshold = 0 | 1 | 2 | 3;
+/** -1=永不开启指引；0=进入即开；1-5=连续失败 N 次后开启 */
+export type LevelGuidanceFailureThreshold = -1 | 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface LevelChapterConfig {
     id: LevelChapterId;
@@ -22,6 +23,8 @@ export interface LevelDefinition {
     description: string;
     startStateMatrix: StateMatrix;
     goalStateMatrix: StateMatrix;
+    /** 多个等效目标态（如绕 Y 轴四向）；命中任一即过关 */
+    goalStateMatrices?: StateMatrix[];
     brightnessMatrix: BrightnessMatrix;
     maxMoves: number;
     starThresholds: [number, number];

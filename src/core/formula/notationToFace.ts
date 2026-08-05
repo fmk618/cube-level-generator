@@ -4,7 +4,7 @@
  * 映射规则:
  *  - U/D/F/B/L/R(±')               → 同名面
  *  - 宽转 u/d/f/b/l/r(±')          → 就近映射到外层大写面(硬件 LED 只有六个外层面)
- *  - 切片 M/E/S / 整转 x/y/z(±')   → null:不在硬件上显示提示
+ *  - 切片 M/E/S / 整转 x/y/z(±')   → null（需先经 mapTokensByOrientation 改写为外层）
  */
 import type { FlowingLightFace } from '../cube/types';
 

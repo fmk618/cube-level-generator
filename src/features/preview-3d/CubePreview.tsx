@@ -11,6 +11,7 @@ export type CubePreviewProps = {
   className?: string;
   playRequest?: CubePlayRequest | null;
   onPlayComplete?: (requestId: number) => void;
+  hideViewControls?: boolean;
 };
 
 function SceneContent({
@@ -69,6 +70,7 @@ export function CubePreview({
   className,
   playRequest = null,
   onPlayComplete,
+  hideViewControls = false,
 }: CubePreviewProps) {
   const [view, setView] = useState<'perspective' | 'front' | 'top'>('perspective');
   const [zoom, setZoom] = useState(0);
@@ -109,6 +111,7 @@ export function CubePreview({
           />
         </Suspense>
       </Canvas>
+      {!hideViewControls && (
       <div className="cube-view-controls" aria-label="3D 预览视角控制">
         <button type="button" onClick={resetView} title="重置视角" aria-label="重置视角">↻</button>
         <button type="button" className={view === 'front' ? 'is-active' : ''} onClick={() => setView('front')} title="正视图" aria-label="正视图">▣</button>
@@ -117,6 +120,7 @@ export function CubePreview({
         <button type="button" disabled={zoom >= 2} onClick={() => setZoom((value) => Math.min(2, value + 1))} title="放大" aria-label="放大">＋</button>
         <button type="button" disabled={zoom <= -2} onClick={() => setZoom((value) => Math.max(-2, value - 1))} title="缩小" aria-label="缩小">−</button>
       </div>
+      )}
     </div>
   );
 }

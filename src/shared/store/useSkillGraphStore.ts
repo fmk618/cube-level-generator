@@ -142,6 +142,11 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
             if (cloudErrors.length > 0) {
               throw new Error(cloudErrors.join('; '));
             }
+            if (!cloud.stages || cloud.stages.length === 0) {
+              throw new Error(
+                '云端能力标签缺少阶段定义（skill_stages 为空）。请在源电脑重新「保存到本地」同步阶段后再拉取',
+              );
+            }
             skillGraph = cloud;
             fromCloud = true;
           }
@@ -193,6 +198,11 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
         runtimeFilePath = await window.api.skillGraph.saveRuntime(exportSkillGraphToJSON(skillGraph));
       }
 
+      if (!force && get().hasUnsavedChanges) {
+        set({ isLoading: false });
+        return;
+      }
+
       applySkillGraph(set, skillGraph, cloneSkillGraph(skillGraph), false);
       set({
         isLoaded: true,
@@ -214,7 +224,16 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
             if (get().hasUnsavedChanges) return;
             const cloudErrors = validateSkillGraph(cloud);
             if (cloudErrors.length > 0) return;
-            applySkillGraph(set, cloud, cloneSkillGraph(cloud), false);
+            // 旧云端数据可能没有 stages：勿用空阶段覆盖本机已有自定义阶段
+            const current = get().skillGraph;
+            const merged: SkillGraphDocument = {
+              ...cloud,
+              stages:
+                cloud.stages && cloud.stages.length > 0
+                  ? cloud.stages
+                  : current?.stages,
+            };
+            applySkillGraph(set, merged, cloneSkillGraph(merged), false);
           } catch {
             // 云端失败不影响已展示的本地技能树
           }
@@ -285,12 +304,17 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     set({ runtimeFilePath: filePath });
     sync.markCloud('本地已保存，正在同步云端…', 45);
 
-    const snapshot = skillGraph;
+    const snapshot = {
+      ...skillGraph,
+      stages: resolveStages(skillGraph),
+    };
     void (async () => {
       try {
         sync.setProgress(70, '正在上传能力标签到云端…');
         await window.api.db.pushSkills(snapshot);
-        sync.finishOk('能力标签已保存并同步到云端');
+        sync.finishOk(
+          `能力标签已保存并同步到云端（${snapshot.stages.length} 个阶段 / ${snapshot.skills.length} 个标签）`,
+        );
       } catch (error) {
         sync.finishError(error instanceof Error ? error.message : String(error));
       }

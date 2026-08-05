@@ -136,10 +136,10 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
         await conn.query(
           `INSERT INTO levels (
             id, chapter_id, level_order, title, description,
-            start_state_matrix, goal_state_matrix, brightness_matrix,
+            start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
             max_moves, star_thresholds, hint, rotation_formula, rotation_target,
             guidance_formula, guidance_failure_threshold, hidden, sync_uuid
-          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             chapter_id = VALUES(chapter_id),
             level_order = VALUES(level_order),
@@ -147,6 +147,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             description = VALUES(description),
             start_state_matrix = VALUES(start_state_matrix),
             goal_state_matrix = VALUES(goal_state_matrix),
+            goal_state_matrices = VALUES(goal_state_matrices),
             brightness_matrix = VALUES(brightness_matrix),
             max_moves = VALUES(max_moves),
             star_thresholds = VALUES(star_thresholds),
@@ -165,6 +166,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             level.description,
             JSON.stringify(level.startStateMatrix),
             JSON.stringify(level.goalStateMatrix),
+            level.goalStateMatrices != null ? JSON.stringify(level.goalStateMatrices) : null,
             JSON.stringify(level.brightnessMatrix),
             level.maxMoves,
             JSON.stringify(level.starThresholds),
@@ -195,7 +197,7 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
   );
   const [levelRows] = await pool.query<RowDataPacket[]>(
     `SELECT id, chapter_id, level_order, title, description,
-            start_state_matrix, goal_state_matrix, brightness_matrix,
+            start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
             max_moves, star_thresholds, hint, rotation_formula, rotation_target,
             guidance_formula, guidance_failure_threshold, hidden
      FROM levels
@@ -223,6 +225,9 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
       description: String(row.description ?? ''),
       startStateMatrix: parseJsonField(row.start_state_matrix, []),
       goalStateMatrix: parseJsonField(row.goal_state_matrix, []),
+      goalStateMatrices: row.goal_state_matrices != null
+        ? parseJsonField(row.goal_state_matrices, [])
+        : undefined,
       brightnessMatrix: parseJsonField(row.brightness_matrix, []),
       maxMoves: Number(row.max_moves),
       starThresholds: parseJsonField<[number, number]>(row.star_thresholds, [0, 0]),
@@ -239,8 +244,33 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
 
 export async function pushSkills(doc: CloudSkillGraphDocument): Promise<void> {
   const syncUuid = newSyncUuid();
+  const stages = Array.isArray(doc.stages)
+    ? doc.stages.filter((stage) => stage && typeof stage.id === 'string' && stage.id.trim())
+    : [];
 
   await runWriteTransaction(async (conn) => {
+    // 阶段定义必须入库，否则仅有「空阶段」时另一台机器拉取不到
+    if (stages.length === 0) {
+      throw new Error('能力标签阶段列表为空，已中止云端同步，请检查阶段数据后重试');
+    }
+
+    for (const stage of stages) {
+      await conn.query(
+        `INSERT INTO skill_stages (id, label, stage_order, sync_uuid)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           label = VALUES(label),
+           stage_order = VALUES(stage_order),
+           sync_uuid = VALUES(sync_uuid)`,
+        [
+          String(stage.id).trim(),
+          String(stage.label ?? stage.id).trim() || String(stage.id).trim(),
+          Number(stage.order) || 0,
+          syncUuid,
+        ],
+      );
+    }
+
     for (let i = 0; i < doc.skills.length; i += BATCH_SIZE) {
       const chunk = doc.skills.slice(i, i + BATCH_SIZE);
       for (const skill of chunk) {
@@ -276,8 +306,10 @@ export async function pushSkills(doc: CloudSkillGraphDocument): Promise<void> {
     }
 
     await conn.query('DELETE FROM skills WHERE sync_uuid IS NULL OR sync_uuid <> ?', [syncUuid]);
+    await conn.query('DELETE FROM skill_stages WHERE sync_uuid IS NULL OR sync_uuid <> ?', [syncUuid]);
     await setMeta(conn, 'skill_graph_version', String(doc.version));
     await setMeta(conn, 'skill_graph_sync_uuid', syncUuid);
+    await setMeta(conn, 'skill_graph_stage_count', String(stages.length));
   });
 }
 
@@ -292,7 +324,26 @@ export async function pullSkills(): Promise<CloudSkillGraphDocument | null> {
   );
   if (rows.length === 0) return null;
 
+  let stageRows: RowDataPacket[] = [];
+  try {
+    const [result] = await pool.query<RowDataPacket[]>(
+      `SELECT id, label, stage_order
+       FROM skill_stages
+       ORDER BY stage_order ASC, id ASC`,
+    );
+    stageRows = result;
+  } catch (error) {
+    // 旧库尚未建表时 ensureSchema 应已处理；此处兜底避免整次拉取失败
+    console.warn('[pullSkills] skill_stages 读取失败', error);
+  }
+
   const versionRaw = await getMeta('skill_graph_version');
+  const stages = stageRows.map((row: RowDataPacket) => ({
+    id: String(row.id),
+    label: String(row.label ?? row.id),
+    order: Number(row.stage_order) || 0,
+  }));
+
   return {
     version: Number(versionRaw ?? 1),
     skills: rows.map((row: RowDataPacket) => ({
@@ -306,6 +357,7 @@ export async function pullSkills(): Promise<CloudSkillGraphDocument | null> {
       order: Number(row.skill_order),
       draft: Boolean(row.draft),
     })),
+    ...(stages.length > 0 ? { stages } : {}),
   };
 }
 

@@ -10,6 +10,7 @@ import {
     type BrightnessMatrix,
 } from '../cube';
 import { LEVEL_LAYOUT_CHAPTERS } from './chapters';
+import { normalizeLevelGoalStates } from './goalStates';
 import type {
     LevelCatalogDocument,
     LevelChapterConfig,
@@ -86,18 +87,49 @@ export const calculateStars = (
     return 1;
 };
 
-const LEVEL_FILE_VERSION = 1;
+const LEVEL_FILE_VERSION = 2;
 const MIN_STICKER_ID = 0;
 const MAX_STICKER_ID = 53;
 export const DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD: LevelGuidanceFailureThreshold = 3;
 
+export const LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS: LevelGuidanceFailureThreshold[] = [
+    -1, 0, 1, 2, 3, 4, 5,
+];
+
+const isGuidanceFailureThreshold = (value: unknown): value is LevelGuidanceFailureThreshold =>
+    value === -1
+    || value === 0
+    || value === 1
+    || value === 2
+    || value === 3
+    || value === 4
+    || value === 5;
+
+/** v1：0=永久关闭，N=失败 N-1 次后开 → v2：-1=关闭，N=失败 N 次后开 */
+const migrateGuidanceFailureThresholdFromV1 = (
+    value: unknown,
+): LevelGuidanceFailureThreshold => {
+    if (value === 0) return -1;
+    if (value === 1) return 0;
+    if (value === 2) return 1;
+    if (value === 3) return 2;
+    return DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD;
+};
+
 export const resolveLevelGuidanceFailureThreshold = (
     value: unknown,
 ): LevelGuidanceFailureThreshold => (
-    value === 0 || value === 1 || value === 2 || value === 3
-        ? value
-        : DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD
+    isGuidanceFailureThreshold(value) ? value : DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD
 );
+
+export const formatGuidanceFailureThresholdLabel = (
+    value: unknown,
+): string => {
+    const threshold = resolveLevelGuidanceFailureThreshold(value);
+    if (threshold === -1) return '不开启指引';
+    if (threshold === 0) return '进入即开指引';
+    return `失败 ${threshold} 次解锁`;
+};
 
 const isPositiveInteger = (value: unknown): value is number =>
     typeof value === 'number' && Number.isInteger(value) && value > 0;
@@ -167,27 +199,41 @@ const normalizeChapterOrders = (
 export const normalizeLevelCatalogDocument = (
     document: LevelCatalogDocument,
 ): LevelCatalogDocument => {
+    const sourceVersion = typeof document.version === 'number' ? document.version : 1;
+    const sourceLevels = sourceVersion < 2
+        ? document.levels.map((level) => ({
+            ...level,
+            guidanceFailureThreshold: migrateGuidanceFailureThresholdFromV1(
+                level.guidanceFailureThreshold,
+            ),
+        }))
+        : document.levels;
+
     const chapters = normalizeChapters(document.chapters);
     return {
         version: LEVEL_FILE_VERSION,
         chapters,
-        levels: normalizeChapterOrders(document.levels, chapters).map((level) => ({
-            ...level,
-            id: level.id.trim(),
-            chapterId: level.chapterId.trim(),
-            order: level.order,
-            title: level.title.trim(),
-            description: level.description.trim(),
-            starThresholds: resolveStarThresholds(level.maxMoves, level.starThresholds),
-            hint: level.hint?.trim() || undefined,
-            rotationFormula: level.rotationFormula?.trim() || undefined,
-            rotationTarget: level.rotationTarget as LevelFormulaTarget | undefined,
-            guidanceFormula: level.guidanceFormula?.trim() || undefined,
-            guidanceFailureThreshold: resolveLevelGuidanceFailureThreshold(
-                level.guidanceFailureThreshold,
-            ),
-            hidden: level.hidden === true ? true : undefined,
-        })),
+        levels: normalizeChapterOrders(sourceLevels, chapters).map((level) => {
+            const normalizedGoals = normalizeLevelGoalStates(level);
+            return {
+                ...level,
+                ...normalizedGoals,
+                id: level.id.trim(),
+                chapterId: level.chapterId.trim(),
+                order: level.order,
+                title: level.title.trim(),
+                description: level.description.trim(),
+                starThresholds: resolveStarThresholds(level.maxMoves, level.starThresholds),
+                hint: level.hint?.trim() || undefined,
+                rotationFormula: level.rotationFormula?.trim() || undefined,
+                rotationTarget: level.rotationTarget as LevelFormulaTarget | undefined,
+                guidanceFormula: level.guidanceFormula?.trim() || undefined,
+                guidanceFailureThreshold: resolveLevelGuidanceFailureThreshold(
+                    level.guidanceFailureThreshold,
+                ),
+                hidden: level.hidden === true ? true : undefined,
+            };
+        }),
     };
 };
 
@@ -213,8 +259,8 @@ export const importLevelsFromJSON = (json: string): LevelCatalogDocument => {
     if (!parsed || typeof parsed.version !== 'number') {
         throw new Error('Invalid level file format: missing version field');
     }
-    if (parsed.version !== LEVEL_FILE_VERSION) {
-        throw new Error(`Unsupported file version: ${parsed.version}, current supported: ${LEVEL_FILE_VERSION}`);
+    if (parsed.version !== 1 && parsed.version !== LEVEL_FILE_VERSION) {
+        throw new Error(`Unsupported file version: ${parsed.version}, current supported: 1-${LEVEL_FILE_VERSION}`);
     }
     if (!Array.isArray(parsed.levels)) {
         throw new Error('No levels array in level file');
@@ -281,6 +327,37 @@ const validateChapterConfigs = (chapters: LevelChapterConfig[]): void => {
     }
 };
 
+const validateStateMatrix = (
+    level: LevelDefinition,
+    matrixLabel: string,
+    matrix: StateMatrix,
+): void => {
+    const stickerIds: number[] = [];
+    if (!Array.isArray(matrix) || matrix.length !== 6) {
+        throw new Error(`Level ${level.id}: ${matrixLabel} must be a 6x3x3 array`);
+    }
+    for (let face = 0; face < 6; face += 1) {
+        if (!Array.isArray(matrix[face]) || matrix[face].length !== 3) {
+            throw new Error(`Level ${level.id}: ${matrixLabel}[${face}] must be a 3x3 array`);
+        }
+        for (let row = 0; row < 3; row += 1) {
+            if (!Array.isArray(matrix[face][row]) || matrix[face][row].length !== 3) {
+                throw new Error(`Level ${level.id}: ${matrixLabel}[${face}][${row}] must have 3 elements`);
+            }
+            for (let col = 0; col < 3; col += 1) {
+                const value = matrix[face][row][col];
+                if (!Number.isInteger(value) || value < MIN_STICKER_ID || value > MAX_STICKER_ID) {
+                    throw new Error(`Level ${level.id}: ${matrixLabel}[${face}][${row}][${col}] invalid sticker ID`);
+                }
+                stickerIds.push(value);
+            }
+        }
+    }
+    if (stickerIds.length !== 54 || new Set(stickerIds).size !== 54) {
+        throw new Error(`Level ${level.id}: ${matrixLabel} must contain 54 unique sticker IDs`);
+    }
+};
+
 /**
  * 校验单个关卡定义的数据完整性
  */
@@ -312,37 +389,22 @@ const validateLevelDefinition = (
     }
     if (
         level.guidanceFailureThreshold !== undefined
-        && ![0, 1, 2, 3].includes(level.guidanceFailureThreshold)
+        && !isGuidanceFailureThreshold(level.guidanceFailureThreshold)
     ) {
         throw new Error(`Level ${level.id}: invalid guidanceFailureThreshold`);
     }
 
     for (const matrixName of ['startStateMatrix', 'goalStateMatrix'] as const) {
-        const matrix = level[matrixName];
-        const stickerIds: number[] = [];
-        if (!Array.isArray(matrix) || matrix.length !== 6) {
-            throw new Error(`Level ${level.id}: ${matrixName} must be a 6x3x3 array`);
+        validateStateMatrix(level, matrixName, level[matrixName]);
+    }
+
+    if (level.goalStateMatrices !== undefined) {
+        if (!Array.isArray(level.goalStateMatrices) || level.goalStateMatrices.length === 0) {
+            throw new Error(`Level ${level.id}: goalStateMatrices must be a non-empty array`);
         }
-        for (let face = 0; face < 6; face += 1) {
-            if (!Array.isArray(matrix[face]) || matrix[face].length !== 3) {
-                throw new Error(`Level ${level.id}: ${matrixName}[${face}] must be a 3x3 array`);
-            }
-            for (let row = 0; row < 3; row += 1) {
-                if (!Array.isArray(matrix[face][row]) || matrix[face][row].length !== 3) {
-                    throw new Error(`Level ${level.id}: ${matrixName}[${face}][${row}] must have 3 elements`);
-                }
-                for (let col = 0; col < 3; col += 1) {
-                    const value = matrix[face][row][col];
-                    if (!Number.isInteger(value) || value < MIN_STICKER_ID || value > MAX_STICKER_ID) {
-                        throw new Error(`Level ${level.id}: ${matrixName}[${face}][${row}][${col}] invalid sticker ID`);
-                    }
-                    stickerIds.push(value);
-                }
-            }
-        }
-        if (stickerIds.length !== 54 || new Set(stickerIds).size !== 54) {
-            throw new Error(`Level ${level.id}: ${matrixName} must contain 54 unique sticker IDs`);
-        }
+        level.goalStateMatrices.forEach((matrix, index) => {
+            validateStateMatrix(level, `goalStateMatrices[${index}]`, matrix);
+        });
     }
 
     if (!Array.isArray(level.brightnessMatrix) || level.brightnessMatrix.length !== 6) {

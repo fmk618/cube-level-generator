@@ -25,6 +25,8 @@ export {
     importLevelsFromJSON,
     normalizeLevelCatalogDocument,
     resolveLevelGuidanceFailureThreshold,
+    formatGuidanceFailureThresholdLabel,
+    LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
     sortLevelsBySlotOrder,
 } from './utils';
 
@@ -35,6 +37,13 @@ export {
 } from './formulaPreset';
 
 export { isLevelGoalReached } from './goalEvaluation';
+export {
+    buildYawEquivalentGoalStates,
+    isYawEquivalentGoalSet,
+    isLevelGoalReachedForLevel,
+    normalizeLevelGoalStates,
+    resolveLevelGoalStates,
+} from './goalStates';
 
 export { buildLevelForChapter } from './factory';
 

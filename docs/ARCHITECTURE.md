@@ -57,7 +57,7 @@ cube-level-generator/
 ### 关卡玩法 — `src/core/levels/types.ts`
 
 `LevelDefinition`：id、chapterId、order、title、description、  
-`startStateMatrix` / `goalStateMatrix` / `brightnessMatrix`、  
+`startStateMatrix` / `goalStateMatrix` / 可选 `goalStateMatrices`（多目标态，任一匹配即过关）/ `brightnessMatrix`、  
 `maxMoves`、`starThresholds`、`hint`、  
 `rotationFormula` / `rotationTarget`、`guidanceFormula`、`hidden` 等。
 
