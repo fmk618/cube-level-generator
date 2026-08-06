@@ -27,6 +27,7 @@ import { expandTokenToLayerMoves, applyTokensToState } from '@/core/formula';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
 import type { CubePlayRequest } from '@/features/preview-3d/CubeScene';
 import { FormulaKeyboard } from './FormulaKeyboard';
+import { EditorMovePad } from './EditorMovePad';
 
 const FACE_NAMES = ['U', 'L', 'F', 'R', 'B', 'D'];
 
@@ -68,7 +69,7 @@ const resolveGoalVariantList = (
 
 const formatGoalVariantLabel = (index: number): string => `目标${index + 1}`;
 
-type Tab = 'meta' | 'formula' | 'brightness' | 'guidance';
+type Tab = 'meta' | 'states' | 'formula' | 'brightness' | 'guidance';
 
 export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => void } = {}) {
   const selectedLevelId = useUiStore((s) => s.selectedLevelId);
@@ -97,6 +98,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [startStateMatrix, setStartStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrix, setGoalStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrices, setGoalStateMatrices] = useState<StateMatrix[] | undefined>(undefined);
+  const [liveStateMatrix, setLiveStateMatrix] = useState<StateMatrix | null>(null);
   const [brightnessMatrix, setBrightnessMatrix] = useState<BrightnessMatrix>(cloneBrightness(INITIAL_BRIGHTNESS_MATRIX));
   const [previewMode, setPreviewMode] = useState<'start' | 'goal'>('start');
   const [selectedGoalVariantIndex, setSelectedGoalVariantIndex] = useState(0);
@@ -197,6 +199,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setStartStateMatrix(cloneStateMatrix(level.startStateMatrix));
     setGoalStateMatrix(cloneStateMatrix(level.goalStateMatrix));
     setGoalStateMatrices(level.goalStateMatrices?.map(cloneStateMatrix) ?? undefined);
+    setLiveStateMatrix(cloneStateMatrix(level.startStateMatrix));
     setBrightnessMatrix(cloneBrightness(level.brightnessMatrix));
     setPreviewMode('start');
     setSelectedGoalVariantIndex(0);
@@ -222,6 +225,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
           setGoalStateMatrices(undefined);
           setSelectedGoalVariantIndex(0);
+          setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
           setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
           setPreviewMode('start');
           setSaveError(null);
@@ -251,11 +255,23 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     return isYawEquivalentGoalSet(goalStateMatrix, goalStateMatrices);
   }, [goalStateMatrix, goalStateMatrices]);
 
-  const previewStateMatrix = useMemo(() => {
-    if (!startStateMatrix || !goalStateMatrix) return null;
-    if (previewMode === 'start') return startStateMatrix;
-    return allGoalVariants[selectedGoalVariantIndex] ?? goalStateMatrix;
-  }, [previewMode, startStateMatrix, goalStateMatrix, allGoalVariants, selectedGoalVariantIndex]);
+  const previewStateMatrix = liveStateMatrix ?? startStateMatrix;
+
+  const applyManualToken = useCallback((token: string) => {
+    const base = liveStateMatrix ?? startStateMatrix;
+    if (!base) return;
+    try {
+      const next = applyTokensToState(base, [token]);
+      setLiveStateMatrix(cloneStateMatrix(next));
+      const moves = expandTokenToLayerMoves(token);
+      if (moves.length > 0) {
+        playCounterRef.current += 1;
+        setPlayRequest({ id: playCounterRef.current, moves });
+      }
+    } catch {
+      // 无效记号忽略
+    }
+  }, [liveStateMatrix, startStateMatrix]);
 
   const syncGoalVariants = useCallback((variants: StateMatrix[]) => {
     const cloned = variants.map(cloneStateMatrix);
@@ -267,9 +283,47 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     }
   }, []);
 
+  const handlePreviewStart = useCallback(() => {
+    if (!startStateMatrix) return;
+    setLiveStateMatrix(cloneStateMatrix(startStateMatrix));
+    setPreviewMode('start');
+  }, [startStateMatrix]);
+
+  const handlePreviewGoal = useCallback((index: number) => {
+    const matrix = allGoalVariants[index];
+    if (!matrix) return;
+    setLiveStateMatrix(cloneStateMatrix(matrix));
+    setSelectedGoalVariantIndex(index);
+    setPreviewMode('goal');
+  }, [allGoalVariants]);
+
+  const captureStartState = useCallback(() => {
+    if (!liveStateMatrix) return;
+    setStartStateMatrix(cloneStateMatrix(liveStateMatrix));
+    setFormulaText('');
+    setPreviewMode('start');
+    setSaveError(null);
+    setSaveNotice('已捕获为初始状态。旋转公式已清空，请保存关卡。');
+  }, [liveStateMatrix]);
+
+  const captureGoalState = useCallback(() => {
+    if (!liveStateMatrix) return;
+    const list = allGoalVariants.length > 0
+      ? allGoalVariants.map(cloneStateMatrix)
+      : [cloneStateMatrix(liveStateMatrix)];
+    list[selectedGoalVariantIndex] = cloneStateMatrix(liveStateMatrix);
+    syncGoalVariants(list);
+    setFormulaText('');
+    setPreviewMode('goal');
+    setSaveError(null);
+    setSaveNotice(`已捕获为${formatGoalVariantLabel(selectedGoalVariantIndex)}。旋转公式已清空，请保存关卡。`);
+  }, [allGoalVariants, liveStateMatrix, selectedGoalVariantIndex, syncGoalVariants]);
+
   const formulaPreviewText = useMemo(() => {
     const trimmed = formulaText.trim();
-    if (!trimmed) return '尚未输入公式。输入后点击"应用公式"，会按白顶绿前的默认朝向生成初始态、目标态和亮度掩码。';
+    if (!trimmed) {
+      return `未输入公式。仍可点击「应用公式」，将按 ${formulaTarget.toUpperCase()} 生成默认初始态、目标态与亮度掩码（无公式时初始态与目标态相同）。`;
+    }
     try {
       const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
       return `已解析 ${derived.officialTokens.length} 个官方动作，映射后生成 ${derived.mappedTokens.length} 个实际转动；目标类型 ${formulaTarget.toUpperCase()}。`;
@@ -286,28 +340,30 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       ...level,
       startStateMatrix,
       goalStateMatrix,
+      goalStateMatrices: allGoalVariants.length > 1 ? allGoalVariants : undefined,
       brightnessMatrix,
       guidanceFormula: formula,
     });
     return summary.status === 'ready' ? `校验通过，可生成 ${summary.stepCount} 步流水灯指引。` : summary.message;
-  }, [guidanceFormulaText, level, startStateMatrix, goalStateMatrix, brightnessMatrix]);
+  }, [guidanceFormulaText, level, startStateMatrix, goalStateMatrix, allGoalVariants, brightnessMatrix]);
 
   const applyFormula = () => {
     const trimmed = formulaText.trim();
-    if (!trimmed) {
-      setSaveError('请先输入旋转公式。');
-      return;
-    }
     try {
       const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
       setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
       setGoalStateMatrices(undefined);
       setSelectedGoalVariantIndex(0);
+      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
       setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
       setPreviewMode('start');
       setSaveError(null);
-      setSaveNotice(`已按 ${formulaTarget.toUpperCase()} 目标生成起始态。`);
+      setSaveNotice(
+        trimmed
+          ? `已按 ${formulaTarget.toUpperCase()} 目标生成起始态。`
+          : `已应用 ${formulaTarget.toUpperCase()} 默认目标（无公式，初始态与目标态相同）。`,
+      );
       try {
         const moves = derived.mappedTokens.flatMap((token) => expandTokenToLayerMoves(token));
         if (moves.length > 0) {
@@ -323,31 +379,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   };
 
   const handleFormulaTokenAppended = (token: string) => {
-    try {
-      const moves = expandTokenToLayerMoves(token);
-      if (moves.length === 0) return;
-      playCounterRef.current += 1;
-      setPlayRequest({ id: playCounterRef.current, moves });
-      setPreviewMode('start');
-    } catch {
-      // 无效记号不播放动画
-    }
+    applyManualToken(token);
   };
-
-  // 公式有效时实时生成起终态，无需先点「应用公式」也能中途预览/保存
-  useEffect(() => {
-    const trimmed = formulaText.trim();
-    if (!trimmed) return;
-    try {
-      const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
-      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
-      setGoalStateMatrices(undefined);
-      setSelectedGoalVariantIndex(0);
-    } catch {
-      // 编辑中的不完整公式忽略
-    }
-  }, [formulaText, formulaTarget]);
 
   const handleGenerateYawGoalStates = () => {
     if (!goalStateMatrix) return;
@@ -372,6 +405,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
 
     setSelectedGoalVariantIndex(0);
     setPreviewMode('goal');
+    if (yawVariants[0]) {
+      setLiveStateMatrix(cloneStateMatrix(yawVariants[0]));
+    }
     setSaveNotice(
       list.length > yawVariants.length
         ? `已更新 Y 轴四向目标（前 ${yawVariants.length} 个），其余手动目标已保留。`
@@ -381,20 +417,18 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   };
 
   const handleAddGoalVariant = () => {
-    if (!goalStateMatrix) return;
+    if (!goalStateMatrix || !liveStateMatrix) return;
     const list = allGoalVariants.map(cloneStateMatrix);
-    const source = list[selectedGoalVariantIndex] ?? list[list.length - 1];
-    const next = [...list, cloneStateMatrix(source)];
+    const next = [...list, cloneStateMatrix(liveStateMatrix)];
     syncGoalVariants(next);
     setSelectedGoalVariantIndex(next.length - 1);
     setPreviewMode('goal');
-    setSaveNotice(`已添加${formatGoalVariantLabel(next.length - 1)}。可用缩略图上的 Y 旋转该目标，或在大预览中核对。`);
+    setSaveNotice(`已添加${formatGoalVariantLabel(next.length - 1)}（当前 3D 状态）。可用缩略图核对或继续手动转动。`);
     setSaveError(null);
   };
 
   const handleSelectGoalVariant = (index: number) => {
-    setPreviewMode('goal');
-    setSelectedGoalVariantIndex(index);
+    handlePreviewGoal(index);
   };
 
   const handleRotateGoalVariantYaw = (index: number) => {
@@ -404,6 +438,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     syncGoalVariants(list);
     setSelectedGoalVariantIndex(index);
     setPreviewMode('goal');
+    setLiveStateMatrix(cloneStateMatrix(list[index]));
   };
 
   const handleRemoveGoalVariant = (index: number) => {
@@ -532,6 +567,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setStartStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(updatedLevel.goalStateMatrix));
       setGoalStateMatrices(updatedLevel.goalStateMatrices?.map(cloneStateMatrix) ?? undefined);
+      setLiveStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
       useUiStore.getState().clearAiTouched();
       const syncHint = syncPhase === 'cloud' || useCloudSyncStore.getState().phase === 'cloud'
@@ -552,7 +588,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     selectLevel(null);
   };
 
-  if (!level || !startStateMatrix || !goalStateMatrix) {
+  if (!level || !startStateMatrix || !goalStateMatrix || !liveStateMatrix) {
     return (
       <div className="panel panel--main editor-panel" data-tour="level-editor">
         <div className="panel-scroll editor-panel-empty">
@@ -603,26 +639,26 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           <div className="preview-hero-header">
             <span className="preview-hero-title">3D 预览</span>
             <div className="segmented preview-segmented">
-              <button type="button" className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('start')}>初始态</button>
+              <button type="button" className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={handlePreviewStart}>初始态</button>
               {allGoalVariants.length > 1 ? (
                 allGoalVariants.map((_, index) => (
                   <button
                     key={index}
                     type="button"
                     className={`chip ${previewMode === 'goal' && selectedGoalVariantIndex === index ? 'chip-active' : ''}`}
-                    onClick={() => handleSelectGoalVariant(index)}
+                    onClick={() => handlePreviewGoal(index)}
                   >
                     {formatGoalVariantLabel(index)}
                   </button>
                 ))
               ) : (
-                <button type="button" className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => setPreviewMode('goal')}>目标态</button>
+                <button type="button" className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => handlePreviewGoal(0)}>目标态</button>
               )}
             </div>
           </div>
           <CubePreview
             className="cube-preview cube-preview-editor cube-preview-resizable"
-            stateMatrix={previewStateMatrix ?? goalStateMatrix}
+            stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
             playRequest={playRequest}
             onPlayComplete={() => setPlayRequest(null)}
@@ -644,9 +680,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             onMouseDown={handleTabBarResizeStart}
             title="在顶部边框拖拽可调整下方编辑区高度"
           >
-            {(['meta', 'formula', 'brightness', 'guidance'] as Tab[]).map((tab) => (
+            {(['meta', 'states', 'formula', 'brightness', 'guidance'] as Tab[]).map((tab) => (
               <button key={tab} className={`tab tab-${tab} ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>
-                {tab === 'meta' ? '基础信息' : tab === 'formula' ? '旋转公式' : tab === 'brightness' ? '点亮控制' : '指引校验'}
+                {tab === 'meta' ? '基础信息' : tab === 'states' ? '状态编辑' : tab === 'formula' ? '自定义公式' : tab === 'brightness' ? '点亮控制' : '指引校验'}
               </button>
             ))}
           </div>
@@ -696,34 +732,33 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         </div>
       )}
 
-      {activeTab === 'formula' && (
-        <div className="tab-content tab-content-formula">
-          <div className="chip-group">
-            <span className="chip-group-label">目标类型</span>
-            <div className="segmented formula-segmented">
-              {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((target) => (
-                <button key={target} type="button" className={`chip ${formulaTarget === target ? 'chip-active' : ''}`} onClick={() => setFormulaTarget(target)}>
-                  {target.toUpperCase()}
-                </button>
-              ))}
-            </div>
+      {activeTab === 'states' && (
+        <div className="tab-content tab-content-states">
+          <div className="state-edit-banner">
+            <p>
+              初始态与目标态相互独立：在上方 3D 预览中手动转动魔方，再点「捕获」写入对应状态。
+              点亮控制在「点亮控制」页单独配置，不会随公式自动覆盖（除非点「应用公式」）。
+            </p>
           </div>
-          <FormulaKeyboard value={formulaText} onChange={setFormulaText} onTokenAppended={handleFormulaTokenAppended} />
+
           <div className="field-row">
-            <button className="btn" onClick={applyFormula}>应用公式</button>
+            <button type="button" className="btn" onClick={handlePreviewStart}>预览初始</button>
+            <button type="button" className="btn" onClick={() => handlePreviewGoal(selectedGoalVariantIndex)}>预览目标</button>
           </div>
+          <div className="field-row">
+            <button type="button" className="btn capture-btn" onClick={captureStartState}>捕获为初始</button>
+            <button type="button" className="btn capture-btn" onClick={captureGoalState}>捕获为当前目标</button>
+          </div>
+
+          <EditorMovePad onMove={applyManualToken} />
 
           <div className="goal-variant-paths">
             <div className={`goal-variant-path ${isYawGoalSet ? 'goal-variant-path-active' : ''}`}>
               <div className="goal-variant-path-title">快捷：Y 轴四向等效</div>
               <p className="hint-text">
-                常见情况——玩家把整个魔方绕竖直轴转 90° 仍算过关。一键生成目标1～4，生成后仍可在右侧继续添加其他目标。
+                玩家把整个魔方绕竖直轴转 90° 仍算过关时，一键生成目标1～4。
               </p>
-              <button
-                className="btn"
-                type="button"
-                onClick={handleGenerateYawGoalStates}
-              >
+              <button className="btn" type="button" onClick={handleGenerateYawGoalStates}>
                 {isYawGoalSet && allGoalVariants.length > 4
                   ? '重新生成前四个 Y 轴四向'
                   : isYawGoalSet
@@ -734,30 +769,26 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               </button>
             </div>
             <div className={`goal-variant-path ${allGoalVariants.length > 1 && !isYawGoalSet ? 'goal-variant-path-active' : ''}`}>
-              <div className="goal-variant-path-title">手动添加更多目标</div>
+              <div className="goal-variant-path-title">新增目标情况</div>
               <p className="hint-text">
-                除 Y 轴四向外还有其他过关朝向时，可继续添加目标5、目标6… 用缩略图上的 Y 旋转或在大预览中核对。
+                先把 3D 预览转到期望朝向，再点「新增情况」保存当前画面为目标2、目标3…
               </p>
-              <button
-                className="btn"
-                type="button"
-                onClick={handleAddGoalVariant}
-              >
+              <button className="btn" type="button" onClick={handleAddGoalVariant}>
                 {allGoalVariants.length <= 1
-                  ? '添加目标2'
-                  : `添加${formatGoalVariantLabel(allGoalVariants.length)}`}
+                  ? '新增情况 2'
+                  : `新增情况 ${allGoalVariants.length + 1}`}
               </button>
             </div>
           </div>
 
           <p className="hint-text goal-variant-summary">
             {goalVariantCount <= 1
-              ? '当前：仅目标1。可先一键生成 Y 轴四向，或按需手动添加更多目标。'
+              ? '当前：仅目标1。可手动转动后捕获，或一键生成 Y 轴四向。'
               : isYawGoalSet && goalVariantCount > 4
                 ? `当前：Y 轴四向（前 4 个）+ 手动补充（${goalVariantCount - 4} 个），共 ${goalVariantCount} 个可过关目标。`
                 : isYawGoalSet
-                  ? `当前：Y 轴四向等效（${goalVariantCount} 个）。若有其他朝向，可继续手动添加。`
-                  : `当前：自定义多目标（${goalVariantCount} 个）。保存后 App 命中任一目标即可结算。`}
+                  ? `当前：Y 轴四向等效（${goalVariantCount} 个）。`
+                  : `当前：${goalVariantCount} 种目标状态，App 命中任一即可结算。`}
           </p>
 
           <div className="goal-variant-section">
@@ -826,13 +857,39 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               ))}
             </div>
           </div>
+        </div>
+      )}
 
+      {activeTab === 'formula' && (
+        <div className="tab-content tab-content-formula">
+          <div className="state-edit-banner">
+            <p>
+              默认朝向：白顶绿前。点击「应用公式」写入初始态、目标态与亮度掩码；公式留空时也可应用，将生成该目标类型的默认状态。
+              若已手动捕获状态，应用公式会覆盖它们。
+            </p>
+          </div>
+          <div className="chip-group">
+            <span className="chip-group-label">目标类型</span>
+            <div className="segmented formula-segmented">
+              {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((target) => (
+                <button key={target} type="button" className={`chip ${formulaTarget === target ? 'chip-active' : ''}`} onClick={() => setFormulaTarget(target)}>
+                  {target.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <FormulaKeyboard value={formulaText} onChange={setFormulaText} onTokenAppended={handleFormulaTokenAppended} />
+          <div className="field-row">
+            <button className="btn btn-primary" type="button" onClick={applyFormula}>应用公式</button>
+          </div>
           <div className="preview-card">{formulaPreviewText}</div>
+          <EditorMovePad onMove={applyManualToken} />
         </div>
       )}
 
       {activeTab === 'brightness' && (
         <div className="tab-content tab-content-brightness">
+          <p className="hint-text">点亮掩码独立于初始/目标态。在此配置哪些贴纸参与过关判定，保存后生效。</p>
           <div className="chip-group">
             <span className="chip-group-label">选择面</span>
             <div className="face-selector">
