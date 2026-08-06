@@ -2320,6 +2320,129 @@ textarea.text-input--sm {
   flex-wrap: wrap;
 }
 
+.tab-content-states .capture-btn {
+  flex: 1;
+  border-color: #fdba74;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.tab-content-states .capture-btn:hover:not(:disabled) {
+  background: #ffedd5;
+  border-color: #fb923c;
+}
+
+.editor-move-pad {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-region);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-muted, #fafaf9) 100%);
+}
+
+.editor-move-pad-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.editor-move-pad-header strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.editor-move-pad-header span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.editor-move-pad-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-move-pad-grid--prime {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.editor-move-pad-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 6px 4px;
+  border: 1px solid color-mix(in srgb, var(--move-face-color) 36%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--move-face-color) 14%, #fff);
+  color: var(--move-face-text);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.editor-move-pad-btn:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--move-face-color) 58%, var(--border));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 4px 10px rgba(15, 23, 42, 0.08);
+}
+
+.editor-move-pad-btn:active {
+  transform: translateY(0);
+  box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.08);
+}
+
+.editor-move-pad-btn--ccw {
+  background: color-mix(in srgb, var(--move-face-color) 8%, #fff);
+  border-style: dashed;
+}
+
+.editor-move-pad-face {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.editor-move-pad-dir {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.72;
+  line-height: 1;
+}
+
+.tab-content-states .editor-move-pad-btn:focus-visible,
+.tab-content-formula .editor-move-pad-btn:focus-visible {
+  outline: 2px solid var(--formula-accent);
+  outline-offset: 2px;
+}
+
+.state-edit-banner {
+  padding: 10px 12px;
+  border-radius: var(--radius-region);
+  border: 1px solid var(--border);
+  background: var(--surface-muted, #fafaf9);
+  margin-bottom: 12px;
+}
+
+.state-edit-banner p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
 .tab-content-brightness .chip-active {
   color: var(--brightness-accent);
   background: var(--surface);
