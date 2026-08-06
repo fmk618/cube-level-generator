@@ -4,6 +4,9 @@ import * as THREE from 'three';
 import {
   makeInitialCube,
   findBrightnessByStateId,
+  findColorByStateId,
+  colorIndexToHex,
+  rotateStateMatrixLayer,
   INITIAL_COLOR_MATRIX,
   getAffectedCubeletIds,
   createTurnSnapshot,
@@ -25,10 +28,25 @@ import { blendByBrightness } from './colorBlend';
 const STEP = 0.54;
 const CUBELET_SIZE = STEP * 0.92;
 const BODY_COLOR = '#252A34';
+const LED_OFF_COLOR = '#A8A8B0';
 const TURN_DURATION_MS = 220;
+
+function getVisualFaceColors(
+  cubelet: Cubelet,
+  colorMatrix: ColorMatrix,
+  brightnessMatrix: BrightnessMatrix,
+): string[] {
+  return cubelet.stickerIds.map((stickerId, i) => {
+    if (stickerId < 0) return cubelet.faceColors[i];
+    const brightness = findBrightnessByStateId(stickerId, brightnessMatrix);
+    if (brightness <= 0) return LED_OFF_COLOR;
+    return colorIndexToHex(findColorByStateId(stickerId, colorMatrix));
+  });
+}
 
 type CubeletMeshProps = {
   cubelet: Cubelet;
+  colorMatrix: ColorMatrix;
   brightnessMatrix: BrightnessMatrix;
   activeTurn: ActiveTurn | null;
   progress: number;
@@ -44,7 +62,12 @@ function rotateVecAroundAxis(pos: Vec3, axis: Axis, angle: number): Vec3 {
   return [v.x, v.y, v.z];
 }
 
-function CubeletMesh({ cubelet, brightnessMatrix, activeTurn, progress }: CubeletMeshProps) {
+function CubeletMesh({ cubelet, colorMatrix, brightnessMatrix, activeTurn, progress }: CubeletMeshProps) {
+  const visualFaceColors = useMemo(
+    () => getVisualFaceColors(cubelet, colorMatrix, brightnessMatrix),
+    [cubelet, colorMatrix, brightnessMatrix],
+  );
+
   const materials = useMemo(() => {
     const order = [2, 3, 0, 1, 4, 5];
     return order.map((faceIdx) => {
@@ -57,7 +80,7 @@ function CubeletMesh({ cubelet, brightnessMatrix, activeTurn, progress }: Cubele
         });
       }
       const brightness = findBrightnessByStateId(stickerId, brightnessMatrix) / 10;
-      const color = blendByBrightness(cubelet.faceColors[faceIdx], brightness);
+      const color = blendByBrightness(visualFaceColors[faceIdx], brightness);
       return new THREE.MeshStandardMaterial({
         color,
         roughness: 0.55,
@@ -65,7 +88,7 @@ function CubeletMesh({ cubelet, brightnessMatrix, activeTurn, progress }: Cubele
         envMapIntensity: 0.5,
       });
     });
-  }, [cubelet.faceColors, cubelet.stickerIds, brightnessMatrix]);
+  }, [visualFaceColors, cubelet.stickerIds, brightnessMatrix]);
 
   const isAffected = Boolean(activeTurn?.affectedIds.includes(cubelet.id));
   let position: Vec3 = cubelet.pos;
@@ -146,7 +169,7 @@ export function CubeScene({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stateMatrix, colorMatrix]);
 
-  // 新播放请求
+  // 新播放请求：从当前 prop 态重建，动画期间由内部 stateMatrixRef 逐步推进
   useEffect(() => {
     if (!playRequest || playRequest.moves.length === 0) return;
     if (playingRequestIdRef.current === playRequest.id) return;
@@ -155,13 +178,30 @@ export function CubeScene({
     queueRef.current = [...playRequest.moves];
     activeTurnRef.current = null;
     progressRef.current = 0;
+    stateMatrixRef.current = stateMatrix;
+    rebuildFromState();
     forceRender();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playRequest]);
 
   const beginTurn = (move: FormulaLayerMove) => {
     const cubelets = cubeletsRef.current;
     const affectedIds = getAffectedCubeletIds(cubelets, STEP, move.axis, move.index);
     const snapshot = createTurnSnapshot(cubelets, affectedIds);
+    cubeletsRef.current = applyTurnToCubelets(
+      cubelets,
+      STEP,
+      move.axis,
+      move.dir as TurnDir,
+      affectedIds,
+      snapshot,
+    );
+    stateMatrixRef.current = rotateStateMatrixLayer(
+      stateMatrixRef.current,
+      move.axis,
+      move.index,
+      move.dir as TurnDir,
+    );
     activeTurnRef.current = {
       axis: move.axis,
       index: move.index,
@@ -180,7 +220,6 @@ export function CubeScene({
     playingRequestIdRef.current = null;
     activeTurnRef.current = null;
     progressRef.current = 0;
-    rebuildFromState();
     if (finishedId !== null) onPlayCompleteRef.current?.(finishedId);
   };
 
@@ -214,14 +253,6 @@ export function CubeScene({
 
     if (raw < 1) return;
 
-    cubeletsRef.current = applyTurnToCubelets(
-      cubeletsRef.current,
-      STEP,
-      activeTurn.axis,
-      activeTurn.dir,
-      activeTurn.affectedIds,
-      activeTurn.snapshot,
-    );
     activeTurnRef.current = null;
     progressRef.current = 0;
     forceRender();
@@ -229,6 +260,7 @@ export function CubeScene({
 
   const activeTurn = activeTurnRef.current;
   const progress = progressRef.current;
+  const resolvedColorMatrix = colorMatrix ?? INITIAL_COLOR_MATRIX;
 
   return (
     <group>
@@ -236,6 +268,7 @@ export function CubeScene({
         <CubeletMesh
           key={cubelet.id}
           cubelet={cubelet}
+          colorMatrix={resolvedColorMatrix}
           brightnessMatrix={brightnessMatrix}
           activeTurn={activeTurn}
           progress={progress}

@@ -109,6 +109,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [headerActionsHost, setHeaderActionsHost] = useState<HTMLElement | null>(null);
   const [playRequest, setPlayRequest] = useState<CubePlayRequest | null>(null);
   const playCounterRef = useRef(0);
+  const playingRef = useRef(false);
+  const pendingPlayApplyRef = useRef<(() => void) | null>(null);
+  const pendingFormulaApplyRef = useRef<ReturnType<typeof deriveLevelFormulaPreset> | null>(null);
+  const pendingFormulaNoticeRef = useRef<string | null>(null);
   const syncPhase = useCloudSyncStore((s) => s.phase);
   const [previewHeight, setPreviewHeight] = useState(readPreviewHeight);
 
@@ -258,20 +262,51 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const previewStateMatrix = liveStateMatrix ?? startStateMatrix;
 
   const applyManualToken = useCallback((token: string) => {
+    if (playingRef.current) return;
     const base = liveStateMatrix ?? startStateMatrix;
     if (!base) return;
     try {
-      const next = applyTokensToState(base, [token]);
-      setLiveStateMatrix(cloneStateMatrix(next));
       const moves = expandTokenToLayerMoves(token);
-      if (moves.length > 0) {
-        playCounterRef.current += 1;
-        setPlayRequest({ id: playCounterRef.current, moves });
+      if (moves.length === 0) {
+        setLiveStateMatrix(cloneStateMatrix(applyTokensToState(base, [token])));
+        return;
       }
+      playCounterRef.current += 1;
+      const requestId = playCounterRef.current;
+      pendingPlayApplyRef.current = () => {
+        setLiveStateMatrix((prev) => {
+          const current = prev ?? startStateMatrix;
+          if (!current) return prev;
+          return cloneStateMatrix(applyTokensToState(current, [token]));
+        });
+      };
+      playingRef.current = true;
+      setPlayRequest({ id: requestId, moves });
     } catch {
       // 无效记号忽略
     }
   }, [liveStateMatrix, startStateMatrix]);
+
+  const handlePlayComplete = useCallback((_requestId: number) => {
+    if (pendingFormulaApplyRef.current) {
+      const derived = pendingFormulaApplyRef.current;
+      pendingFormulaApplyRef.current = null;
+      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+      setGoalStateMatrices(undefined);
+      setSelectedGoalVariantIndex(0);
+      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
+      setPreviewMode('start');
+      setSaveNotice(pendingFormulaNoticeRef.current);
+      pendingFormulaNoticeRef.current = null;
+    } else if (pendingPlayApplyRef.current) {
+      pendingPlayApplyRef.current();
+      pendingPlayApplyRef.current = null;
+    }
+    playingRef.current = false;
+    setPlayRequest(null);
+  }, []);
 
   const syncGoalVariants = useCallback((variants: StateMatrix[]) => {
     const cloned = variants.map(cloneStateMatrix);
@@ -351,6 +386,28 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     const trimmed = formulaText.trim();
     try {
       const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
+      setSaveError(null);
+      const notice = trimmed
+        ? `已按 ${formulaTarget.toUpperCase()} 目标生成起始态。`
+        : `已应用 ${formulaTarget.toUpperCase()} 默认目标（无公式，初始态与目标态相同）。`;
+
+      let moves: ReturnType<typeof expandTokenToLayerMoves> = [];
+      try {
+        moves = derived.mappedTokens.flatMap((token) => expandTokenToLayerMoves(token));
+      } catch {
+        moves = [];
+      }
+
+      if (moves.length > 0 && !playingRef.current) {
+        pendingFormulaApplyRef.current = derived;
+        pendingFormulaNoticeRef.current = notice;
+        playCounterRef.current += 1;
+        playingRef.current = true;
+        setPlayRequest({ id: playCounterRef.current, moves });
+        setSaveNotice(`${notice} 正在演示公式动画…`);
+        return;
+      }
+
       setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
       setGoalStateMatrices(undefined);
@@ -358,21 +415,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
       setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
       setPreviewMode('start');
-      setSaveError(null);
-      setSaveNotice(
-        trimmed
-          ? `已按 ${formulaTarget.toUpperCase()} 目标生成起始态。`
-          : `已应用 ${formulaTarget.toUpperCase()} 默认目标（无公式，初始态与目标态相同）。`,
-      );
-      try {
-        const moves = derived.mappedTokens.flatMap((token) => expandTokenToLayerMoves(token));
-        if (moves.length > 0) {
-          playCounterRef.current += 1;
-          setPlayRequest({ id: playCounterRef.current, moves });
-        }
-      } catch {
-        // 演示动画失败不影响矩阵应用
-      }
+      setSaveNotice(notice);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     }
@@ -661,7 +704,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
             playRequest={playRequest}
-            onPlayComplete={() => setPlayRequest(null)}
+            onPlayComplete={handlePlayComplete}
           />
         </div>
 
