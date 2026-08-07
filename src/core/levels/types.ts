@@ -1,4 +1,5 @@
 import type { StateMatrix, BrightnessMatrix } from '../cube/types';
+import type { DevCustomOrientation } from '../formula/types';
 
 export type LevelId = string;
 export type LevelChapterId = string;
@@ -31,6 +32,8 @@ export interface LevelDefinition {
     hint?: string;
     rotationFormula?: string;
     rotationTarget?: LevelFormulaTarget;
+    /** 公式源默认白顶绿前；特殊关卡可保存自己的顶面/前面组合 */
+    formulaOrientation?: DevCustomOrientation;
     guidanceFormula?: string;
     guidanceFailureThreshold?: LevelGuidanceFailureThreshold;
     hidden?: boolean;

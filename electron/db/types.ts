@@ -22,6 +22,7 @@ export type CloudLevel = {
   hint?: string;
   rotationFormula?: string;
   rotationTarget?: string;
+  formulaOrientation?: { topColor: number; frontColor: number };
   guidanceFormula?: string;
   guidanceFailureThreshold?: number;
   hidden?: boolean;

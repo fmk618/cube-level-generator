@@ -23,6 +23,8 @@ export type LevelFormulaPreset = {
     officialTokens: string[];
     officialDisplayTokens: string[];
     mappedTokens: string[];
+    /** 握持视角字母（调试朝向映射用）；正式 CFOP 路径通常与 mappedTokens 相同 */
+    viewTokens?: string[];
     mappedSourceIndices: number[];
     startStateMatrix: StateMatrix;
     goalStateMatrix: StateMatrix;
@@ -67,6 +69,7 @@ export const deriveLevelFormulaPreset = (
         officialTokens,
         officialDisplayTokens,
         mappedTokens,
+        viewTokens: mappedTokens,
         mappedSourceIndices,
         startStateMatrix,
         goalStateMatrix,

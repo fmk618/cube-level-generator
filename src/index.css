@@ -2443,6 +2443,41 @@ textarea.text-input--sm {
   color: var(--text-secondary);
 }
 
+.formula-orientation-card {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: var(--radius-region);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.formula-orientation-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.orientation-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.formula-orientation-grip {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chip-disabled,
+.chip:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .tab-content-brightness .chip-active {
   color: var(--brightness-accent);
   background: var(--surface);

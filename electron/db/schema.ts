@@ -29,6 +29,7 @@ const SCHEMA_STATEMENTS = [
   hint TEXT NULL,
   rotation_formula TEXT NULL,
   rotation_target VARCHAR(16) NULL,
+  formula_orientation JSON NULL,
   guidance_formula TEXT NULL,
   guidance_failure_threshold TINYINT NULL,
   hidden TINYINT(1) NOT NULL DEFAULT 0,

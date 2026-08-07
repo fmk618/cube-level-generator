@@ -9,6 +9,8 @@ import {
     type StateMatrix,
     type BrightnessMatrix,
 } from '../cube';
+import { resolveOrientationRecord } from '../formula/orientation';
+import type { DevCustomOrientation } from '../formula/types';
 import { LEVEL_LAYOUT_CHAPTERS } from './chapters';
 import { normalizeLevelGoalStates } from './goalStates';
 import type {
@@ -227,6 +229,9 @@ export const normalizeLevelCatalogDocument = (
                 hint: level.hint?.trim() || undefined,
                 rotationFormula: level.rotationFormula?.trim() || undefined,
                 rotationTarget: level.rotationTarget as LevelFormulaTarget | undefined,
+                formulaOrientation: level.formulaOrientation
+                    ? { ...level.formulaOrientation }
+                    : undefined,
                 guidanceFormula: level.guidanceFormula?.trim() || undefined,
                 guidanceFailureThreshold: resolveLevelGuidanceFailureThreshold(
                     level.guidanceFailureThreshold,
@@ -383,6 +388,13 @@ const validateLevelDefinition = (
     }
     if (level.rotationTarget !== undefined && !['f2l', 'oll', 'pll'].includes(level.rotationTarget)) {
         throw new Error(`Level ${level.id}: invalid rotationTarget`);
+    }
+    if (level.formulaOrientation !== undefined) {
+        try {
+            resolveOrientationRecord(level.formulaOrientation as DevCustomOrientation);
+        } catch {
+            throw new Error(`Level ${level.id}: invalid formulaOrientation`);
+        }
     }
     if (level.guidanceFormula !== undefined && !isNonEmptyString(level.guidanceFormula)) {
         throw new Error(`Level ${level.id}: invalid guidanceFormula`);

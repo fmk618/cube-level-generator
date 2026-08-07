@@ -138,8 +138,8 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             id, chapter_id, level_order, title, description,
             start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
             max_moves, star_thresholds, hint, rotation_formula, rotation_target,
-            guidance_formula, guidance_failure_threshold, hidden, sync_uuid
-          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?)
+            formula_orientation, guidance_formula, guidance_failure_threshold, hidden, sync_uuid
+          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, CAST(? AS JSON), ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             chapter_id = VALUES(chapter_id),
             level_order = VALUES(level_order),
@@ -154,6 +154,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             hint = VALUES(hint),
             rotation_formula = VALUES(rotation_formula),
             rotation_target = VALUES(rotation_target),
+            formula_orientation = VALUES(formula_orientation),
             guidance_formula = VALUES(guidance_formula),
             guidance_failure_threshold = VALUES(guidance_failure_threshold),
             hidden = VALUES(hidden),
@@ -173,6 +174,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             level.hint ?? null,
             level.rotationFormula ?? null,
             level.rotationTarget ?? null,
+            level.formulaOrientation != null ? JSON.stringify(level.formulaOrientation) : null,
             level.guidanceFormula ?? null,
             level.guidanceFailureThreshold ?? null,
             level.hidden ? 1 : 0,
@@ -199,7 +201,7 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
     `SELECT id, chapter_id, level_order, title, description,
             start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
             max_moves, star_thresholds, hint, rotation_formula, rotation_target,
-            guidance_formula, guidance_failure_threshold, hidden
+            formula_orientation, guidance_formula, guidance_failure_threshold, hidden
      FROM levels
      ORDER BY chapter_id ASC, level_order ASC`,
   );
@@ -234,6 +236,9 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
       hint: row.hint != null ? String(row.hint) : undefined,
       rotationFormula: row.rotation_formula != null ? String(row.rotation_formula) : undefined,
       rotationTarget: row.rotation_target != null ? String(row.rotation_target) : undefined,
+      formulaOrientation: row.formula_orientation != null
+        ? parseJsonField(row.formula_orientation, undefined)
+        : undefined,
       guidanceFormula: row.guidance_formula != null ? String(row.guidance_formula) : undefined,
       guidanceFailureThreshold:
         row.guidance_failure_threshold != null ? Number(row.guidance_failure_threshold) : undefined,
