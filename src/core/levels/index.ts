@@ -26,6 +26,9 @@ export {
     normalizeLevelCatalogDocument,
     resolveLevelGuidanceFailureThreshold,
     formatGuidanceFailureThresholdLabel,
+    describeGuidanceFailureThreshold,
+    GUIDANCE_UNLOCK_PLAYBACK_FLOW,
+    GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS,
     LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
     sortLevelsBySlotOrder,
 } from './utils';
@@ -35,6 +38,30 @@ export {
     deriveLevelFormulaPreset,
     type LevelFormulaPreset,
 } from './formulaPreset';
+
+export {
+    DEFAULT_LEVEL_DEBUG_ORIENTATION,
+    LEVEL_DEBUG_TOP_FACE_OPTIONS,
+    LEVEL_DEBUG_FRONT_FACE_OPTIONS,
+    assertLevelDebugOrientation,
+    deriveLevelDebugFormulaPreset,
+    formatLevelDebugOrientation,
+    getDebugOrientationLabel,
+    gripFaceToPhysicalFace,
+    isValidDebugFrontColor,
+    resolveDebugFrontColor,
+    toPhysicalTokensFromGrip,
+    toRuntimeViewTokens,
+    type DebugOrientationColorOption,
+} from './debugFormulaOrientation';
+
+export {
+    assertColorMatrixConsistency,
+    buildF2LBrightnessMatrixForOrientation,
+    buildOLLBrightnessMatrixForOrientation,
+    buildPLLBrightnessMatrixForOrientation,
+    getPhysicalFaceForColor,
+} from './orientationBrightness';
 
 export { isLevelGoalReached } from './goalEvaluation';
 export {

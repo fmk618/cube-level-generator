@@ -25,7 +25,7 @@ export const getLevelGuidanceFailureThreshold = (
     resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
 );
 
-/** -1 永不开启；0 进入即开；1-5 连续失败 N 次后解锁 */
+/** -1 永不开启；0 进入即开；1-5 连续失败 N 次后解锁。解锁后均先音乐+演示再下发流水灯；0 次不重复创建 attempt。 */
 export const getGuidanceFailuresRequiredToUnlock = (
     threshold: LevelGuidanceFailureThreshold,
 ): number | null => (

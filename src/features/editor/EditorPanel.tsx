@@ -7,29 +7,45 @@ import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 import {
   buildYawEquivalentGoalStates,
-  deriveLevelFormulaPreset,
+  deriveLevelDebugFormulaPreset,
+  DEFAULT_LEVEL_DEBUG_ORIENTATION,
   formatChapterLevelOrder,
   formatGuidanceFailureThresholdLabel,
+  GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS,
+  formatLevelDebugOrientation,
   getLevelGuidanceSummary,
   getMinimumStarThresholds,
+  isValidDebugFrontColor,
   isYawEquivalentGoalSet,
+  LEVEL_DEBUG_FRONT_FACE_OPTIONS,
+  LEVEL_DEBUG_TOP_FACE_OPTIONS,
   LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
   normalizeLevelGoalStates,
+  resolveDebugFrontColor,
   resolveLevelGuidanceFailureThreshold,
   resolveStarThresholds,
   type LevelDefinition,
   type LevelFormulaTarget,
   type LevelGuidanceFailureThreshold,
 } from '@/core/levels';
+import { expandTokenToLayerMoves, applyTokensToState, type DevCustomOrientation } from '@/core/formula';
 import { getLevelRecommendStatus, getTeachModeLabel } from '@/core/skill-graph/utils';
 import { INITIAL_BRIGHTNESS_MATRIX, type BrightnessMatrix, type StateMatrix } from '@/core/cube';
-import { expandTokenToLayerMoves, applyTokensToState } from '@/core/formula';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
 import type { CubePlayRequest } from '@/features/preview-3d/CubeScene';
 import { FormulaKeyboard } from './FormulaKeyboard';
 import { EditorMovePad } from './EditorMovePad';
 
 const FACE_NAMES = ['U', 'L', 'F', 'R', 'B', 'D'];
+
+const orientationEquals = (
+  a: DevCustomOrientation | undefined,
+  b: DevCustomOrientation | undefined,
+): boolean => {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.topColor === b.topColor && a.frontColor === b.frontColor;
+};
 
 const EDITOR_PREVIEW_HEIGHT_KEY = 'editor-preview-height';
 const DEFAULT_PREVIEW_HEIGHT = 360;
@@ -93,6 +109,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [star2Text, setStar2Text] = useState('');
   const [formulaText, setFormulaText] = useState('');
   const [formulaTarget, setFormulaTarget] = useState<LevelFormulaTarget>('f2l');
+  const [formulaOrientation, setFormulaOrientation] = useState<DevCustomOrientation>(() => ({
+    ...DEFAULT_LEVEL_DEBUG_ORIENTATION,
+  }));
   const [guidanceFormulaText, setGuidanceFormulaText] = useState('');
   const [guidanceFailureThreshold, setGuidanceFailureThreshold] = useState<LevelGuidanceFailureThreshold>(3);
   const [startStateMatrix, setStartStateMatrix] = useState<StateMatrix | null>(null);
@@ -109,6 +128,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [headerActionsHost, setHeaderActionsHost] = useState<HTMLElement | null>(null);
   const [playRequest, setPlayRequest] = useState<CubePlayRequest | null>(null);
   const playCounterRef = useRef(0);
+  const playingRef = useRef(false);
+  const pendingPlayApplyRef = useRef<(() => void) | null>(null);
+  const pendingFormulaApplyRef = useRef<ReturnType<typeof deriveLevelDebugFormulaPreset> | null>(null);
+  const pendingFormulaNoticeRef = useRef<string | null>(null);
   const syncPhase = useCloudSyncStore((s) => s.phase);
   const [previewHeight, setPreviewHeight] = useState(readPreviewHeight);
 
@@ -194,6 +217,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setStar2Text(String(level.starThresholds[1]));
     setFormulaText(level.rotationFormula ?? '');
     setFormulaTarget(level.rotationTarget ?? 'f2l');
+    setFormulaOrientation({ ...(level.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION) });
     setGuidanceFormulaText(level.guidanceFormula ?? '');
     setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold));
     setStartStateMatrix(cloneStateMatrix(level.startStateMatrix));
@@ -220,7 +244,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setActiveTab('formula');
       if (formulaAdoptionRequest.autoApply !== false) {
         try {
-          const derived = deriveLevelFormulaPreset(formula, target);
+          const derived = deriveLevelDebugFormulaPreset(formula, target, formulaOrientation);
           setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
           setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
           setGoalStateMatrices(undefined);
@@ -258,20 +282,51 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const previewStateMatrix = liveStateMatrix ?? startStateMatrix;
 
   const applyManualToken = useCallback((token: string) => {
+    if (playingRef.current) return;
     const base = liveStateMatrix ?? startStateMatrix;
     if (!base) return;
     try {
-      const next = applyTokensToState(base, [token]);
-      setLiveStateMatrix(cloneStateMatrix(next));
       const moves = expandTokenToLayerMoves(token);
-      if (moves.length > 0) {
-        playCounterRef.current += 1;
-        setPlayRequest({ id: playCounterRef.current, moves });
+      if (moves.length === 0) {
+        setLiveStateMatrix(cloneStateMatrix(applyTokensToState(base, [token])));
+        return;
       }
+      playCounterRef.current += 1;
+      const requestId = playCounterRef.current;
+      pendingPlayApplyRef.current = () => {
+        setLiveStateMatrix((prev) => {
+          const current = prev ?? startStateMatrix;
+          if (!current) return prev;
+          return cloneStateMatrix(applyTokensToState(current, [token]));
+        });
+      };
+      playingRef.current = true;
+      setPlayRequest({ id: requestId, moves });
     } catch {
       // 无效记号忽略
     }
   }, [liveStateMatrix, startStateMatrix]);
+
+  const handlePlayComplete = useCallback((_requestId: number) => {
+    if (pendingFormulaApplyRef.current) {
+      const derived = pendingFormulaApplyRef.current;
+      pendingFormulaApplyRef.current = null;
+      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+      setGoalStateMatrices(undefined);
+      setSelectedGoalVariantIndex(0);
+      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
+      setPreviewMode('start');
+      setSaveNotice(pendingFormulaNoticeRef.current);
+      pendingFormulaNoticeRef.current = null;
+    } else if (pendingPlayApplyRef.current) {
+      pendingPlayApplyRef.current();
+      pendingPlayApplyRef.current = null;
+    }
+    playingRef.current = false;
+    setPlayRequest(null);
+  }, []);
 
   const syncGoalVariants = useCallback((variants: StateMatrix[]) => {
     const cloned = variants.map(cloneStateMatrix);
@@ -319,18 +374,98 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setSaveNotice(`已捕获为${formatGoalVariantLabel(selectedGoalVariantIndex)}。旋转公式已清空，请保存关卡。`);
   }, [allGoalVariants, liveStateMatrix, selectedGoalVariantIndex, syncGoalVariants]);
 
+  const formulaOrientationText = useMemo(
+    () => formatLevelDebugOrientation(formulaOrientation),
+    [formulaOrientation],
+  );
+
+  const frontOrientationOptions = useMemo(
+    () => LEVEL_DEBUG_FRONT_FACE_OPTIONS.map((option) => ({
+      ...option,
+      disabled: !isValidDebugFrontColor(formulaOrientation.topColor, option.value),
+    })),
+    [formulaOrientation.topColor],
+  );
+
+  const applyFormulaPresetForOrientation = useCallback((orientation: DevCustomOrientation) => {
+    const trimmed = formulaText.trim();
+    if (!trimmed) return true;
+    try {
+      const derived = deriveLevelDebugFormulaPreset(trimmed, formulaTarget, orientation);
+      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+      setGoalStateMatrices(undefined);
+      setSelectedGoalVariantIndex(0);
+      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
+      setPreviewMode('start');
+      setSaveError(null);
+      return true;
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+  }, [formulaText, formulaTarget]);
+
+  const onFormulaOrientationChange = useCallback((orientation: DevCustomOrientation) => {
+    setFormulaOrientation(orientation);
+    if (formulaText.trim() && !applyFormulaPresetForOrientation(orientation)) {
+      setSaveNotice('当前公式无法按这个朝向映射，请先检查公式内容。');
+    }
+  }, [applyFormulaPresetForOrientation, formulaText]);
+
   const formulaPreviewText = useMemo(() => {
     const trimmed = formulaText.trim();
     if (!trimmed) {
-      return `未输入公式。仍可点击「应用公式」，将按 ${formulaTarget.toUpperCase()} 生成默认初始态、目标态与亮度掩码（无公式时初始态与目标态相同）。`;
+      return `未输入公式。仍可点击「应用公式」，将按 ${formulaTarget.toUpperCase()}（${formatLevelDebugOrientation(formulaOrientation)}）生成默认初始态、目标态与亮度掩码（无公式时初始态与目标态相同）。`;
     }
     try {
-      const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
-      return `已解析 ${derived.officialTokens.length} 个官方动作，映射后生成 ${derived.mappedTokens.length} 个实际转动；目标类型 ${formulaTarget.toUpperCase()}。`;
+      const derived = deriveLevelDebugFormulaPreset(trimmed, formulaTarget, formulaOrientation);
+      const view = derived.viewTokens?.join(' ') ?? derived.mappedTokens.join(' ');
+      return `握持 ${formatLevelDebugOrientation(formulaOrientation)}：解析 ${derived.officialTokens.length} 个动作；握持视图 [${view}] → 物理 [${derived.mappedTokens.join(' ')}]；目标 ${formulaTarget.toUpperCase()}。`;
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
-  }, [formulaText, formulaTarget]);
+  }, [formulaText, formulaTarget, formulaOrientation]);
+
+  const applyFormula = () => {
+    const trimmed = formulaText.trim();
+    try {
+      const derived = deriveLevelDebugFormulaPreset(trimmed, formulaTarget, formulaOrientation);
+      setSaveError(null);
+      const notice = trimmed
+        ? `已按 ${formatLevelDebugOrientation(formulaOrientation)} / ${formulaTarget.toUpperCase()} 生成起始态。`
+        : `已应用 ${formulaTarget.toUpperCase()} 默认目标（${formatLevelDebugOrientation(formulaOrientation)}，无公式，初始态与目标态相同）。`;
+
+      let moves: ReturnType<typeof expandTokenToLayerMoves> = [];
+      try {
+        moves = derived.mappedTokens.flatMap((token) => expandTokenToLayerMoves(token));
+      } catch {
+        moves = [];
+      }
+
+      if (moves.length > 0 && !playingRef.current) {
+        pendingFormulaApplyRef.current = derived;
+        pendingFormulaNoticeRef.current = notice;
+        playCounterRef.current += 1;
+        playingRef.current = true;
+        setPlayRequest({ id: playCounterRef.current, moves });
+        setSaveNotice(`${notice} 正在演示公式动画…`);
+        return;
+      }
+
+      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+      setGoalStateMatrices(undefined);
+      setSelectedGoalVariantIndex(0);
+      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+      setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
+      setPreviewMode('start');
+      setSaveNotice(notice);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const guidancePreviewText = useMemo(() => {
     const formula = guidanceFormulaText.trim();
@@ -346,37 +481,6 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     });
     return summary.status === 'ready' ? `校验通过，可生成 ${summary.stepCount} 步流水灯指引。` : summary.message;
   }, [guidanceFormulaText, level, startStateMatrix, goalStateMatrix, allGoalVariants, brightnessMatrix]);
-
-  const applyFormula = () => {
-    const trimmed = formulaText.trim();
-    try {
-      const derived = deriveLevelFormulaPreset(trimmed, formulaTarget);
-      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
-      setGoalStateMatrices(undefined);
-      setSelectedGoalVariantIndex(0);
-      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
-      setPreviewMode('start');
-      setSaveError(null);
-      setSaveNotice(
-        trimmed
-          ? `已按 ${formulaTarget.toUpperCase()} 目标生成起始态。`
-          : `已应用 ${formulaTarget.toUpperCase()} 默认目标（无公式，初始态与目标态相同）。`,
-      );
-      try {
-        const moves = derived.mappedTokens.flatMap((token) => expandTokenToLayerMoves(token));
-        if (moves.length > 0) {
-          playCounterRef.current += 1;
-          setPlayRequest({ id: playCounterRef.current, moves });
-        }
-      } catch {
-        // 演示动画失败不影响矩阵应用
-      }
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : String(error));
-    }
-  };
 
   const handleFormulaTokenAppended = (token: string) => {
     applyManualToken(token);
@@ -478,6 +582,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       || star2Text !== String(level.starThresholds[1])
       || formulaText !== (level.rotationFormula ?? '')
       || formulaTarget !== (level.rotationTarget ?? 'f2l')
+      || !orientationEquals(
+        formulaText.trim() ? formulaOrientation : undefined,
+        level.formulaOrientation,
+      )
       || guidanceFormulaText !== (level.guidanceFormula ?? '')
       || guidanceFailureThreshold !== resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
       || JSON.stringify(startStateMatrix) !== JSON.stringify(level.startStateMatrix)
@@ -487,7 +595,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     );
   }, [
     level, titleText, descriptionText, hintText, maxMovesText, star3Text, star2Text,
-    formulaText, formulaTarget, guidanceFormulaText, guidanceFailureThreshold,
+    formulaText, formulaTarget, formulaOrientation, guidanceFormulaText, guidanceFailureThreshold,
     startStateMatrix, goalStateMatrix, goalStateMatrices, brightnessMatrix,
   ]);
 
@@ -516,7 +624,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
 
     if (rotationFormula) {
       try {
-        deriveLevelFormulaPreset(rotationFormula, formulaTarget);
+        deriveLevelDebugFormulaPreset(rotationFormula, formulaTarget, formulaOrientation);
       } catch (error) {
         warnings.push(`旋转公式暂未通过校验（已按草稿保存）：${error instanceof Error ? error.message : String(error)}`);
       }
@@ -538,6 +646,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       brightnessMatrix: cloneBrightness(brightnessMatrix),
       rotationFormula: rotationFormula || undefined,
       rotationTarget: rotationFormula ? formulaTarget : undefined,
+      formulaOrientation: rotationFormula
+        ? { ...formulaOrientation }
+        : undefined,
       guidanceFormula: guidanceFormula || undefined,
       guidanceFailureThreshold,
     };
@@ -562,6 +673,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setStar2Text(String(updatedLevel.starThresholds[1]));
       setFormulaText(updatedLevel.rotationFormula ?? '');
       setFormulaTarget(updatedLevel.rotationTarget ?? 'f2l');
+      setFormulaOrientation({ ...(updatedLevel.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION) });
       setGuidanceFormulaText(updatedLevel.guidanceFormula ?? '');
       setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(updatedLevel.guidanceFailureThreshold));
       setStartStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
@@ -661,7 +773,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
             playRequest={playRequest}
-            onPlayComplete={() => setPlayRequest(null)}
+            onPlayComplete={handlePlayComplete}
           />
         </div>
 
@@ -864,9 +976,53 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         <div className="tab-content tab-content-formula">
           <div className="state-edit-banner">
             <p>
-              默认朝向：白顶绿前。点击「应用公式」写入初始态、目标态与亮度掩码；公式留空时也可应用，将生成该目标类型的默认状态。
+              公式按当前握持书写（U=所选顶色面，F=所选前色面）。点击「应用公式」写入初始态、目标态与亮度掩码；公式留空时也可应用，将生成该目标类型的默认状态。
               若已手动捕获状态，应用公式会覆盖它们。
             </p>
+          </div>
+          <div className="formula-orientation-card">
+            <div className="formula-orientation-title">魔方朝向映射</div>
+            <div className="chip-group">
+              <span className="chip-group-label">顶色</span>
+              <div className="orientation-chip-row">
+                {LEVEL_DEBUG_TOP_FACE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`chip ${formulaOrientation.topColor === option.value ? 'chip-active' : ''}`}
+                    onClick={() => onFormulaOrientationChange({
+                      topColor: option.value,
+                      frontColor: resolveDebugFrontColor(option.value, formulaOrientation.frontColor),
+                    })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="chip-group">
+              <span className="chip-group-label">前色</span>
+              <div className="orientation-chip-row">
+                {frontOrientationOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`chip ${formulaOrientation.frontColor === option.value ? 'chip-active' : ''} ${option.disabled ? 'chip-disabled' : ''}`}
+                    disabled={option.disabled}
+                    onClick={() => {
+                      if (!isValidDebugFrontColor(formulaOrientation.topColor, option.value)) return;
+                      onFormulaOrientationChange({
+                        topColor: formulaOrientation.topColor,
+                        frontColor: option.value,
+                      });
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="formula-orientation-grip">当前握持：{formulaOrientationText}</p>
           </div>
           <div className="chip-group">
             <span className="chip-group-label">目标类型</span>
@@ -947,11 +1103,23 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           </div>
           <p className="hint-text">
             {guidanceFailureThreshold === -1
-              ? '不开启：本关永不显示箭头演示与流水灯提示。'
+              ? '不开启：本关永不播放音乐/箭头/公式演示，也不下发流水灯指引。'
               : guidanceFailureThreshold === 0
-                ? '0 次：进入本关即开启箭头演示与流水灯提示。'
-                : `${guidanceFailureThreshold} 次：连续失败 ${guidanceFailureThreshold} 次后开启箭头演示与流水灯提示。`}
-            {' '}当前：{formatGuidanceFailureThresholdLabel(guidanceFailureThreshold)}
+                ? '0 次：进入本关即自动开启指引。'
+                : `${guidanceFailureThreshold} 次：连续失败 ${guidanceFailureThreshold} 次后解锁指引。`}
+          </p>
+          {guidanceFailureThreshold !== -1 && (
+            <ul className="guidance-flow-list" aria-label="指引统一播放流程">
+              {GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+              {guidanceFailureThreshold === 0 && (
+                <li>0 次自动开启时不会重复创建第二个关卡记录。</li>
+              )}
+            </ul>
+          )}
+          <p className="hint-text">
+            当前：{formatGuidanceFailureThresholdLabel(guidanceFailureThreshold)}
           </p>
           <FormulaKeyboard value={guidanceFormulaText} onChange={setGuidanceFormulaText} />
           <div className="preview-card">{guidancePreviewText}</div>

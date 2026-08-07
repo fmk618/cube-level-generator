@@ -4,6 +4,7 @@ import { useCatalogStore, type LevelMoveDirection } from '@/shared/store/useCata
 import { useUiStore } from '@/shared/store/useUiStore';
 import {
   buildLevelManagerViewModel,
+  describeGuidanceFailureThreshold,
   formatGuidanceFailureThresholdLabel,
   getLevelGuidanceSummary,
   type LevelManagerFilter,
@@ -641,7 +642,9 @@ function LevelRow({
           {item.isHidden && <span className="level-meta-warning">隐藏 · </span>}
           <span>{guidance?.status === 'ready' ? `${guidance.stepCount} 步` : guidance?.status === 'invalid' ? '解法无效' : '缺少解法'}</span>
           <span>·</span>
-          <span>{formatGuidanceFailureThresholdLabel(level.guidanceFailureThreshold)}</span>
+          <span title={describeGuidanceFailureThreshold(level.guidanceFailureThreshold)}>
+            {formatGuidanceFailureThresholdLabel(level.guidanceFailureThreshold)}
+          </span>
         </div>
       </div>
       <div className="level-row-actions" onClick={(event) => event.stopPropagation()}>

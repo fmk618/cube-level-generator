@@ -1,9 +1,10 @@
 import type { StateMatrix, BrightnessMatrix } from '../cube/types';
+import type { DevCustomOrientation } from '../formula/types';
 
 export type LevelId = string;
 export type LevelChapterId = string;
 export type LevelFormulaTarget = 'f2l' | 'oll' | 'pll';
-/** -1=永不开启指引；0=进入即开；1-5=连续失败 N 次后开启 */
+/** -1=永不开启指引；0=进入即开；1-5=连续失败 N 次后开启。开启后 0/1/2… 共用同一流程：先音乐+3D转动/箭头/公式（不下发流水灯），音乐结束后再启动硬件流水灯；0 次自动开启不重复创建第二个关卡记录。 */
 export type LevelGuidanceFailureThreshold = -1 | 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface LevelChapterConfig {
@@ -31,6 +32,8 @@ export interface LevelDefinition {
     hint?: string;
     rotationFormula?: string;
     rotationTarget?: LevelFormulaTarget;
+    /** 公式源默认白顶绿前；特殊关卡可保存自己的顶面/前面组合 */
+    formulaOrientation?: DevCustomOrientation;
     guidanceFormula?: string;
     guidanceFailureThreshold?: LevelGuidanceFailureThreshold;
     hidden?: boolean;
