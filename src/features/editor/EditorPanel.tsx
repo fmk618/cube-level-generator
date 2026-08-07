@@ -11,6 +11,7 @@ import {
   DEFAULT_LEVEL_DEBUG_ORIENTATION,
   formatChapterLevelOrder,
   formatGuidanceFailureThresholdLabel,
+  GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS,
   formatLevelDebugOrientation,
   getLevelGuidanceSummary,
   getMinimumStarThresholds,
@@ -1102,11 +1103,23 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           </div>
           <p className="hint-text">
             {guidanceFailureThreshold === -1
-              ? '不开启：本关永不显示箭头演示与流水灯提示。'
+              ? '不开启：本关永不播放音乐/箭头/公式演示，也不下发流水灯指引。'
               : guidanceFailureThreshold === 0
-                ? '0 次：进入本关即开启箭头演示与流水灯提示。'
-                : `${guidanceFailureThreshold} 次：连续失败 ${guidanceFailureThreshold} 次后开启箭头演示与流水灯提示。`}
-            {' '}当前：{formatGuidanceFailureThresholdLabel(guidanceFailureThreshold)}
+                ? '0 次：进入本关即自动开启指引。'
+                : `${guidanceFailureThreshold} 次：连续失败 ${guidanceFailureThreshold} 次后解锁指引。`}
+          </p>
+          {guidanceFailureThreshold !== -1 && (
+            <ul className="guidance-flow-list" aria-label="指引统一播放流程">
+              {GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+              {guidanceFailureThreshold === 0 && (
+                <li>0 次自动开启时不会重复创建第二个关卡记录。</li>
+              )}
+            </ul>
+          )}
+          <p className="hint-text">
+            当前：{formatGuidanceFailureThresholdLabel(guidanceFailureThreshold)}
           </p>
           <FormulaKeyboard value={guidanceFormulaText} onChange={setGuidanceFormulaText} />
           <div className="preview-card">{guidancePreviewText}</div>

@@ -26,6 +26,9 @@ export {
     normalizeLevelCatalogDocument,
     resolveLevelGuidanceFailureThreshold,
     formatGuidanceFailureThresholdLabel,
+    describeGuidanceFailureThreshold,
+    GUIDANCE_UNLOCK_PLAYBACK_FLOW,
+    GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS,
     LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
     sortLevelsBySlotOrder,
 } from './utils';

@@ -133,6 +133,37 @@ export const formatGuidanceFailureThresholdLabel = (
     return `失败 ${threshold} 次解锁`;
 };
 
+/** 指引开启后的统一播放流程（与 App 一致；0/1/2… 次共用） */
+export const GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS = [
+    '进入关卡或解锁指引后，先播放音乐。',
+    '同时播放 3D 转动、箭头和公式提示。',
+    '音乐/箭头演示阶段不会下发流水灯给硬件魔方。',
+    '音乐结束后，才启动硬件流水灯。',
+    '0 次、1 次、2 次… 都使用同一套流程。',
+] as const;
+
+export const GUIDANCE_UNLOCK_PLAYBACK_FLOW = GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS.join(' ');
+
+export const describeGuidanceFailureThreshold = (
+    value: unknown,
+): string => {
+    const threshold = resolveLevelGuidanceFailureThreshold(value);
+    if (threshold === -1) {
+        return '不开启：本关永不播放音乐/箭头/公式演示，也不下发流水灯指引。';
+    }
+    if (threshold === 0) {
+        return [
+            '0 次：进入本关即自动开启指引。',
+            GUIDANCE_UNLOCK_PLAYBACK_FLOW,
+            '0 次自动开启时不会重复创建第二个关卡记录。',
+        ].join(' ');
+    }
+    return [
+        `${threshold} 次：连续失败 ${threshold} 次后解锁指引。`,
+        GUIDANCE_UNLOCK_PLAYBACK_FLOW,
+    ].join(' ');
+};
+
 const isPositiveInteger = (value: unknown): value is number =>
     typeof value === 'number' && Number.isInteger(value) && value > 0;
 
