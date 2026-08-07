@@ -1,6 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, safeStorage, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   closePool,
@@ -26,6 +27,23 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, 'public')
   : RENDERER_DIST;
 
+const resolveAppIconPath = (): string | undefined => {
+  const winIco = process.platform === 'win32';
+  const candidates = [
+    // 打包后 extraResources
+    typeof process.resourcesPath === 'string'
+      ? path.join(process.resourcesPath, winIco ? 'icon.ico' : 'icon.png')
+      : '',
+    // 开发态 build/
+    path.join(process.env.APP_ROOT!, 'build', winIco ? 'icon.ico' : 'icon.png'),
+    // Vite public → dist
+    path.join(process.env.VITE_PUBLIC!, 'app-icon.png'),
+    path.join(RENDERER_DIST, 'app-icon.png'),
+    path.join(process.env.VITE_PUBLIC!, 'favicon.png'),
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate));
+};
+
 const USER_DATA_DIR = () => app.getPath('userData');
 const CATALOG_FILE = () => path.join(USER_DATA_DIR(), 'levels.runtime.json');
 const CATALOG_BACKUP_FILE = () => path.join(USER_DATA_DIR(), 'levels.runtime.bak.json');
@@ -46,6 +64,9 @@ const DEFAULT_SKILL_GRAPH_FILE = () => (
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  const iconPath = resolveAppIconPath();
+  const icon = iconPath ? nativeImage.createFromPath(iconPath) : undefined;
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -53,6 +74,7 @@ function createWindow() {
     minHeight: 640,
     title: 'cube-level-generator',
     backgroundColor: '#f5f5f4',
+    ...(icon && !icon.isEmpty() ? { icon } : {}),
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 15 } }
       : {}),
@@ -387,4 +409,14 @@ app.on('before-quit', () => {
   void closePool();
 });
 
-void app.whenReady().then(createWindow);
+void app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.libercube.cube-level-generator');
+  }
+  const iconPath = resolveAppIconPath();
+  if (process.platform === 'darwin' && iconPath && app.dock) {
+    const image = nativeImage.createFromPath(iconPath);
+    if (!image.isEmpty()) app.dock.setIcon(image);
+  }
+  createWindow();
+});
