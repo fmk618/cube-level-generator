@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
-import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
 import {
   buildYawEquivalentGoalStates,
   deriveLevelDebugFormulaPreset,
@@ -15,28 +14,37 @@ import {
   formatLevelDebugOrientation,
   getLevelGuidanceSummary,
   getMinimumStarThresholds,
+  gripFaceToPhysicalFace,
   isValidDebugFrontColor,
   isYawEquivalentGoalSet,
   LEVEL_DEBUG_FRONT_FACE_OPTIONS,
   LEVEL_DEBUG_TOP_FACE_OPTIONS,
   LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
+  mapGuidanceFormulaToPhysicalTokens,
   normalizeLevelGoalStates,
   resolveDebugFrontColor,
   resolveLevelGuidanceFailureThreshold,
   resolveStarThresholds,
+  toPhysicalTokensFromGrip,
   type LevelDefinition,
   type LevelFormulaTarget,
   type LevelGuidanceFailureThreshold,
 } from '@/core/levels';
 import { expandTokenToLayerMoves, applyTokensToState, type DevCustomOrientation } from '@/core/formula';
 import { getLevelRecommendStatus, getTeachModeLabel } from '@/core/skill-graph/utils';
-import { INITIAL_BRIGHTNESS_MATRIX, type BrightnessMatrix, type StateMatrix } from '@/core/cube';
+import { INITIAL_BRIGHTNESS_MATRIX, colorIndexToHex, findInitialPositionByStateId, type BrightnessMatrix, type StateMatrix } from '@/core/cube';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
 import type { CubePlayRequest } from '@/features/preview-3d/CubeScene';
 import { FormulaKeyboard } from './FormulaKeyboard';
 import { EditorMovePad } from './EditorMovePad';
 
-const FACE_NAMES = ['U', 'L', 'F', 'R', 'B', 'D'];
+const FACE_NAMES = ['U', 'L', 'F', 'R', 'B', 'D'] as const;
+type GripFaceName = (typeof FACE_NAMES)[number];
+const PHYSICAL_FACE_INDEX: Record<GripFaceName, number> = {
+  U: 0, L: 1, F: 2, R: 3, B: 4, D: 5,
+};
+
+type AuthoringMode = 'formula' | 'brightness' | 'manual' | null;
 
 const orientationEquals = (
   a: DevCustomOrientation | undefined,
@@ -46,6 +54,135 @@ const orientationEquals = (
   if (!a || !b) return false;
   return a.topColor === b.topColor && a.frontColor === b.frontColor;
 };
+
+type OrientationOption = {
+  value: DevCustomOrientation['topColor'];
+  label: string;
+  disabled?: boolean;
+};
+
+/** 朝向按钮边框色：近白用石板灰，保证彩色描边可见 */
+const orientationChipBorder = (colorIndex: number): string => {
+  const hex = colorIndexToHex(colorIndex);
+  return hex.toLowerCase() === '#f8fafc' ? '#94A3B8' : hex;
+};
+
+function OrientationMappingBlock({
+  orientation,
+  orientationText,
+  frontOptions,
+  onChange,
+}: {
+  orientation: DevCustomOrientation;
+  orientationText: string;
+  frontOptions: OrientationOption[];
+  onChange: (next: DevCustomOrientation) => void;
+}) {
+  return (
+    <div className="formula-orientation-card">
+      <div className="formula-orientation-title">魔方朝向映射</div>
+      <div className="orientation-field">
+        <span className="orientation-field-label">顶色</span>
+        <div className="orientation-chip-row" role="group" aria-label="顶色">
+          {LEVEL_DEBUG_TOP_FACE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`orientation-chip ${orientation.topColor === option.value ? 'is-active' : ''}`}
+              style={{
+                '--orientation-color': colorIndexToHex(option.value),
+                '--orientation-border': orientationChipBorder(option.value),
+              } as CSSProperties}
+              onClick={() => onChange({
+                topColor: option.value,
+                frontColor: resolveDebugFrontColor(option.value, orientation.frontColor),
+              })}
+            >
+              <span className="orientation-chip-swatch" aria-hidden />
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="orientation-field">
+        <span className="orientation-field-label">前色</span>
+        <div className="orientation-chip-row" role="group" aria-label="前色">
+          {frontOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`orientation-chip ${orientation.frontColor === option.value ? 'is-active' : ''} ${option.disabled ? 'is-disabled' : ''}`}
+              style={{
+                '--orientation-color': colorIndexToHex(option.value),
+                '--orientation-border': orientationChipBorder(option.value),
+              } as CSSProperties}
+              disabled={option.disabled}
+              title={option.disabled ? '不可与顶色相同或相对' : undefined}
+              onClick={() => {
+                if (!isValidDebugFrontColor(orientation.topColor, option.value)) return;
+                onChange({
+                  topColor: orientation.topColor,
+                  frontColor: option.value,
+                });
+              }}
+            >
+              <span className="orientation-chip-swatch" aria-hidden />
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="orientation-field-hint">灰色选项不可用：不能与顶色相同或相对</p>
+      </div>
+      <p className="formula-orientation-grip">当前握持：{orientationText}</p>
+    </div>
+  );
+}
+
+function GuidanceThresholdBlock({
+  threshold,
+  onChange,
+}: {
+  threshold: LevelGuidanceFailureThreshold;
+  onChange: (next: LevelGuidanceFailureThreshold) => void;
+}) {
+  return (
+    <div className="guidance-threshold-block">
+      <div className="guidance-threshold-title">指引开启条件</div>
+      <div className="guidance-threshold-row" role="group" aria-label="指引开启条件">
+        {LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`guidance-threshold-chip ${threshold === option ? 'is-active' : ''}`}
+            onClick={() => onChange(option)}
+          >
+            {option === -1 ? '不开启' : `${option} 次`}
+          </button>
+        ))}
+      </div>
+      <p className="guidance-threshold-summary">
+        {threshold === -1
+          ? '不开启：本关永不播放音乐/箭头/公式演示，也不下发流水灯指引。'
+          : threshold === 0
+            ? '0 次：进入本关即自动开启指引。'
+            : `${threshold} 次：连续失败 ${threshold} 次后解锁指引。`}
+      </p>
+      {threshold !== -1 && (
+        <ul className="guidance-flow-list" aria-label="指引统一播放流程">
+          {GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+          {threshold === 0 && (
+            <li>0 次自动开启时不会重复创建第二个关卡记录。</li>
+          )}
+        </ul>
+      )}
+      <p className="guidance-threshold-current">
+        当前：{formatGuidanceFailureThresholdLabel(threshold)}
+      </p>
+    </div>
+  );
+}
 
 const EDITOR_PREVIEW_HEIGHT_KEY = 'editor-preview-height';
 const DEFAULT_PREVIEW_HEIGHT = 360;
@@ -85,7 +222,7 @@ const resolveGoalVariantList = (
 
 const formatGoalVariantLabel = (index: number): string => `目标${index + 1}`;
 
-type Tab = 'meta' | 'states' | 'formula' | 'brightness' | 'guidance';
+type Tab = 'meta' | 'states' | 'formula' | 'brightness';
 
 export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => void } = {}) {
   const selectedLevelId = useUiStore((s) => s.selectedLevelId);
@@ -121,7 +258,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [brightnessMatrix, setBrightnessMatrix] = useState<BrightnessMatrix>(cloneBrightness(INITIAL_BRIGHTNESS_MATRIX));
   const [previewMode, setPreviewMode] = useState<'start' | 'goal'>('start');
   const [selectedGoalVariantIndex, setSelectedGoalVariantIndex] = useState(0);
-  const [selectedFace, setSelectedFace] = useState(0);
+  const [selectedGripFace, setSelectedGripFace] = useState<GripFaceName>('U');
+  const [authoringMode, setAuthoringMode] = useState<AuthoringMode>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -132,7 +270,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const pendingPlayApplyRef = useRef<(() => void) | null>(null);
   const pendingFormulaApplyRef = useRef<ReturnType<typeof deriveLevelDebugFormulaPreset> | null>(null);
   const pendingFormulaNoticeRef = useRef<string | null>(null);
-  const syncPhase = useCloudSyncStore((s) => s.phase);
+  const pendingGuidancePreviewRef = useRef<StateMatrix | null>(null);
+  const pendingGuidancePreviewNoticeRef = useRef<string | null>(null);
   const [previewHeight, setPreviewHeight] = useState(readPreviewHeight);
 
   useEffect(() => {
@@ -227,6 +366,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setBrightnessMatrix(cloneBrightness(level.brightnessMatrix));
     setPreviewMode('start');
     setSelectedGoalVariantIndex(0);
+    setAuthoringMode(null);
     setActiveTab('meta');
     setSaveError(null);
     setSaveNotice(null);
@@ -252,6 +392,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
           setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
           setPreviewMode('start');
+          setAuthoringMode('formula');
+          setGuidanceFormulaText('');
           setSaveError(null);
           setSaveNotice(`AI 已应用旋转公式（${target.toUpperCase()}），起始/目标态已生成。请检查后保存关卡。`);
         } catch (error) {
@@ -261,8 +403,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       }
     } else {
       setGuidanceFormulaText(formulaAdoptionRequest.formula);
-      setActiveTab('guidance');
-      setSaveNotice('AI 已写入指引公式，请检查后保存关卡。');
+      setActiveTab('brightness');
+      setSaveNotice('AI 已写入推荐解法，请在点亮控制中校验后保存关卡。');
     }
     clearFormulaAdoptionRequest();
   }, [formulaAdoptionRequest, level, clearFormulaAdoptionRequest]);
@@ -286,9 +428,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     const base = liveStateMatrix ?? startStateMatrix;
     if (!base) return;
     try {
-      const moves = expandTokenToLayerMoves(token);
+      const [physicalToken] = toPhysicalTokensFromGrip([token], formulaOrientation);
+      const moves = expandTokenToLayerMoves(physicalToken);
       if (moves.length === 0) {
-        setLiveStateMatrix(cloneStateMatrix(applyTokensToState(base, [token])));
+        setLiveStateMatrix(cloneStateMatrix(applyTokensToState(base, [physicalToken])));
         return;
       }
       playCounterRef.current += 1;
@@ -297,7 +440,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         setLiveStateMatrix((prev) => {
           const current = prev ?? startStateMatrix;
           if (!current) return prev;
-          return cloneStateMatrix(applyTokensToState(current, [token]));
+          return cloneStateMatrix(applyTokensToState(current, [physicalToken]));
         });
       };
       playingRef.current = true;
@@ -305,10 +448,15 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     } catch {
       // 无效记号忽略
     }
-  }, [liveStateMatrix, startStateMatrix]);
+  }, [formulaOrientation, liveStateMatrix, startStateMatrix]);
 
   const handlePlayComplete = useCallback((_requestId: number) => {
-    if (pendingFormulaApplyRef.current) {
+    if (pendingGuidancePreviewRef.current) {
+      setLiveStateMatrix(cloneStateMatrix(pendingGuidancePreviewRef.current));
+      pendingGuidancePreviewRef.current = null;
+      setSaveNotice(pendingGuidancePreviewNoticeRef.current);
+      pendingGuidancePreviewNoticeRef.current = null;
+    } else if (pendingFormulaApplyRef.current) {
       const derived = pendingFormulaApplyRef.current;
       pendingFormulaApplyRef.current = null;
       setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
@@ -354,25 +502,39 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
 
   const captureStartState = useCallback(() => {
     if (!liveStateMatrix) return;
+    if (formulaText.trim() || authoringMode === 'formula') {
+      const confirmed = window.confirm(
+        '捕获初始态将改为手动定义起终态，并清空旋转公式。是否继续？',
+      );
+      if (!confirmed) return;
+    }
     setStartStateMatrix(cloneStateMatrix(liveStateMatrix));
     setFormulaText('');
+    setAuthoringMode('manual');
     setPreviewMode('start');
     setSaveError(null);
     setSaveNotice('已捕获为初始状态。旋转公式已清空，请保存关卡。');
-  }, [liveStateMatrix]);
+  }, [authoringMode, formulaText, liveStateMatrix]);
 
   const captureGoalState = useCallback(() => {
     if (!liveStateMatrix) return;
+    if (formulaText.trim() || authoringMode === 'formula') {
+      const confirmed = window.confirm(
+        '捕获目标态将改为手动定义起终态，并清空旋转公式。是否继续？',
+      );
+      if (!confirmed) return;
+    }
     const list = allGoalVariants.length > 0
       ? allGoalVariants.map(cloneStateMatrix)
       : [cloneStateMatrix(liveStateMatrix)];
     list[selectedGoalVariantIndex] = cloneStateMatrix(liveStateMatrix);
     syncGoalVariants(list);
     setFormulaText('');
+    setAuthoringMode('manual');
     setPreviewMode('goal');
     setSaveError(null);
     setSaveNotice(`已捕获为${formatGoalVariantLabel(selectedGoalVariantIndex)}。旋转公式已清空，请保存关卡。`);
-  }, [allGoalVariants, liveStateMatrix, selectedGoalVariantIndex, syncGoalVariants]);
+  }, [allGoalVariants, authoringMode, formulaText, liveStateMatrix, selectedGoalVariantIndex, syncGoalVariants]);
 
   const formulaOrientationText = useMemo(
     () => formatLevelDebugOrientation(formulaOrientation),
@@ -407,9 +569,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     }
   }, [formulaText, formulaTarget]);
 
-  const onFormulaOrientationChange = useCallback((orientation: DevCustomOrientation) => {
+  const onFormulaOrientationChange = useCallback((orientation: DevCustomOrientation, remapRotationFormula = false) => {
     setFormulaOrientation(orientation);
-    if (formulaText.trim() && !applyFormulaPresetForOrientation(orientation)) {
+    if (remapRotationFormula && formulaText.trim() && !applyFormulaPresetForOrientation(orientation)) {
       setSaveNotice('当前公式无法按这个朝向映射，请先检查公式内容。');
     }
   }, [applyFormulaPresetForOrientation, formulaText]);
@@ -430,12 +592,27 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
 
   const applyFormula = () => {
     const trimmed = formulaText.trim();
+    const conflictsWithOtherPath = Boolean(
+      guidanceFormulaText.trim()
+      || authoringMode === 'manual'
+      || authoringMode === 'brightness',
+    );
+    if (conflictsWithOtherPath) {
+      const confirmed = window.confirm(
+        '应用自定义公式将覆盖当前初始态、目标态与默认亮度，并清空推荐解法。是否继续？',
+      );
+      if (!confirmed) return;
+    }
+
     try {
       const derived = deriveLevelDebugFormulaPreset(trimmed, formulaTarget, formulaOrientation);
       setSaveError(null);
       const notice = trimmed
         ? `已按 ${formatLevelDebugOrientation(formulaOrientation)} / ${formulaTarget.toUpperCase()} 生成起始态。`
         : `已应用 ${formulaTarget.toUpperCase()} 默认目标（${formatLevelDebugOrientation(formulaOrientation)}，无公式，初始态与目标态相同）。`;
+
+      setGuidanceFormulaText('');
+      setAuthoringMode('formula');
 
       let moves: ReturnType<typeof expandTokenToLayerMoves> = [];
       try {
@@ -467,10 +644,29 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     }
   };
 
+  const selectedPhysicalFace = useMemo(() => {
+    try {
+      const physical = gripFaceToPhysicalFace(selectedGripFace, formulaOrientation);
+      return PHYSICAL_FACE_INDEX[physical];
+    } catch {
+      return PHYSICAL_FACE_INDEX[selectedGripFace];
+    }
+  }, [formulaOrientation, selectedGripFace]);
+
+  const selectedPhysicalFaceLabel = useMemo(() => {
+    try {
+      return gripFaceToPhysicalFace(selectedGripFace, formulaOrientation);
+    } catch {
+      return selectedGripFace;
+    }
+  }, [formulaOrientation, selectedGripFace]);
+
   const guidancePreviewText = useMemo(() => {
     const formula = guidanceFormulaText.trim();
     if (!formula) return '尚未配置推荐解法，关卡列表会标记为"缺解法"。';
-    if (!level || !startStateMatrix || !goalStateMatrix) return '请先配置起始状态和目标状态。';
+    if (!level || !startStateMatrix || !goalStateMatrix) {
+      return '请先设置初始状态，再设置目标状态，然后再校验推荐解法。';
+    }
     const summary = getLevelGuidanceSummary({
       ...level,
       startStateMatrix,
@@ -478,9 +674,97 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       goalStateMatrices: allGoalVariants.length > 1 ? allGoalVariants : undefined,
       brightnessMatrix,
       guidanceFormula: formula,
+      formulaOrientation: { ...formulaOrientation },
     });
     return summary.status === 'ready' ? `校验通过，可生成 ${summary.stepCount} 步流水灯指引。` : summary.message;
-  }, [guidanceFormulaText, level, startStateMatrix, goalStateMatrix, allGoalVariants, brightnessMatrix]);
+  }, [
+    guidanceFormulaText, level, startStateMatrix, goalStateMatrix, allGoalVariants,
+    brightnessMatrix, formulaOrientation,
+  ]);
+
+  const applyGuidanceValidation = () => {
+    const formula = guidanceFormulaText.trim();
+    if (!formula) {
+      setSaveError('请先输入推荐解法。');
+      setSaveNotice(null);
+      return;
+    }
+    if (!level || !startStateMatrix || !goalStateMatrix) {
+      setSaveError('请先设置初始状态，再设置目标状态，然后再校验。');
+      setSaveNotice(null);
+      return;
+    }
+    const summary = getLevelGuidanceSummary({
+      ...level,
+      startStateMatrix,
+      goalStateMatrix,
+      goalStateMatrices: allGoalVariants.length > 1 ? allGoalVariants : undefined,
+      brightnessMatrix,
+      guidanceFormula: formula,
+      formulaOrientation: { ...formulaOrientation },
+    });
+    setAuthoringMode('brightness');
+    if (summary.status === 'ready') {
+      setSaveError(null);
+      setSaveNotice(`校验通过，可生成 ${summary.stepCount} 步流水灯指引。`);
+    } else {
+      setSaveNotice(null);
+      setSaveError(summary.message);
+    }
+  };
+
+  const previewGuidanceFormulaFromStart = () => {
+    const formula = guidanceFormulaText.trim();
+    if (!formula) {
+      setSaveError('请先输入推荐解法。');
+      setSaveNotice(null);
+      return;
+    }
+    if (!startStateMatrix) {
+      setSaveError('请先设置初始状态，再从初始态按公式预览。');
+      setSaveNotice(null);
+      return;
+    }
+    try {
+      const physicalTokens = mapGuidanceFormulaToPhysicalTokens(formula, formulaOrientation);
+      const result = applyTokensToState(startStateMatrix, physicalTokens);
+      const notice = '已从初始态按推荐解法推进预览（未改写目标态），请与目标点亮区对照。';
+      setSaveError(null);
+      setAuthoringMode('brightness');
+      setPreviewMode('start');
+      setLiveStateMatrix(cloneStateMatrix(startStateMatrix));
+
+      let moves: ReturnType<typeof expandTokenToLayerMoves> = [];
+      try {
+        moves = physicalTokens.flatMap((token) => expandTokenToLayerMoves(token));
+      } catch {
+        moves = [];
+      }
+
+      if (moves.length > 0 && !playingRef.current) {
+        pendingGuidancePreviewRef.current = result;
+        pendingGuidancePreviewNoticeRef.current = notice;
+        playCounterRef.current += 1;
+        playingRef.current = true;
+        setPlayRequest({ id: playCounterRef.current, moves });
+        setSaveNotice(`${notice} 正在演示…`);
+        return;
+      }
+
+      setLiveStateMatrix(cloneStateMatrix(result));
+      setSaveNotice(notice);
+    } catch (error) {
+      setSaveNotice(null);
+      setSaveError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const onGuidanceFailureThresholdChange = useCallback((threshold: LevelGuidanceFailureThreshold) => {
+    setGuidanceFailureThreshold(threshold);
+    if (level) {
+      updateLevel(level.id, { guidanceFailureThreshold: threshold });
+    }
+  }, [level, updateLevel]);
 
   const handleFormulaTokenAppended = (token: string) => {
     applyManualToken(token);
@@ -554,19 +838,54 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
 
   const goalVariantCount = allGoalVariants.length;
 
-  const toggleBrightnessCell = (face: number, row: number, col: number) => {
-    const next = cloneBrightness(brightnessMatrix);
-    next[face][row][col] = brightnessMatrix[face][row][col] > 0 ? 0 : 8;
-    setBrightnessMatrix(next);
-  };
+  const readBrightnessAtPreviewCell = useCallback((face: number, row: number, col: number): number => {
+    const state = previewStateMatrix;
+    if (!state) return 0;
+    const stickerId = state[face][row][col];
+    const home = findInitialPositionByStateId(stickerId);
+    if (!home) return 0;
+    return brightnessMatrix[home.face][home.row][home.col] ?? 0;
+  }, [brightnessMatrix, previewStateMatrix]);
 
-  const setFaceAllBrightness = (face: number, value: number) => {
+  const toggleBrightnessAtPreviewCell = useCallback((face: number, row: number, col: number) => {
+    const state = previewStateMatrix;
+    if (!state) return;
+    const stickerId = state[face][row][col];
+    const home = findInitialPositionByStateId(stickerId);
+    if (!home) return;
+    const next = cloneBrightness(brightnessMatrix);
+    next[home.face][home.row][home.col] = next[home.face][home.row][home.col] > 0 ? 0 : 8;
+    setBrightnessMatrix(next);
+  }, [brightnessMatrix, previewStateMatrix]);
+
+  const setPreviewFaceAllBrightness = useCallback((face: number, value: number) => {
+    const state = previewStateMatrix;
+    if (!state) return;
     const next = cloneBrightness(brightnessMatrix);
     for (let row = 0; row < 3; row += 1) {
-      for (let col = 0; col < 3; col += 1) next[face][row][col] = value;
+      for (let col = 0; col < 3; col += 1) {
+        const stickerId = state[face][row][col];
+        const home = findInitialPositionByStateId(stickerId);
+        if (!home) continue;
+        next[home.face][home.row][home.col] = value;
+      }
     }
     setBrightnessMatrix(next);
-  };
+  }, [brightnessMatrix, previewStateMatrix]);
+
+  const gripFacePhysicalLabels = useMemo(() => {
+    const map: Record<GripFaceName, string> = {
+      U: 'U', L: 'L', F: 'F', R: 'R', B: 'B', D: 'D',
+    };
+    for (const name of FACE_NAMES) {
+      try {
+        map[name] = gripFaceToPhysicalFace(name, formulaOrientation);
+      } catch {
+        map[name] = name;
+      }
+    }
+    return map;
+  }, [formulaOrientation]);
 
   const parsedMaxMoves = parsePositiveInteger(maxMovesText);
   const minimumStarThresholds = parsedMaxMoves ? getMinimumStarThresholds(parsedMaxMoves) : null;
@@ -583,8 +902,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       || formulaText !== (level.rotationFormula ?? '')
       || formulaTarget !== (level.rotationTarget ?? 'f2l')
       || !orientationEquals(
-        formulaText.trim() ? formulaOrientation : undefined,
-        level.formulaOrientation,
+        formulaOrientation,
+        level.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION,
       )
       || guidanceFormulaText !== (level.guidanceFormula ?? '')
       || guidanceFailureThreshold !== resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
@@ -646,9 +965,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       brightnessMatrix: cloneBrightness(brightnessMatrix),
       rotationFormula: rotationFormula || undefined,
       rotationTarget: rotationFormula ? formulaTarget : undefined,
-      formulaOrientation: rotationFormula
-        ? { ...formulaOrientation }
-        : undefined,
+      formulaOrientation: { ...formulaOrientation },
       guidanceFormula: guidanceFormula || undefined,
       guidanceFailureThreshold,
     };
@@ -664,7 +981,17 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     try {
       const updatedLevel = updateLevel(level.id, patch);
       if (!updatedLevel) throw new Error(`找不到要保存的关卡：${level.id}`);
-      await saveCatalog();
+      let cloudSyncError: string | null = null;
+      try {
+        await saveCatalog();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('云端同步失败')) {
+          cloudSyncError = message;
+        } else {
+          throw error;
+        }
+      }
       setTitleText(updatedLevel.title);
       setDescriptionText(updatedLevel.description);
       setHintText(updatedLevel.hint ?? '');
@@ -682,10 +1009,14 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setLiveStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
       useUiStore.getState().clearAiTouched();
-      const syncHint = syncPhase === 'cloud' || useCloudSyncStore.getState().phase === 'cloud'
-        ? '关卡已保存到本地，云端后台同步中…'
-        : '关卡已保存到本地。';
-      setSaveNotice(warnings.length > 0 ? `${syncHint} ${warnings.join(' ')}` : syncHint);
+      if (cloudSyncError) {
+        setSaveError(cloudSyncError);
+        setSaveNotice(warnings.length > 0 ? `本地草稿已保留。${warnings.join(' ')}` : '本地草稿已保留。');
+      } else {
+        setSaveError(null);
+        const syncHint = '关卡已保存并同步到云端。';
+        setSaveNotice(warnings.length > 0 ? `${syncHint} ${warnings.join(' ')}` : syncHint);
+      }
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -750,21 +1081,39 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         <div className="preview-hero" style={{ height: previewHeight }}>
           <div className="preview-hero-header">
             <span className="preview-hero-title">3D 预览</span>
-            <div className="segmented preview-segmented">
-              <button type="button" className={`chip ${previewMode === 'start' ? 'chip-active' : ''}`} onClick={handlePreviewStart}>初始态</button>
+            <div className="preview-state-segmented" role="tablist" aria-label="预览状态切换">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={previewMode === 'start'}
+                className={previewMode === 'start' ? 'is-active' : ''}
+                onClick={handlePreviewStart}
+              >
+                初始
+              </button>
               {allGoalVariants.length > 1 ? (
                 allGoalVariants.map((_, index) => (
                   <button
                     key={index}
                     type="button"
-                    className={`chip ${previewMode === 'goal' && selectedGoalVariantIndex === index ? 'chip-active' : ''}`}
+                    role="tab"
+                    aria-selected={previewMode === 'goal' && selectedGoalVariantIndex === index}
+                    className={previewMode === 'goal' && selectedGoalVariantIndex === index ? 'is-active' : ''}
                     onClick={() => handlePreviewGoal(index)}
                   >
                     {formatGoalVariantLabel(index)}
                   </button>
                 ))
               ) : (
-                <button type="button" className={`chip ${previewMode === 'goal' ? 'chip-active' : ''}`} onClick={() => handlePreviewGoal(0)}>目标态</button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={previewMode === 'goal'}
+                  className={previewMode === 'goal' ? 'is-active' : ''}
+                  onClick={() => handlePreviewGoal(0)}
+                >
+                  目标
+                </button>
               )}
             </div>
           </div>
@@ -772,6 +1121,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             className="cube-preview cube-preview-editor cube-preview-resizable"
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
+            orientation={formulaOrientation}
             playRequest={playRequest}
             onPlayComplete={handlePlayComplete}
           />
@@ -792,9 +1142,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             onMouseDown={handleTabBarResizeStart}
             title="在顶部边框拖拽可调整下方编辑区高度"
           >
-            {(['meta', 'states', 'formula', 'brightness', 'guidance'] as Tab[]).map((tab) => (
+            {(['meta', 'states', 'formula', 'brightness'] as Tab[]).map((tab) => (
               <button key={tab} className={`tab tab-${tab} ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>
-                {tab === 'meta' ? '基础信息' : tab === 'states' ? '状态编辑' : tab === 'formula' ? '自定义公式' : tab === 'brightness' ? '点亮控制' : '指引校验'}
+                {tab === 'meta' ? '基础信息' : tab === 'states' ? '状态编辑' : tab === 'formula' ? '自定义公式' : '点亮控制'}
               </button>
             ))}
           </div>
@@ -848,8 +1198,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         <div className="tab-content tab-content-states">
           <div className="state-edit-banner">
             <p>
-              初始态与目标态相互独立：在上方 3D 预览中手动转动魔方，再点「捕获」写入对应状态。
-              点亮控制在「点亮控制」页单独配置，不会随公式自动覆盖（除非点「应用公式」）。
+              初始态与目标态相互独立：在上方 3D 预览中按当前握持朝向手动转动（U=顶色面，F=前色面），再点「捕获」写入对应状态。
+              3D 展示已对齐握持（顶色朝上、前色朝前）。点亮控制在「点亮控制」页单独配置。
             </p>
           </div>
 
@@ -862,7 +1212,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             <button type="button" className="btn capture-btn" onClick={captureGoalState}>捕获为当前目标</button>
           </div>
 
-          <EditorMovePad onMove={applyManualToken} />
+          <EditorMovePad onMove={applyManualToken} orientation={formulaOrientation} />
 
           <div className="goal-variant-paths">
             <div className={`goal-variant-path ${isYawGoalSet ? 'goal-variant-path-active' : ''}`}>
@@ -963,6 +1313,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                     className="cube-preview cube-preview-thumb"
                     stateMatrix={variant}
                     brightnessMatrix={brightnessMatrix}
+                    orientation={formulaOrientation}
                     hideViewControls
                   />
                 </div>
@@ -976,54 +1327,16 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         <div className="tab-content tab-content-formula">
           <div className="state-edit-banner">
             <p>
-              公式按当前握持书写（U=所选顶色面，F=所选前色面）。点击「应用公式」写入初始态、目标态与亮度掩码；公式留空时也可应用，将生成该目标类型的默认状态。
-              若已手动捕获状态，应用公式会覆盖它们。
+              本页与「点亮控制」互斥定义起终态：点「应用公式」会写入初始态、目标态与默认亮度，并清空推荐解法。
+              公式与手动键位均按当前握持书写（U=所选顶色面，F=所选前色面）；3D 同步为顶色朝上、前色朝前。
             </p>
           </div>
-          <div className="formula-orientation-card">
-            <div className="formula-orientation-title">魔方朝向映射</div>
-            <div className="chip-group">
-              <span className="chip-group-label">顶色</span>
-              <div className="orientation-chip-row">
-                {LEVEL_DEBUG_TOP_FACE_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`chip ${formulaOrientation.topColor === option.value ? 'chip-active' : ''}`}
-                    onClick={() => onFormulaOrientationChange({
-                      topColor: option.value,
-                      frontColor: resolveDebugFrontColor(option.value, formulaOrientation.frontColor),
-                    })}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="chip-group">
-              <span className="chip-group-label">前色</span>
-              <div className="orientation-chip-row">
-                {frontOrientationOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`chip ${formulaOrientation.frontColor === option.value ? 'chip-active' : ''} ${option.disabled ? 'chip-disabled' : ''}`}
-                    disabled={option.disabled}
-                    onClick={() => {
-                      if (!isValidDebugFrontColor(formulaOrientation.topColor, option.value)) return;
-                      onFormulaOrientationChange({
-                        topColor: formulaOrientation.topColor,
-                        frontColor: option.value,
-                      });
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="formula-orientation-grip">当前握持：{formulaOrientationText}</p>
-          </div>
+          <OrientationMappingBlock
+            orientation={formulaOrientation}
+            orientationText={formulaOrientationText}
+            frontOptions={frontOrientationOptions}
+            onChange={(next) => onFormulaOrientationChange(next, true)}
+          />
           <div className="chip-group">
             <span className="chip-group-label">目标类型</span>
             <div className="segmented formula-segmented">
@@ -1039,90 +1352,116 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             <button className="btn btn-primary" type="button" onClick={applyFormula}>应用公式</button>
           </div>
           <div className="preview-card">{formulaPreviewText}</div>
-          <EditorMovePad onMove={applyManualToken} />
+          <EditorMovePad onMove={applyManualToken} orientation={formulaOrientation} />
+          <GuidanceThresholdBlock
+            threshold={guidanceFailureThreshold}
+            onChange={onGuidanceFailureThresholdChange}
+          />
         </div>
       )}
 
       {activeTab === 'brightness' && (
         <div className="tab-content tab-content-brightness">
-          <p className="hint-text">点亮掩码独立于初始/目标态。在此配置哪些贴纸参与过关判定，保存后生效。</p>
-          <div className="chip-group">
-            <span className="chip-group-label">选择面</span>
-            <div className="face-selector">
-              {FACE_NAMES.map((name, index) => (
-                <button key={name} className={`chip ${selectedFace === index ? 'chip-active' : ''}`} onClick={() => setSelectedFace(index)}>{name}</button>
-              ))}
-            </div>
+          <div className="state-edit-banner">
+            <p>
+              先在「状态编辑」设初始态，再设目标态；本页配置点亮掩码与推荐解法。
+              「应用推荐解法」只校验能否从初始转到目标点亮区；「应用公式」从初始按解法推进预览对照，不改写目标态。
+            </p>
           </div>
-          <div className="brightness-grid">
-            {[0, 1, 2].map((row) => (
-              <div key={row} className="brightness-row">
-                {[0, 1, 2].map((col) => {
-                  const value = brightnessMatrix[selectedFace][row][col];
-                  return (
-                    <button
-                      key={col}
-                      className={`brightness-cell ${value > 0 ? 'brightness-cell-on' : ''}`}
-                      onClick={() => toggleBrightnessCell(selectedFace, row, col)}
-                    >
-                      {value}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-          <div className="field-row">
-            <button className="btn" onClick={() => setFaceAllBrightness(selectedFace, 8)}>全亮</button>
-            <button className="btn" onClick={() => setFaceAllBrightness(selectedFace, 0)}>全灭</button>
-          </div>
-        </div>
-      )}
+          <OrientationMappingBlock
+            orientation={formulaOrientation}
+            orientationText={formulaOrientationText}
+            frontOptions={frontOrientationOptions}
+            onChange={(next) => onFormulaOrientationChange(next, false)}
+          />
 
-      {activeTab === 'guidance' && (
-        <div className="tab-content tab-content-guidance">
-          <p className="hint-text">配置推荐解法，系统会校验公式能否从初始态到达目标点亮区域。</p>
-          <div className="chip-group">
-            <span className="chip-group-label">指引解锁失败次数</span>
-            <div className="chip-row">
-              {LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS.map((threshold) => (
+          <section className="brightness-panel" aria-label="点亮面编辑">
+            <div className="brightness-panel-title">点亮面编辑</div>
+            <p className="brightness-panel-map">
+              按上方 3D 当前预览态编辑：先切「初始 / 目标」，再点握持面。
+              当前握持 {selectedGripFace} → 物理 {selectedPhysicalFaceLabel}。
+            </p>
+            <div className="brightness-face-row" role="group" aria-label="选择面（握持）">
+              {FACE_NAMES.map((name) => (
                 <button
-                  key={threshold}
-                  className={`chip ${guidanceFailureThreshold === threshold ? 'chip-active' : ''}`}
+                  key={name}
+                  type="button"
+                  className={`brightness-face-chip ${selectedGripFace === name ? 'is-active' : ''}`}
+                  title={`握持 ${name} → 物理 ${gripFacePhysicalLabels[name]}`}
                   onClick={() => {
-                    setGuidanceFailureThreshold(threshold);
-                    if (level) {
-                      updateLevel(level.id, { guidanceFailureThreshold: threshold });
-                    }
+                    setSelectedGripFace(name);
+                    setAuthoringMode('brightness');
                   }}
                 >
-                  {threshold === -1 ? '不开启' : `${threshold} 次`}
+                  <span className="brightness-face-chip-main">{name}</span>
+                  <span className="brightness-face-chip-sub">物理 {gripFacePhysicalLabels[name]}</span>
                 </button>
               ))}
             </div>
-          </div>
-          <p className="hint-text">
-            {guidanceFailureThreshold === -1
-              ? '不开启：本关永不播放音乐/箭头/公式演示，也不下发流水灯指引。'
-              : guidanceFailureThreshold === 0
-                ? '0 次：进入本关即自动开启指引。'
-                : `${guidanceFailureThreshold} 次：连续失败 ${guidanceFailureThreshold} 次后解锁指引。`}
-          </p>
-          {guidanceFailureThreshold !== -1 && (
-            <ul className="guidance-flow-list" aria-label="指引统一播放流程">
-              {GUIDANCE_UNLOCK_PLAYBACK_FLOW_STEPS.map((step) => (
-                <li key={step}>{step}</li>
+            <div className="brightness-grid" role="grid" aria-label="当前面贴纸点亮">
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="brightness-row" role="row">
+                  {[0, 1, 2].map((col) => {
+                    const value = readBrightnessAtPreviewCell(selectedPhysicalFace, row, col);
+                    return (
+                      <button
+                        key={col}
+                        type="button"
+                        role="gridcell"
+                        className={`brightness-cell ${value > 0 ? 'brightness-cell-on' : ''}`}
+                        onClick={() => {
+                          toggleBrightnessAtPreviewCell(selectedPhysicalFace, row, col);
+                          setAuthoringMode('brightness');
+                        }}
+                      >
+                        {value}
+                      </button>
+                    );
+                  })}
+                </div>
               ))}
-              {guidanceFailureThreshold === 0 && (
-                <li>0 次自动开启时不会重复创建第二个关卡记录。</li>
-              )}
-            </ul>
-          )}
-          <p className="hint-text">
-            当前：{formatGuidanceFailureThresholdLabel(guidanceFailureThreshold)}
-          </p>
-          <FormulaKeyboard value={guidanceFormulaText} onChange={setGuidanceFormulaText} />
-          <div className="preview-card">{guidancePreviewText}</div>
+            </div>
+            <div className="brightness-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setPreviewFaceAllBrightness(selectedPhysicalFace, 8);
+                  setAuthoringMode('brightness');
+                }}
+              >
+                全亮
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setPreviewFaceAllBrightness(selectedPhysicalFace, 0);
+                  setAuthoringMode('brightness');
+                }}
+              >
+                全灭
+              </button>
+            </div>
+          </section>
+
+          <section className="brightness-formula-panel" aria-label="推荐解法">
+            <div className="brightness-panel-title">推荐解法</div>
+            <p className="brightness-panel-map">
+              按当前握持书写；校验时映射到物理面，检查能否从初始到达目标点亮区。
+            </p>
+            <FormulaKeyboard value={guidanceFormulaText} onChange={setGuidanceFormulaText} />
+            <div className="brightness-actions">
+              <button type="button" className="btn btn-primary" onClick={applyGuidanceValidation}>应用推荐解法</button>
+              <button type="button" className="btn" onClick={previewGuidanceFormulaFromStart}>应用公式</button>
+            </div>
+            <div className="preview-card brightness-preview-card">{guidancePreviewText}</div>
+          </section>
+
+          <GuidanceThresholdBlock
+            threshold={guidanceFailureThreshold}
+            onChange={onGuidanceFailureThresholdChange}
+          />
         </div>
       )}
         </div>

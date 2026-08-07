@@ -1,13 +1,20 @@
 import { Suspense, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, ContactShadows } from '@react-three/drei';
+import { TrackballControls } from '@react-three/drei';
 import { CubeScene, type CubePlayRequest } from './CubeScene';
 import type { BrightnessMatrix, ColorMatrix, StateMatrix } from '@/core/cube';
+import {
+  DEFAULT_LEVEL_DEBUG_ORIENTATION,
+  getOrientationViewQuaternion,
+} from '@/core/levels';
+import type { DevCustomOrientation } from '@/core/formula';
 
 export type CubePreviewProps = {
   stateMatrix: StateMatrix;
   brightnessMatrix: BrightnessMatrix;
   colorMatrix?: ColorMatrix;
+  /** 握持朝向：3D 将顶色朝上、前色朝前 */
+  orientation?: DevCustomOrientation;
   className?: string;
   playRequest?: CubePlayRequest | null;
   onPlayComplete?: (requestId: number) => void;
@@ -18,9 +25,15 @@ function SceneContent({
   stateMatrix,
   brightnessMatrix,
   colorMatrix,
+  orientation = DEFAULT_LEVEL_DEBUG_ORIENTATION,
   playRequest,
   onPlayComplete,
-}: Omit<CubePreviewProps, 'className'>) {
+}: Omit<CubePreviewProps, 'className' | 'hideViewControls'>) {
+  const gripQuat = useMemo(
+    () => getOrientationViewQuaternion(orientation),
+    [orientation],
+  );
+
   return (
     <>
       <ambientLight intensity={0.6} />
@@ -35,21 +48,22 @@ function SceneContent({
       />
       <directionalLight position={[-3, 2, -4]} intensity={0.3} />
       <directionalLight position={[0, 4, 6]} intensity={0.2} />
-      <CubeScene
-        stateMatrix={stateMatrix}
-        brightnessMatrix={brightnessMatrix}
-        colorMatrix={colorMatrix}
-        playRequest={playRequest}
-        onPlayComplete={onPlayComplete}
+      <group quaternion={gripQuat}>
+        <CubeScene
+          stateMatrix={stateMatrix}
+          brightnessMatrix={brightnessMatrix}
+          colorMatrix={colorMatrix}
+          playRequest={playRequest}
+          onPlayComplete={onPlayComplete}
+        />
+      </group>
+      <TrackballControls
+        noPan
+        noZoom
+        rotateSpeed={4.5}
+        staticMoving
+        dynamicDampingFactor={0.15}
       />
-      <ContactShadows
-        position={[0, -1.2, 0]}
-        opacity={0.25}
-        scale={4}
-        blur={2.5}
-        far={4}
-      />
-      <OrbitControls enablePan={false} enableZoom={false} minDistance={3.2} maxDistance={7} />
     </>
   );
 }
@@ -67,6 +81,7 @@ export function CubePreview({
   stateMatrix,
   brightnessMatrix,
   colorMatrix,
+  orientation = DEFAULT_LEVEL_DEBUG_ORIENTATION,
   className,
   playRequest = null,
   onPlayComplete,
@@ -91,10 +106,12 @@ export function CubePreview({
     setRevision((value) => value + 1);
   };
 
+  const orientationKey = `${orientation.topColor}-${orientation.frontColor}`;
+
   return (
     <div className={className ?? 'cube-preview'}>
       <Canvas
-        key={`${view}-${zoom}-${revision}`}
+        key={`${view}-${zoom}-${revision}-${orientationKey}`}
         camera={{ position: cameraPosition, fov: 34 }}
         shadows
         dpr={[1, 2]}
@@ -106,6 +123,7 @@ export function CubePreview({
             stateMatrix={stateMatrix}
             brightnessMatrix={brightnessMatrix}
             colorMatrix={colorMatrix}
+            orientation={orientation}
             playRequest={playRequest}
             onPlayComplete={onPlayComplete}
           />

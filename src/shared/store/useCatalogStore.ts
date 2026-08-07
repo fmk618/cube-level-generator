@@ -275,16 +275,15 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         set({ runtimeFilePath: filePath });
         sync.markCloud('本地已保存，正在同步云端…', 45);
 
-        const snapshot = catalog;
-        void (async () => {
-            try {
-                sync.setProgress(70, '正在上传关卡到云端…');
-                await window.api.db.pushCatalog(snapshot);
-                sync.finishOk('关卡已保存并同步到云端');
-            } catch (error) {
-                sync.finishError(error instanceof Error ? error.message : String(error));
-            }
-        })();
+        try {
+            sync.setProgress(70, '正在上传关卡到云端…');
+            await window.api.db.pushCatalog(catalog);
+            sync.finishOk('关卡已保存并同步到云端');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            sync.finishError(message, '本地已保存，云端同步失败');
+            throw new Error(`本地已保存，但云端同步失败：${message}`);
+        }
 
         return filePath;
     },

@@ -52,6 +52,7 @@ export {
     resolveDebugFrontColor,
     toPhysicalTokensFromGrip,
     toRuntimeViewTokens,
+    getOrientationViewQuaternion,
     type DebugOrientationColorOption,
 } from './debugFormulaOrientation';
 
@@ -79,6 +80,7 @@ export {
     peekLevelGuidanceSummary,
     getLevelGuidanceFailureThreshold,
     getGuidanceFailuresRequiredToUnlock,
+    mapGuidanceFormulaToPhysicalTokens,
     type LevelGuidanceStatus,
     type LevelGuidanceSummary,
 } from './guidance';

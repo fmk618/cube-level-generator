@@ -251,16 +251,15 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     applyMap(set, map, cloneMap(map), false);
     sync.markCloud('本地已保存，正在同步云端…', 45);
 
-    const snapshot = map;
-    void (async () => {
-      try {
-        sync.setProgress(70, '正在上传推荐配置到云端…');
-        await window.api.db.pushLevelSkillMap(snapshot);
-        sync.finishOk('推荐配置已保存并同步到云端');
-      } catch (error) {
-        sync.finishError(error instanceof Error ? error.message : String(error));
-      }
-    })();
+    try {
+      sync.setProgress(70, '正在上传推荐配置到云端…');
+      await window.api.db.pushLevelSkillMap(map);
+      sync.finishOk('推荐配置已保存并同步到云端');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sync.finishError(message, '本地已保存，云端同步失败');
+      throw new Error(`本地已保存，但云端同步失败：${message}`);
+    }
 
     return 'saved';
   },
