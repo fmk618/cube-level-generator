@@ -3,6 +3,7 @@ import type {
     LevelDefinition,
     LevelGuidanceFailureThreshold,
 } from './types';
+import { resolveBuiltinFormulaTarget } from './types';
 import { applyTokensToState, mapTokensByOrientation, parseFormulaTokens } from '../formula/moves';
 import { notationToFace } from '../formula/notationToFace';
 import { INITIAL_COLOR_MATRIX } from '../cube';
@@ -98,7 +99,10 @@ export const getLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceSu
                 guidanceFormula,
                 level.formulaOrientation ?? DEFAULT_LEVEL_FORMULA_ORIENTATION,
             )
-            : deriveLevelFormulaPreset(formula, level.rotationTarget ?? 'f2l').mappedTokens;
+            : deriveLevelFormulaPreset(
+                formula,
+                resolveBuiltinFormulaTarget(level.rotationTarget),
+            ).mappedTokens;
         const steps = expandGuidanceSteps(mappedTokens);
         if (steps.length === 0) {
             throw new Error('推荐解法没有可执行步骤（整转/切片改写后为空）');

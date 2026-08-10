@@ -14,25 +14,40 @@ import {
   formatLevelDebugOrientation,
   getLevelGuidanceSummary,
   getMinimumStarThresholds,
+  getPhysicalFaceForColor,
   gripFaceToPhysicalFace,
   isValidDebugFrontColor,
   isYawEquivalentGoalSet,
   LEVEL_DEBUG_FRONT_FACE_OPTIONS,
   LEVEL_DEBUG_TOP_FACE_OPTIONS,
   LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
-  mapGuidanceFormulaToPhysicalTokens,
   normalizeLevelGoalStates,
   resolveDebugFrontColor,
   resolveLevelGuidanceFailureThreshold,
   resolveStarThresholds,
   toPhysicalTokensFromGrip,
+  formatLevelFormulaTargetLabel,
+  LEVEL_FORMULA_BUILTIN_TARGETS,
   type LevelDefinition,
   type LevelFormulaTarget,
   type LevelGuidanceFailureThreshold,
 } from '@/core/levels';
-import { expandTokenToLayerMoves, applyTokensToState, type DevCustomOrientation } from '@/core/formula';
+import {
+  expandTokenToLayerMoves,
+  applyTokensToState,
+  invertReverseTokens,
+  resolveOrientationRecord,
+  type DevCustomOrientation,
+} from '@/core/formula';
 import { getLevelRecommendStatus, getTeachModeLabel } from '@/core/skill-graph/utils';
-import { INITIAL_BRIGHTNESS_MATRIX, colorIndexToHex, findInitialPositionByStateId, type BrightnessMatrix, type StateMatrix } from '@/core/cube';
+import {
+  INITIAL_BRIGHTNESS_MATRIX,
+  INITIAL_STATE_MATRIX,
+  colorIndexToHex,
+  findInitialPositionByStateId,
+  type BrightnessMatrix,
+  type StateMatrix,
+} from '@/core/cube';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
 import type { CubePlayRequest } from '@/features/preview-3d/CubeScene';
 import { FormulaKeyboard } from './FormulaKeyboard';
@@ -40,11 +55,16 @@ import { EditorMovePad } from './EditorMovePad';
 
 const FACE_NAMES = ['U', 'L', 'F', 'R', 'B', 'D'] as const;
 type GripFaceName = (typeof FACE_NAMES)[number];
-const PHYSICAL_FACE_INDEX: Record<GripFaceName, number> = {
-  U: 0, L: 1, F: 2, R: 3, B: 4, D: 5,
-};
 
 type AuthoringMode = 'formula' | 'brightness' | 'manual' | null;
+
+type PendingFormulaApply = {
+  startStateMatrix: StateMatrix;
+  brightnessMatrix: BrightnessMatrix;
+};
+
+const defaultGoalLabel = (index: number, target: LevelFormulaTarget, label?: string) =>
+  `${formatLevelFormulaTargetLabel(target, label)}-目标${index + 1}`;
 
 const orientationEquals = (
   a: DevCustomOrientation | undefined,
@@ -53,6 +73,25 @@ const orientationEquals = (
   if (!a && !b) return true;
   if (!a || !b) return false;
   return a.topColor === b.topColor && a.frontColor === b.frontColor;
+};
+
+const gripFaceToPhysicalIndex = (
+  gripFace: GripFaceName,
+  orientation: DevCustomOrientation,
+): number => {
+  const { faceToColor } = resolveOrientationRecord(orientation);
+  return getPhysicalFaceForColor(faceToColor[gripFace]);
+};
+
+const stateMatricesEqual = (a: StateMatrix, b: StateMatrix): boolean => {
+  for (let face = 0; face < 6; face += 1) {
+    for (let row = 0; row < 3; row += 1) {
+      for (let col = 0; col < 3; col += 1) {
+        if (a[face][row][col] !== b[face][row][col]) return false;
+      }
+    }
+  }
+  return true;
 };
 
 type OrientationOption = {
@@ -67,20 +106,40 @@ const orientationChipBorder = (colorIndex: number): string => {
   return hex.toLowerCase() === '#f8fafc' ? '#94A3B8' : hex;
 };
 
+const authoringPathLabel = (mode: AuthoringMode): string => {
+  switch (mode) {
+    case 'formula':
+      return '自定义公式';
+    case 'brightness':
+      return '点亮控制';
+    case 'manual':
+      return '状态编辑捕获';
+    default:
+      return '尚未指定';
+  }
+};
+
 function OrientationMappingBlock({
   orientation,
   orientationText,
   frontOptions,
   onChange,
+  locked = false,
+  lockHint,
 }: {
   orientation: DevCustomOrientation;
   orientationText: string;
   frontOptions: OrientationOption[];
   onChange: (next: DevCustomOrientation) => void;
+  locked?: boolean;
+  lockHint?: string;
 }) {
   return (
-    <div className="formula-orientation-card">
+    <div className={`formula-orientation-card ${locked ? 'is-locked' : ''}`}>
       <div className="formula-orientation-title">魔方朝向映射</div>
+      {locked && lockHint ? (
+        <p className="formula-orientation-lock-hint">{lockHint}</p>
+      ) : null}
       <div className="orientation-field">
         <span className="orientation-field-label">顶色</span>
         <div className="orientation-chip-row" role="group" aria-label="顶色">
@@ -93,6 +152,7 @@ function OrientationMappingBlock({
                 '--orientation-color': colorIndexToHex(option.value),
                 '--orientation-border': orientationChipBorder(option.value),
               } as CSSProperties}
+              disabled={locked}
               onClick={() => onChange({
                 topColor: option.value,
                 frontColor: resolveDebugFrontColor(option.value, orientation.frontColor),
@@ -116,7 +176,7 @@ function OrientationMappingBlock({
                 '--orientation-color': colorIndexToHex(option.value),
                 '--orientation-border': orientationChipBorder(option.value),
               } as CSSProperties}
-              disabled={option.disabled}
+              disabled={locked || option.disabled}
               title={option.disabled ? '不可与顶色相同或相对' : undefined}
               onClick={() => {
                 if (!isValidDebugFrontColor(orientation.topColor, option.value)) return;
@@ -246,6 +306,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [star2Text, setStar2Text] = useState('');
   const [formulaText, setFormulaText] = useState('');
   const [formulaTarget, setFormulaTarget] = useState<LevelFormulaTarget>('f2l');
+  const [rotationTargetLabel, setRotationTargetLabel] = useState('');
+  const [customTargetDraft, setCustomTargetDraft] = useState('');
+  const [customTargetNames, setCustomTargetNames] = useState<string[]>([]);
   const [formulaOrientation, setFormulaOrientation] = useState<DevCustomOrientation>(() => ({
     ...DEFAULT_LEVEL_DEBUG_ORIENTATION,
   }));
@@ -260,6 +323,11 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [selectedGoalVariantIndex, setSelectedGoalVariantIndex] = useState(0);
   const [selectedGripFace, setSelectedGripFace] = useState<GripFaceName>('U');
   const [authoringMode, setAuthoringMode] = useState<AuthoringMode>(null);
+  const [goalVariantLabels, setGoalVariantLabels] = useState<string[]>([]);
+  const [goalNameDraft, setGoalNameDraft] = useState('');
+  const [formulaAppliedOk, setFormulaAppliedOk] = useState(false);
+  const [formulaVerifiedOk, setFormulaVerifiedOk] = useState(false);
+  const [startCapturedOk, setStartCapturedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -268,7 +336,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const playCounterRef = useRef(0);
   const playingRef = useRef(false);
   const pendingPlayApplyRef = useRef<(() => void) | null>(null);
-  const pendingFormulaApplyRef = useRef<ReturnType<typeof deriveLevelDebugFormulaPreset> | null>(null);
+  const pendingFormulaApplyRef = useRef<PendingFormulaApply | null>(null);
   const pendingFormulaNoticeRef = useRef<string | null>(null);
   const pendingGuidancePreviewRef = useRef<StateMatrix | null>(null);
   const pendingGuidancePreviewNoticeRef = useRef<string | null>(null);
@@ -356,12 +424,27 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setStar2Text(String(level.starThresholds[1]));
     setFormulaText(level.rotationFormula ?? '');
     setFormulaTarget(level.rotationTarget ?? 'f2l');
+    setRotationTargetLabel(level.rotationTargetLabel ?? '');
+    setCustomTargetNames(
+      level.rotationTarget === 'custom' && level.rotationTargetLabel?.trim()
+        ? [level.rotationTargetLabel.trim()]
+        : [],
+    );
+    setCustomTargetDraft('');
     setFormulaOrientation({ ...(level.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION) });
     setGuidanceFormulaText(level.guidanceFormula ?? '');
     setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold));
     setStartStateMatrix(cloneStateMatrix(level.startStateMatrix));
     setGoalStateMatrix(cloneStateMatrix(level.goalStateMatrix));
     setGoalStateMatrices(level.goalStateMatrices?.map(cloneStateMatrix) ?? undefined);
+    const goalCount = Math.max(1, level.goalStateMatrices?.length ?? 1);
+    const target = level.rotationTarget ?? 'f2l';
+    const label = level.rotationTargetLabel;
+    setGoalVariantLabels(Array.from({ length: goalCount }, (_, i) => defaultGoalLabel(i, target, label)));
+    setGoalNameDraft(defaultGoalLabel(0, target, label));
+    setFormulaAppliedOk(Boolean(level.rotationFormula?.trim()));
+    setFormulaVerifiedOk(false);
+    setStartCapturedOk(false);
     setLiveStateMatrix(cloneStateMatrix(level.startStateMatrix));
     setBrightnessMatrix(cloneBrightness(level.brightnessMatrix));
     setPreviewMode('start');
@@ -385,17 +468,25 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       if (formulaAdoptionRequest.autoApply !== false) {
         try {
           const derived = deriveLevelDebugFormulaPreset(formula, target, formulaOrientation);
-          setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-          setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
-          setGoalStateMatrices(undefined);
-          setSelectedGoalVariantIndex(0);
-          setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
+          const goal = goalStateMatrix ?? derived.goalStateMatrix;
+          const start = applyTokensToState(goal, invertReverseTokens(derived.mappedTokens));
+          if (!goalStateMatrix) {
+            setGoalStateMatrix(cloneStateMatrix(goal));
+            setGoalStateMatrices(undefined);
+            setSelectedGoalVariantIndex(0);
+          }
+          setStartStateMatrix(cloneStateMatrix(start));
+          setLiveStateMatrix(cloneStateMatrix(start));
           setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
           setPreviewMode('start');
           setAuthoringMode('formula');
           setGuidanceFormulaText('');
           setSaveError(null);
-          setSaveNotice(`AI 已应用旋转公式（${target.toUpperCase()}），起始/目标态已生成。请检查后保存关卡。`);
+          setSaveNotice(
+            goalStateMatrix
+              ? `AI 已按当前目标逆推初始态（${target.toUpperCase()}）。请检查后保存关卡。`
+              : `AI 已套用 ${target.toUpperCase()} 默认目标并逆推初始态。请检查后保存关卡。`,
+          );
         } catch (error) {
           setSaveError(error instanceof Error ? error.message : String(error));
           setSaveNotice('公式已写入编辑器，但自动应用失败，请手动点「应用公式」。');
@@ -457,14 +548,11 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setSaveNotice(pendingGuidancePreviewNoticeRef.current);
       pendingGuidancePreviewNoticeRef.current = null;
     } else if (pendingFormulaApplyRef.current) {
-      const derived = pendingFormulaApplyRef.current;
+      const pending = pendingFormulaApplyRef.current;
       pendingFormulaApplyRef.current = null;
-      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
-      setGoalStateMatrices(undefined);
-      setSelectedGoalVariantIndex(0);
-      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
+      setStartStateMatrix(cloneStateMatrix(pending.startStateMatrix));
+      setLiveStateMatrix(cloneStateMatrix(pending.startStateMatrix));
+      setBrightnessMatrix(cloneBrightness(pending.brightnessMatrix));
       setPreviewMode('start');
       setSaveNotice(pendingFormulaNoticeRef.current);
       pendingFormulaNoticeRef.current = null;
@@ -476,7 +564,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setPlayRequest(null);
   }, []);
 
-  const syncGoalVariants = useCallback((variants: StateMatrix[]) => {
+  const syncGoalVariants = useCallback((variants: StateMatrix[], labels?: string[]) => {
     const cloned = variants.map(cloneStateMatrix);
     setGoalStateMatrix(cloned[0]);
     if (cloned.length <= 1) {
@@ -484,6 +572,20 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     } else {
       setGoalStateMatrices(cloned);
     }
+    if (labels) {
+      setGoalVariantLabels(labels.slice(0, cloned.length));
+    } else {
+      setGoalVariantLabels((prev) => {
+        const next = cloned.map((_, i) => prev[i] ?? defaultGoalLabel(i, formulaTarget, rotationTargetLabel));
+        return next;
+      });
+    }
+  }, [formulaTarget, rotationTargetLabel]);
+
+  const invalidateFormulaProgress = useCallback(() => {
+    setFormulaAppliedOk(false);
+    setFormulaVerifiedOk(false);
+    setStartCapturedOk(false);
   }, []);
 
   const handlePreviewStart = useCallback(() => {
@@ -500,41 +602,115 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setPreviewMode('goal');
   }, [allGoalVariants]);
 
+  /** 起终态只能由一条路径定义；切换时确认并清理对侧公式字段 */
+  const ensureAuthoringPath = useCallback((next: Exclude<AuthoringMode, null>): boolean => {
+    const hasFormulaDraft = Boolean(formulaText.trim());
+    const hasGuidanceDraft = Boolean(guidanceFormulaText.trim());
+
+    if (authoringMode === next) {
+      return true;
+    }
+
+    if (authoringMode === 'manual' && next === 'brightness') {
+      return true;
+    }
+
+    if (authoringMode === 'brightness' && next === 'manual') {
+      return true;
+    }
+
+    if (authoringMode === null) {
+      if (next === 'formula' && hasGuidanceDraft) {
+        const confirmed = window.confirm(
+          '已填写推荐解法。改用「自定义公式」定义起终态将清空推荐解法。是否继续？',
+        );
+        if (!confirmed) return false;
+        setGuidanceFormulaText('');
+      }
+      if (next === 'brightness' && hasFormulaDraft) {
+        const confirmed = window.confirm(
+          '已填写旋转公式。改用「点亮控制」路径将清空旋转公式。是否继续？',
+        );
+        if (!confirmed) return false;
+        setFormulaText('');
+      }
+      if (next === 'manual' && (hasFormulaDraft || hasGuidanceDraft)) {
+        const confirmed = window.confirm(
+          '手动捕获起终态将清空旋转公式与推荐解法。是否继续？',
+        );
+        if (!confirmed) return false;
+        setFormulaText('');
+        setGuidanceFormulaText('');
+      }
+      return true;
+    }
+
+    if (next === 'formula') {
+      const confirmed = window.confirm(
+        `当前起终态由「${authoringPathLabel(authoringMode)}」定义。改用「自定义公式」将相对目标逆推初始态（保留或套用目标），并清空推荐解法。是否继续？`,
+      );
+      if (!confirmed) return false;
+      setGuidanceFormulaText('');
+      return true;
+    }
+
+    if (next === 'brightness') {
+      const confirmed = window.confirm(
+        `当前起终态由「${authoringPathLabel(authoringMode)}」定义。改用「点亮控制」将清空旋转公式；起终态请继续用状态编辑维护，亮度与推荐解法在本页配置。是否继续？`,
+      );
+      if (!confirmed) return false;
+      setFormulaText('');
+      return true;
+    }
+
+    if (next === 'manual') {
+      const confirmed = window.confirm(
+        `当前起终态由「${authoringPathLabel(authoringMode)}」定义。改为手动捕获将清空旋转公式与推荐解法。是否继续？`,
+      );
+      if (!confirmed) return false;
+      setFormulaText('');
+      setGuidanceFormulaText('');
+      return true;
+    }
+
+    return true;
+  }, [authoringMode, formulaText, guidanceFormulaText]);
+
+  const switchToAuthoringPath = useCallback((next: Exclude<AuthoringMode, null>): boolean => {
+    if (!ensureAuthoringPath(next)) return false;
+    setAuthoringMode(next);
+    setSaveError(null);
+    setSaveNotice(`已切换为「${authoringPathLabel(next)}」路径定义起终态。`);
+    return true;
+  }, [ensureAuthoringPath]);
+
   const captureStartState = useCallback(() => {
     if (!liveStateMatrix) return;
-    if (formulaText.trim() || authoringMode === 'formula') {
-      const confirmed = window.confirm(
-        '捕获初始态将改为手动定义起终态，并清空旋转公式。是否继续？',
-      );
-      if (!confirmed) return;
-    }
+    if (!ensureAuthoringPath('manual')) return;
     setStartStateMatrix(cloneStateMatrix(liveStateMatrix));
     setFormulaText('');
+    setGuidanceFormulaText('');
     setAuthoringMode('manual');
     setPreviewMode('start');
     setSaveError(null);
-    setSaveNotice('已捕获为初始状态。旋转公式已清空，请保存关卡。');
-  }, [authoringMode, formulaText, liveStateMatrix]);
+    setSaveNotice('已捕获为初始状态。旋转公式与推荐解法已清空，请保存关卡。');
+  }, [ensureAuthoringPath, liveStateMatrix]);
 
   const captureGoalState = useCallback(() => {
     if (!liveStateMatrix) return;
-    if (formulaText.trim() || authoringMode === 'formula') {
-      const confirmed = window.confirm(
-        '捕获目标态将改为手动定义起终态，并清空旋转公式。是否继续？',
-      );
-      if (!confirmed) return;
-    }
+    if (!ensureAuthoringPath('manual')) return;
     const list = allGoalVariants.length > 0
       ? allGoalVariants.map(cloneStateMatrix)
       : [cloneStateMatrix(liveStateMatrix)];
     list[selectedGoalVariantIndex] = cloneStateMatrix(liveStateMatrix);
     syncGoalVariants(list);
     setFormulaText('');
+    setGuidanceFormulaText('');
     setAuthoringMode('manual');
     setPreviewMode('goal');
     setSaveError(null);
-    setSaveNotice(`已捕获为${formatGoalVariantLabel(selectedGoalVariantIndex)}。旋转公式已清空，请保存关卡。`);
-  }, [allGoalVariants, authoringMode, formulaText, liveStateMatrix, selectedGoalVariantIndex, syncGoalVariants]);
+    setSaveNotice(`已捕获为${formatGoalVariantLabel(selectedGoalVariantIndex)}。旋转公式与推荐解法已清空，请保存关卡。`);
+  }, [allGoalVariants, ensureAuthoringPath, liveStateMatrix, selectedGoalVariantIndex, syncGoalVariants]);
 
   const formulaOrientationText = useMemo(
     () => formatLevelDebugOrientation(formulaOrientation),
@@ -549,70 +725,264 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     [formulaOrientation.topColor],
   );
 
+  const applyInvertStartFromGoal = useCallback((
+    orientation: DevCustomOrientation,
+    options?: { requireExistingGoal?: boolean },
+  ): { start: StateMatrix; brightness: BrightnessMatrix; seededGoal: StateMatrix | null } | null => {
+    const trimmed = formulaText.trim();
+    if (!trimmed) {
+      setSaveError('请先输入旋转公式。');
+      setSaveNotice(null);
+      return null;
+    }
+    if (formulaTarget === 'custom' && !rotationTargetLabel.trim()) {
+      setSaveError('请先为自定义目标类型填写名称。');
+      setSaveNotice(null);
+      return null;
+    }
+    try {
+      const derived = deriveLevelDebugFormulaPreset(trimmed, formulaTarget, orientation);
+      if ((options?.requireExistingGoal || formulaTarget === 'custom') && !goalStateMatrix) {
+        setSaveError('请先在点亮控制「捕获为目标类型」，再应用公式。');
+        setSaveNotice(null);
+        return null;
+      }
+      const seededGoal = goalStateMatrix ? null : derived.goalStateMatrix;
+      const goal = goalStateMatrix ?? derived.goalStateMatrix;
+      const start = applyTokensToState(goal, invertReverseTokens(derived.mappedTokens));
+      setSaveError(null);
+      return { start, brightness: derived.brightnessMatrix, seededGoal };
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+      setSaveNotice(null);
+      return null;
+    }
+  }, [formulaText, formulaTarget, goalStateMatrix, rotationTargetLabel]);
+
   const applyFormulaPresetForOrientation = useCallback((orientation: DevCustomOrientation) => {
     const trimmed = formulaText.trim();
     if (!trimmed) return true;
-    try {
-      const derived = deriveLevelDebugFormulaPreset(trimmed, formulaTarget, orientation);
-      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
+    const result = applyInvertStartFromGoal(orientation);
+    if (!result) return false;
+    if (result.seededGoal) {
+      setGoalStateMatrix(cloneStateMatrix(result.seededGoal));
       setGoalStateMatrices(undefined);
       setSelectedGoalVariantIndex(0);
-      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
-      setPreviewMode('start');
-      setSaveError(null);
-      return true;
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : String(error));
-      return false;
     }
-  }, [formulaText, formulaTarget]);
+    setStartStateMatrix(cloneStateMatrix(result.start));
+    setLiveStateMatrix(cloneStateMatrix(result.start));
+    // 不覆盖手调点亮掩码
+    setPreviewMode('start');
+    setFormulaAppliedOk(true);
+    setFormulaVerifiedOk(false);
+    setStartCapturedOk(true);
+    return true;
+  }, [applyInvertStartFromGoal]);
 
-  const onFormulaOrientationChange = useCallback((orientation: DevCustomOrientation, remapRotationFormula = false) => {
-    setFormulaOrientation(orientation);
-    if (remapRotationFormula && formulaText.trim() && !applyFormulaPresetForOrientation(orientation)) {
-      setSaveNotice('当前公式无法按这个朝向映射，请先检查公式内容。');
+  const currentTargetDisplayLabel = formatLevelFormulaTargetLabel(formulaTarget, rotationTargetLabel);
+
+  const addCustomTargetType = () => {
+    const name = customTargetDraft.trim();
+    if (!name) {
+      setSaveError('请输入自定义目标类型名称。');
+      return;
     }
-  }, [applyFormulaPresetForOrientation, formulaText]);
+    setCustomTargetNames((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setFormulaTarget('custom');
+    setRotationTargetLabel(name);
+    setCustomTargetDraft('');
+    setGoalNameDraft(defaultGoalLabel(allGoalVariants.length, 'custom', name));
+    setSaveError(null);
+    setSaveNotice(`已添加目标类型「${name}」。点亮后可「捕获为目标类型」。`);
+  };
+
+  const selectBuiltinTarget = (target: typeof LEVEL_FORMULA_BUILTIN_TARGETS[number]) => {
+    setFormulaTarget(target);
+    setRotationTargetLabel('');
+    setGoalNameDraft(defaultGoalLabel(allGoalVariants.length, target));
+  };
+
+  const selectCustomTarget = (name: string) => {
+    setFormulaTarget('custom');
+    setRotationTargetLabel(name);
+    setGoalNameDraft(defaultGoalLabel(allGoalVariants.length, 'custom', name));
+  };
+
+  const applyOrientationChange = useCallback((orientation: DevCustomOrientation) => {
+    if (orientationEquals(formulaOrientation, orientation)) return;
+
+    setFormulaOrientation(orientation);
+
+    const trimmed = formulaText.trim();
+    if (!trimmed) {
+      setSaveError(null);
+      setSaveNotice(
+        `朝向已更新为 ${formatLevelDebugOrientation(orientation)}。握持/3D 已切换；点亮掩码未改。有公式时可再应用以按新握持逆推初始。`,
+      );
+      return;
+    }
+
+    if (!applyFormulaPresetForOrientation(orientation)) {
+      setSaveNotice('当前公式无法按这个朝向映射，请先检查公式内容。');
+      return;
+    }
+
+    setSaveError(null);
+    setSaveNotice(
+      `已按新朝向相对当前目标重算初始态（${formatLevelDebugOrientation(orientation)}）；点亮掩码未改。若填写了推荐解法，请重新校验。`,
+    );
+  }, [
+    applyFormulaPresetForOrientation,
+    formulaOrientation,
+    formulaText,
+  ]);
 
   const formulaPreviewText = useMemo(() => {
     const trimmed = formulaText.trim();
+    const typeLabel = formatLevelFormulaTargetLabel(formulaTarget, rotationTargetLabel);
     if (!trimmed) {
-      return `未输入公式。仍可点击「应用公式」，将按 ${formulaTarget.toUpperCase()}（${formatLevelDebugOrientation(formulaOrientation)}）生成默认初始态、目标态与亮度掩码（无公式时初始态与目标态相同）。`;
+      return `当前目标类型：${typeLabel}。输入公式后点「应用公式」相对目标逆推初始（自动捕获为初始），再点「校验」。`;
     }
     try {
       const derived = deriveLevelDebugFormulaPreset(trimmed, formulaTarget, formulaOrientation);
       const view = derived.viewTokens?.join(' ') ?? derived.mappedTokens.join(' ');
-      return `握持 ${formatLevelDebugOrientation(formulaOrientation)}：解析 ${derived.officialTokens.length} 个动作；握持视图 [${view}] → 物理 [${derived.mappedTokens.join(' ')}]；目标 ${formulaTarget.toUpperCase()}。`;
+      const goalHint = goalStateMatrix
+        ? `将相对已捕获目标「${goalVariantLabels[selectedGoalVariantIndex] ?? '当前目标'}」逆推初始（不改点亮掩码）。`
+        : formulaTarget === 'custom'
+          ? '自定义类型须先在点亮控制捕获目标。'
+          : `尚未捕获目标：应用时将套用 ${typeLabel} 默认已解目标再逆推。`;
+      return `类型 ${typeLabel} · 握持 [${view}] → 物理 [${derived.mappedTokens.join(' ')}]。${goalHint}`;
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
-  }, [formulaText, formulaTarget, formulaOrientation]);
+  }, [
+    formulaText, formulaTarget, formulaOrientation, goalStateMatrix,
+    rotationTargetLabel, goalVariantLabels, selectedGoalVariantIndex,
+  ]);
+
+  const resetFormulaToSolved = () => {
+    if (!ensureAuthoringPath('formula')) return;
+    setStartStateMatrix(cloneStateMatrix(INITIAL_STATE_MATRIX));
+    setGoalStateMatrix(cloneStateMatrix(INITIAL_STATE_MATRIX));
+    setGoalStateMatrices(undefined);
+    setSelectedGoalVariantIndex(0);
+    setLiveStateMatrix(cloneStateMatrix(INITIAL_STATE_MATRIX));
+    setBrightnessMatrix(cloneBrightness(INITIAL_BRIGHTNESS_MATRIX));
+    setFormulaText('');
+    setGuidanceFormulaText('');
+    setAuthoringMode('formula');
+    setPreviewMode('start');
+    setGoalVariantLabels([defaultGoalLabel(0, formulaTarget)]);
+    setGoalNameDraft(defaultGoalLabel(0, formulaTarget));
+    invalidateFormulaProgress();
+    setSaveError(null);
+    setSaveNotice('已还原为六面已解状态。可再设目标态并输入公式逆推初始。');
+  };
 
   const applyFormula = () => {
     const trimmed = formulaText.trim();
-    const conflictsWithOtherPath = Boolean(
-      guidanceFormulaText.trim()
-      || authoringMode === 'manual'
-      || authoringMode === 'brightness',
-    );
-    if (conflictsWithOtherPath) {
-      const confirmed = window.confirm(
-        '应用自定义公式将覆盖当前初始态、目标态与默认亮度，并清空推荐解法。是否继续？',
-      );
-      if (!confirmed) return;
+    if (!trimmed) {
+      setSaveError('请先输入旋转公式。');
+      setSaveNotice(null);
+      return;
     }
+    if (!ensureAuthoringPath('formula')) return;
 
+    const result = applyInvertStartFromGoal(formulaOrientation);
+    if (!result) return;
+
+    const typeLabel = formatLevelFormulaTargetLabel(formulaTarget, rotationTargetLabel);
+    const notice = result.seededGoal
+      ? `已套用 ${typeLabel} 默认目标并逆推初始态（已自动捕获为初始）。请点击「校验」。`
+      : `已按目标类型「${typeLabel}」逆推初始态（已自动捕获为初始）。请点击「校验」。`;
+
+    setGuidanceFormulaText('');
+    setAuthoringMode('formula');
+    if (result.seededGoal) {
+      setGoalStateMatrix(cloneStateMatrix(result.seededGoal));
+      setGoalStateMatrices(undefined);
+      setSelectedGoalVariantIndex(0);
+      setGoalVariantLabels([defaultGoalLabel(0, formulaTarget, rotationTargetLabel)]);
+    }
+    setStartStateMatrix(cloneStateMatrix(result.start));
+    setLiveStateMatrix(cloneStateMatrix(result.start));
+    setPreviewMode('start');
+    setFormulaAppliedOk(true);
+    setFormulaVerifiedOk(false);
+    setStartCapturedOk(true);
+    setSaveNotice(notice);
+  };
+
+  const applyFormulaInBrightnessFlow = () => {
+    const trimmed = formulaText.trim();
+    if (!trimmed) {
+      setSaveError('请先输入旋转公式。');
+      setSaveNotice(null);
+      return;
+    }
+    if (!goalStateMatrix) {
+      setSaveError('请先「捕获为目标类型」，再应用公式。');
+      setSaveNotice(null);
+      return;
+    }
+    if (!ensureAuthoringPath('brightness')) return;
+
+    const result = applyInvertStartFromGoal(formulaOrientation, { requireExistingGoal: true });
+    if (!result) return;
+
+    const typeLabel = formatLevelFormulaTargetLabel(formulaTarget, rotationTargetLabel);
+    setAuthoringMode('brightness');
+    setStartStateMatrix(cloneStateMatrix(result.start));
+    setLiveStateMatrix(cloneStateMatrix(result.start));
+    setPreviewMode('start');
+    setFormulaAppliedOk(true);
+    setFormulaVerifiedOk(false);
+    setStartCapturedOk(true);
+    setSaveError(null);
+    setSaveNotice(
+      `已按「${goalVariantLabels[selectedGoalVariantIndex] ?? typeLabel}」逆推并自动捕获为初始态。请点击「校验」。`,
+    );
+  };
+
+  const verifyFormulaFromStart = (options?: { path?: AuthoringMode }) => {
+    const path = options?.path ?? 'formula';
+    const trimmed = formulaText.trim();
+    if (!trimmed) {
+      setSaveError('请先输入旋转公式。');
+      setSaveNotice(null);
+      return;
+    }
+    if (!startStateMatrix || !goalStateMatrix) {
+      setSaveError('请先应用公式得到初始态，并确保已有目标态，再点校验。');
+      setSaveNotice(null);
+      return;
+    }
+    if (!formulaAppliedOk) {
+      setSaveError('请先点「应用公式」生成初始态，再校验。');
+      setSaveNotice(null);
+      return;
+    }
     try {
       const derived = deriveLevelDebugFormulaPreset(trimmed, formulaTarget, formulaOrientation);
-      setSaveError(null);
-      const notice = trimmed
-        ? `已按 ${formatLevelDebugOrientation(formulaOrientation)} / ${formulaTarget.toUpperCase()} 生成起始态。`
-        : `已应用 ${formulaTarget.toUpperCase()} 默认目标（${formatLevelDebugOrientation(formulaOrientation)}，无公式，初始态与目标态相同）。`;
+      const result = applyTokensToState(startStateMatrix, derived.mappedTokens);
+      const matched = allGoalVariants.some((goal) => stateMatricesEqual(result, goal));
+      if (!matched) {
+        setFormulaVerifiedOk(false);
+        setStartCapturedOk(false);
+        setSaveNotice(null);
+        setSaveError('校验失败：从初始态执行公式后未能还原到目标态。请检查公式、朝向或目标。');
+        setLiveStateMatrix(cloneStateMatrix(result));
+        return;
+      }
 
-      setGuidanceFormulaText('');
-      setAuthoringMode('formula');
+      const notice = path === 'brightness'
+        ? '校验通过。初始态已自动捕获，可保存关卡。'
+        : '校验通过：从初始态执行公式可还原到目标态。';
+      setSaveError(null);
+      setFormulaVerifiedOk(true);
+      setAuthoringMode(path === 'brightness' ? 'brightness' : 'formula');
+      setPreviewMode('start');
+      setLiveStateMatrix(cloneStateMatrix(startStateMatrix));
 
       let moves: ReturnType<typeof expandTokenToLayerMoves> = [];
       try {
@@ -622,34 +992,82 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       }
 
       if (moves.length > 0 && !playingRef.current) {
-        pendingFormulaApplyRef.current = derived;
-        pendingFormulaNoticeRef.current = notice;
+        pendingGuidancePreviewRef.current = result;
+        pendingGuidancePreviewNoticeRef.current = notice;
         playCounterRef.current += 1;
         playingRef.current = true;
         setPlayRequest({ id: playCounterRef.current, moves });
-        setSaveNotice(`${notice} 正在演示公式动画…`);
+        setSaveNotice(`${notice} 正在演示…`);
         return;
       }
 
-      setStartStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setGoalStateMatrix(cloneStateMatrix(derived.goalStateMatrix));
-      setGoalStateMatrices(undefined);
-      setSelectedGoalVariantIndex(0);
-      setLiveStateMatrix(cloneStateMatrix(derived.startStateMatrix));
-      setBrightnessMatrix(cloneBrightness(derived.brightnessMatrix));
-      setPreviewMode('start');
+      setLiveStateMatrix(cloneStateMatrix(result));
       setSaveNotice(notice);
     } catch (error) {
+      setFormulaVerifiedOk(false);
+      setSaveNotice(null);
       setSaveError(error instanceof Error ? error.message : String(error));
     }
   };
 
+  const captureNamedGoalFromLive = (mode: 'replace' | 'add') => {
+    if (!liveStateMatrix) {
+      setSaveError('请先在上方 3D 调整到目标外观。');
+      return;
+    }
+    if (formulaTarget === 'custom' && !rotationTargetLabel.trim()) {
+      setSaveError('请先添加并选择自定义目标类型名称，再捕获。');
+      return;
+    }
+    if (!ensureAuthoringPath('brightness')) return;
+
+    const name = goalNameDraft.trim()
+      || defaultGoalLabel(
+        mode === 'add' ? allGoalVariants.length : selectedGoalVariantIndex,
+        formulaTarget,
+        rotationTargetLabel,
+      );
+
+    if (mode === 'add' && allGoalVariants.length > 0) {
+      const list = allGoalVariants.map(cloneStateMatrix);
+      list.push(cloneStateMatrix(liveStateMatrix));
+      const labels = [...goalVariantLabels.slice(0, list.length - 1), name];
+      while (labels.length < list.length) {
+        labels.push(defaultGoalLabel(labels.length, formulaTarget, rotationTargetLabel));
+      }
+      syncGoalVariants(list, labels);
+      setSelectedGoalVariantIndex(list.length - 1);
+      setGoalNameDraft(defaultGoalLabel(list.length, formulaTarget, rotationTargetLabel));
+    } else {
+      const list = allGoalVariants.length > 0
+        ? allGoalVariants.map(cloneStateMatrix)
+        : [cloneStateMatrix(liveStateMatrix)];
+      const index = allGoalVariants.length > 0 ? selectedGoalVariantIndex : 0;
+      list[index] = cloneStateMatrix(liveStateMatrix);
+      const labels = [...goalVariantLabels];
+      while (labels.length < list.length) {
+        labels.push(defaultGoalLabel(labels.length, formulaTarget, rotationTargetLabel));
+      }
+      labels[index] = name;
+      syncGoalVariants(list, labels);
+      setSelectedGoalVariantIndex(index);
+      setGoalNameDraft(defaultGoalLabel(index + 1, formulaTarget, rotationTargetLabel));
+    }
+
+    setAuthoringMode('brightness');
+    setPreviewMode('goal');
+    invalidateFormulaProgress();
+    setSaveError(null);
+    setSaveNotice(
+      `已捕获为目标类型「${formatLevelFormulaTargetLabel(formulaTarget, rotationTargetLabel)} / ${name}」。公式页已同步，可去写公式并应用。`,
+    );
+  };
+
   const selectedPhysicalFace = useMemo(() => {
     try {
-      const physical = gripFaceToPhysicalFace(selectedGripFace, formulaOrientation);
-      return PHYSICAL_FACE_INDEX[physical];
+      return gripFaceToPhysicalIndex(selectedGripFace, formulaOrientation);
     } catch {
-      return PHYSICAL_FACE_INDEX[selectedGripFace];
+      return gripFaceToPhysicalIndex(selectedGripFace, DEFAULT_LEVEL_DEBUG_ORIENTATION);
     }
   }, [formulaOrientation, selectedGripFace]);
 
@@ -694,6 +1112,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setSaveNotice(null);
       return;
     }
+    if (!ensureAuthoringPath('brightness')) return;
     const summary = getLevelGuidanceSummary({
       ...level,
       startStateMatrix,
@@ -710,52 +1129,6 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     } else {
       setSaveNotice(null);
       setSaveError(summary.message);
-    }
-  };
-
-  const previewGuidanceFormulaFromStart = () => {
-    const formula = guidanceFormulaText.trim();
-    if (!formula) {
-      setSaveError('请先输入推荐解法。');
-      setSaveNotice(null);
-      return;
-    }
-    if (!startStateMatrix) {
-      setSaveError('请先设置初始状态，再从初始态按公式预览。');
-      setSaveNotice(null);
-      return;
-    }
-    try {
-      const physicalTokens = mapGuidanceFormulaToPhysicalTokens(formula, formulaOrientation);
-      const result = applyTokensToState(startStateMatrix, physicalTokens);
-      const notice = '已从初始态按推荐解法推进预览（未改写目标态），请与目标点亮区对照。';
-      setSaveError(null);
-      setAuthoringMode('brightness');
-      setPreviewMode('start');
-      setLiveStateMatrix(cloneStateMatrix(startStateMatrix));
-
-      let moves: ReturnType<typeof expandTokenToLayerMoves> = [];
-      try {
-        moves = physicalTokens.flatMap((token) => expandTokenToLayerMoves(token));
-      } catch {
-        moves = [];
-      }
-
-      if (moves.length > 0 && !playingRef.current) {
-        pendingGuidancePreviewRef.current = result;
-        pendingGuidancePreviewNoticeRef.current = notice;
-        playCounterRef.current += 1;
-        playingRef.current = true;
-        setPlayRequest({ id: playCounterRef.current, moves });
-        setSaveNotice(`${notice} 正在演示…`);
-        return;
-      }
-
-      setLiveStateMatrix(cloneStateMatrix(result));
-      setSaveNotice(notice);
-    } catch (error) {
-      setSaveNotice(null);
-      setSaveError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -832,8 +1205,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const handleRemoveGoalVariant = (index: number) => {
     if (allGoalVariants.length <= 1) return;
     const list = allGoalVariants.filter((_, variantIndex) => variantIndex !== index);
-    syncGoalVariants(list);
+    const labels = goalVariantLabels.filter((_, variantIndex) => variantIndex !== index);
+    syncGoalVariants(list, labels);
     setSelectedGoalVariantIndex(Math.min(index, list.length - 1));
+    invalidateFormulaProgress();
   };
 
   const goalVariantCount = allGoalVariants.length;
@@ -901,6 +1276,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       || star2Text !== String(level.starThresholds[1])
       || formulaText !== (level.rotationFormula ?? '')
       || formulaTarget !== (level.rotationTarget ?? 'f2l')
+      || (rotationTargetLabel.trim() || '') !== (level.rotationTargetLabel ?? '')
       || !orientationEquals(
         formulaOrientation,
         level.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION,
@@ -914,7 +1290,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     );
   }, [
     level, titleText, descriptionText, hintText, maxMovesText, star3Text, star2Text,
-    formulaText, formulaTarget, formulaOrientation, guidanceFormulaText, guidanceFailureThreshold,
+    formulaText, formulaTarget, rotationTargetLabel, formulaOrientation, guidanceFormulaText, guidanceFailureThreshold,
     startStateMatrix, goalStateMatrix, goalStateMatrices, brightnessMatrix,
   ]);
 
@@ -964,7 +1340,11 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       ...normalizedGoals,
       brightnessMatrix: cloneBrightness(brightnessMatrix),
       rotationFormula: rotationFormula || undefined,
-      rotationTarget: rotationFormula ? formulaTarget : undefined,
+      rotationTarget: (rotationFormula || goalStateMatrix) ? formulaTarget : undefined,
+      rotationTargetLabel:
+        formulaTarget === 'custom' && rotationTargetLabel.trim()
+          ? rotationTargetLabel.trim()
+          : undefined,
       formulaOrientation: { ...formulaOrientation },
       guidanceFormula: guidanceFormula || undefined,
       guidanceFailureThreshold,
@@ -1000,6 +1380,12 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setStar2Text(String(updatedLevel.starThresholds[1]));
       setFormulaText(updatedLevel.rotationFormula ?? '');
       setFormulaTarget(updatedLevel.rotationTarget ?? 'f2l');
+      setRotationTargetLabel(updatedLevel.rotationTargetLabel ?? '');
+      setCustomTargetNames(
+        updatedLevel.rotationTarget === 'custom' && updatedLevel.rotationTargetLabel?.trim()
+          ? [updatedLevel.rotationTargetLabel.trim()]
+          : customTargetNames,
+      );
       setFormulaOrientation({ ...(updatedLevel.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION) });
       setGuidanceFormulaText(updatedLevel.guidanceFormula ?? '');
       setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(updatedLevel.guidanceFailureThreshold));
@@ -1198,8 +1584,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         <div className="tab-content tab-content-states">
           <div className="state-edit-banner">
             <p>
-              初始态与目标态相互独立：在上方 3D 预览中按当前握持朝向手动转动（U=顶色面，F=前色面），再点「捕获」写入对应状态。
-              3D 展示已对齐握持（顶色朝上、前色朝前）。点亮控制在「点亮控制」页单独配置。
+              <strong>当前起终态路径：{authoringPathLabel(authoringMode)}</strong>
+              {' '}初始/目标只能由一种方式定义：本页捕获、自定义公式，或点亮控制路径（二选一，勿混用）。
+              捕获会清空旋转公式与推荐解法；3D 按当前握持朝向（顶色朝上、前色朝前）。
             </p>
           </div>
 
@@ -1325,33 +1712,29 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
 
       {activeTab === 'formula' && (
         <div className="tab-content tab-content-formula">
-          <div className="state-edit-banner">
-            <p>
-              本页与「点亮控制」互斥定义起终态：点「应用公式」会写入初始态、目标态与默认亮度，并清空推荐解法。
-              公式与手动键位均按当前握持书写（U=所选顶色面，F=所选前色面）；3D 同步为顶色朝上、前色朝前。
-            </p>
-          </div>
           <OrientationMappingBlock
             orientation={formulaOrientation}
             orientationText={formulaOrientationText}
             frontOptions={frontOrientationOptions}
-            onChange={(next) => onFormulaOrientationChange(next, true)}
+            onChange={applyOrientationChange}
           />
-          <div className="chip-group">
-            <span className="chip-group-label">目标类型</span>
-            <div className="segmented formula-segmented">
-              {(['f2l', 'oll', 'pll'] as LevelFormulaTarget[]).map((target) => (
-                <button key={target} type="button" className={`chip ${formulaTarget === target ? 'chip-active' : ''}`} onClick={() => setFormulaTarget(target)}>
-                  {target.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-          <FormulaKeyboard value={formulaText} onChange={setFormulaText} onTokenAppended={handleFormulaTokenAppended} />
+          <FormulaKeyboard
+            value={formulaText}
+            onChange={(next) => {
+              setFormulaText(next);
+              invalidateFormulaProgress();
+            }}
+            onTokenAppended={handleFormulaTokenAppended}
+          />
           <div className="field-row">
             <button className="btn btn-primary" type="button" onClick={applyFormula}>应用公式</button>
+            <button className="btn" type="button" onClick={() => verifyFormulaFromStart({ path: 'formula' })}>校验</button>
+            <button className="btn" type="button" onClick={resetFormulaToSolved}>还原</button>
           </div>
           <div className="preview-card">{formulaPreviewText}</div>
+          {startCapturedOk && startStateMatrix ? (
+            <p className="formula-auto-capture-hint">初始态已自动捕获并展示在上方 3D（预览初始）。请点「校验」确认能否还原到目标。</p>
+          ) : null}
           <EditorMovePad onMove={applyManualToken} orientation={formulaOrientation} />
           <GuidanceThresholdBlock
             threshold={guidanceFailureThreshold}
@@ -1364,22 +1747,118 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         <div className="tab-content tab-content-brightness">
           <div className="state-edit-banner">
             <p>
-              先在「状态编辑」设初始态，再设目标态；本页配置点亮掩码与推荐解法。
-              「应用推荐解法」只校验能否从初始转到目标点亮区；「应用公式」从初始按解法推进预览对照，不改写目标态。
+              <strong>点亮控制</strong>
+              ：下方补充「目标类型」不影响原有点亮操作。手调亮度、推荐解法与指引条件保持可用。
             </p>
+            {authoringMode === 'formula' ? (
+              <div className="authoring-path-actions">
+                <button type="button" className="btn btn-primary" onClick={() => switchToAuthoringPath('brightness')}>
+                  改用点亮控制路径
+                </button>
+              </div>
+            ) : null}
           </div>
+
           <OrientationMappingBlock
             orientation={formulaOrientation}
             orientationText={formulaOrientationText}
             frontOptions={frontOrientationOptions}
-            onChange={(next) => onFormulaOrientationChange(next, false)}
+            onChange={applyOrientationChange}
           />
+
+          <section className="brightness-workbench" aria-label="目标类型工作台（补充）">
+            <div className="brightness-workbench-head">
+              <h3 className="brightness-workbench-title">目标类型（补充）</h3>
+              <p className="brightness-workbench-hint">选内置或添加自定义类型 → 点亮格子 → 捕获为目标类型（与公式页同步）</p>
+            </div>
+
+            <div className="brightness-type-bar" role="group" aria-label="目标类型">
+              {LEVEL_FORMULA_BUILTIN_TARGETS.map((target) => (
+                <button
+                  key={target}
+                  type="button"
+                  className={`brightness-type-chip ${formulaTarget === target ? 'is-active' : ''}`}
+                  onClick={() => selectBuiltinTarget(target)}
+                >
+                  {target.toUpperCase()}
+                </button>
+              ))}
+              {customTargetNames.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`brightness-type-chip ${formulaTarget === 'custom' && rotationTargetLabel === name ? 'is-active' : ''}`}
+                  onClick={() => selectCustomTarget(name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+
+            <div className="brightness-type-add-row">
+              <input
+                className="text-input"
+                value={customTargetDraft}
+                onChange={(event) => setCustomTargetDraft(event.target.value)}
+                placeholder="自定义类型名，如：十字"
+              />
+              <button type="button" className="btn" onClick={addCustomTargetType}>+ 添加类型</button>
+            </div>
+
+            <div className="brightness-capture-row">
+              <input
+                className="text-input"
+                value={goalNameDraft}
+                onChange={(event) => setGoalNameDraft(event.target.value)}
+                placeholder={defaultGoalLabel(allGoalVariants.length, formulaTarget, rotationTargetLabel)}
+              />
+              <button type="button" className="btn btn-primary" onClick={() => captureNamedGoalFromLive('replace')}>
+                捕获为目标类型
+              </button>
+              <button type="button" className="btn" onClick={() => captureNamedGoalFromLive('add')}>
+                追加目标
+              </button>
+            </div>
+
+            <div className="brightness-goal-rail" aria-label="已捕获目标类型">
+              {allGoalVariants.length === 0 ? (
+                <p className="brightness-workbench-hint">尚未捕获。转上方魔方并点亮后，点「捕获为目标类型」。</p>
+              ) : (
+                allGoalVariants.map((variant, index) => (
+                  <button
+                    key={`rail-goal-${index}`}
+                    type="button"
+                    className={`brightness-goal-rail-card ${selectedGoalVariantIndex === index ? 'is-selected' : ''}`}
+                    onClick={() => {
+                      setSelectedGoalVariantIndex(index);
+                      handlePreviewGoal(index);
+                      setGoalNameDraft(
+                        goalVariantLabels[index]
+                          ?? defaultGoalLabel(index, formulaTarget, rotationTargetLabel),
+                      );
+                    }}
+                  >
+                    <span className="brightness-goal-rail-name">
+                      {goalVariantLabels[index] ?? defaultGoalLabel(index, formulaTarget, rotationTargetLabel)}
+                    </span>
+                    <span className="brightness-goal-rail-type">{currentTargetDisplayLabel}</span>
+                    <CubePreview
+                      className="cube-preview cube-preview-thumb"
+                      stateMatrix={variant}
+                      brightnessMatrix={brightnessMatrix}
+                      orientation={formulaOrientation}
+                      hideViewControls
+                    />
+                  </button>
+                ))
+              )}
+            </div>
+          </section>
 
           <section className="brightness-panel" aria-label="点亮面编辑">
             <div className="brightness-panel-title">点亮面编辑</div>
             <p className="brightness-panel-map">
-              按上方 3D 当前预览态编辑：先切「初始 / 目标」，再点握持面。
-              当前握持 {selectedGripFace} → 物理 {selectedPhysicalFaceLabel}。
+              按上方 3D 当前预览态编辑。当前握持 {selectedGripFace} → 物理 {selectedPhysicalFaceLabel}。
             </p>
             <div className="brightness-face-row" role="group" aria-label="选择面（握持）">
               {FACE_NAMES.map((name) => (
@@ -1388,17 +1867,13 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                   type="button"
                   className={`brightness-face-chip ${selectedGripFace === name ? 'is-active' : ''}`}
                   title={`握持 ${name} → 物理 ${gripFacePhysicalLabels[name]}`}
-                  onClick={() => {
-                    setSelectedGripFace(name);
-                    setAuthoringMode('brightness');
-                  }}
+                  onClick={() => setSelectedGripFace(name)}
                 >
                   <span className="brightness-face-chip-main">{name}</span>
-                  <span className="brightness-face-chip-sub">物理 {gripFacePhysicalLabels[name]}</span>
                 </button>
               ))}
             </div>
-            <div className="brightness-grid" role="grid" aria-label="当前面贴纸点亮">
+            <div className="brightness-grid brightness-pad" role="grid" aria-label="当前面贴纸点亮">
               {[0, 1, 2].map((row) => (
                 <div key={row} className="brightness-row" role="row">
                   {[0, 1, 2].map((col) => {
@@ -1409,12 +1884,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                         type="button"
                         role="gridcell"
                         className={`brightness-cell ${value > 0 ? 'brightness-cell-on' : ''}`}
-                        onClick={() => {
-                          toggleBrightnessAtPreviewCell(selectedPhysicalFace, row, col);
-                          setAuthoringMode('brightness');
-                        }}
+                        aria-label={value > 0 ? '已点亮' : '已熄灭'}
+                        onClick={() => toggleBrightnessAtPreviewCell(selectedPhysicalFace, row, col)}
                       >
-                        {value}
+                        <span className="brightness-cell-dot" aria-hidden />
                       </button>
                     );
                   })}
@@ -1422,46 +1895,52 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               ))}
             </div>
             <div className="brightness-actions">
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setPreviewFaceAllBrightness(selectedPhysicalFace, 8);
-                  setAuthoringMode('brightness');
-                }}
-              >
-                全亮
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setPreviewFaceAllBrightness(selectedPhysicalFace, 0);
-                  setAuthoringMode('brightness');
-                }}
-              >
-                全灭
-              </button>
+              <button type="button" className="btn" onClick={() => setPreviewFaceAllBrightness(selectedPhysicalFace, 8)}>全亮</button>
+              <button type="button" className="btn" onClick={() => setPreviewFaceAllBrightness(selectedPhysicalFace, 0)}>全灭</button>
+            </div>
+            <EditorMovePad onMove={applyManualToken} orientation={formulaOrientation} />
+          </section>
+
+          <section className="brightness-formula-panel" aria-label="公式应用与校验（补充）">
+            <div className="brightness-panel-title">公式 · 应用 / 校验（补充）</div>
+            <p className="brightness-panel-map">
+              当前类型「{currentTargetDisplayLabel}」。应用后自动捕获初始，请再点校验。不改手调点亮。
+            </p>
+            <FormulaKeyboard
+              value={formulaText}
+              onChange={(next) => {
+                setFormulaText(next);
+                invalidateFormulaProgress();
+              }}
+            />
+            <div className="brightness-actions">
+              <button type="button" className="btn btn-primary" onClick={applyFormulaInBrightnessFlow}>应用公式</button>
+              <button type="button" className="btn" onClick={() => verifyFormulaFromStart({ path: 'brightness' })}>校验</button>
+            </div>
+            <div className="preview-card brightness-preview-card">
+              {formulaAppliedOk
+                ? (formulaVerifiedOk
+                  ? '校验通过，可保存关卡。'
+                  : '初始态已自动捕获，请点「校验」。')
+                : '尚未应用公式。'}
             </div>
           </section>
 
-          <section className="brightness-formula-panel" aria-label="推荐解法">
-            <div className="brightness-panel-title">推荐解法</div>
+          <section className="brightness-formula-panel" aria-label="推荐解法与指引">
+            <div className="brightness-panel-title">推荐解法 / 指引开启</div>
             <p className="brightness-panel-map">
-              按当前握持书写；校验时映射到物理面，检查能否从初始到达目标点亮区。
+              原有能力：校验推荐解法能否从初始到达目标点亮区；配置指引开启条件。
             </p>
             <FormulaKeyboard value={guidanceFormulaText} onChange={setGuidanceFormulaText} />
             <div className="brightness-actions">
-              <button type="button" className="btn btn-primary" onClick={applyGuidanceValidation}>应用推荐解法</button>
-              <button type="button" className="btn" onClick={previewGuidanceFormulaFromStart}>应用公式</button>
+              <button type="button" className="btn" onClick={applyGuidanceValidation}>应用推荐解法</button>
             </div>
             <div className="preview-card brightness-preview-card">{guidancePreviewText}</div>
+            <GuidanceThresholdBlock
+              threshold={guidanceFailureThreshold}
+              onChange={onGuidanceFailureThresholdChange}
+            />
           </section>
-
-          <GuidanceThresholdBlock
-            threshold={guidanceFailureThreshold}
-            onChange={onGuidanceFailureThresholdChange}
-          />
         </div>
       )}
         </div>

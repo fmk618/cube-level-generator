@@ -38,6 +38,7 @@ import {
     buildPLLBrightnessMatrixForOrientation,
 } from './orientationBrightness';
 import type { LevelFormulaTarget } from './types';
+import { resolveBuiltinFormulaTarget } from './types';
 
 type FaceName = 'U' | 'D' | 'F' | 'B' | 'L' | 'R';
 
@@ -209,8 +210,9 @@ export const formatLevelDebugOrientation = (orientation: DevCustomOrientation): 
     formatOrientationFaces(orientation);
 
 const getTargetGoalStateMatrix = (target: LevelFormulaTarget): StateMatrix => {
-    if (target === 'oll') return buildOLLGoalStateMatrix();
-    if (target === 'pll') return buildPLLGoalStateMatrix();
+    const builtin = resolveBuiltinFormulaTarget(target);
+    if (builtin === 'oll') return buildOLLGoalStateMatrix();
+    if (builtin === 'pll') return buildPLLGoalStateMatrix();
     return buildF2LGoalStateMatrix();
 };
 
@@ -218,8 +220,9 @@ const getTargetBrightnessMatrix = (
     target: LevelFormulaTarget,
     runtimeOrientation: DevCustomOrientation,
 ): BrightnessMatrix => {
-    if (target === 'oll') return buildOLLBrightnessMatrixForOrientation(runtimeOrientation);
-    if (target === 'pll') return buildPLLBrightnessMatrixForOrientation(runtimeOrientation);
+    const builtin = resolveBuiltinFormulaTarget(target);
+    if (builtin === 'oll') return buildOLLBrightnessMatrixForOrientation(runtimeOrientation);
+    if (builtin === 'pll') return buildPLLBrightnessMatrixForOrientation(runtimeOrientation);
     return buildF2LBrightnessMatrixForOrientation(runtimeOrientation);
 };
 

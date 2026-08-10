@@ -11,6 +11,7 @@ import { buildOrientationColorMatrix } from '../formula/orientation';
 import { DEV_CUSTOM_COLOR_VALUES, type DevCustomOrientation } from '../formula/types';
 import type { BrightnessMatrix, ColorMatrix, StateMatrix } from '../cube/types';
 import type { LevelFormulaTarget } from './types';
+import { resolveBuiltinFormulaTarget } from './types';
 
 export const DEFAULT_LEVEL_FORMULA_ORIENTATION: DevCustomOrientation = {
     topColor: DEV_CUSTOM_COLOR_VALUES.white,
@@ -33,14 +34,16 @@ export type LevelFormulaPreset = {
 };
 
 const getTargetGoalStateMatrix = (target: LevelFormulaTarget): StateMatrix => {
-    if (target === 'oll') return buildOLLGoalStateMatrix();
-    if (target === 'pll') return buildPLLGoalStateMatrix();
+    const builtin = resolveBuiltinFormulaTarget(target);
+    if (builtin === 'oll') return buildOLLGoalStateMatrix();
+    if (builtin === 'pll') return buildPLLGoalStateMatrix();
     return buildF2LGoalStateMatrix();
 };
 
 const getTargetBrightnessMatrix = (target: LevelFormulaTarget): BrightnessMatrix => {
-    if (target === 'oll') return buildOLLBrightnessMatrix();
-    if (target === 'pll') return buildPLLBrightnessMatrix();
+    const builtin = resolveBuiltinFormulaTarget(target);
+    if (builtin === 'oll') return buildOLLBrightnessMatrix();
+    if (builtin === 'pll') return buildPLLBrightnessMatrix();
     return buildF2LBrightnessMatrix();
 };
 

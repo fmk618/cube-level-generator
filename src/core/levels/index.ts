@@ -2,11 +2,18 @@ export type {
     LevelId,
     LevelChapterId,
     LevelFormulaTarget,
+    LevelFormulaBuiltinTarget,
     LevelGuidanceFailureThreshold,
     LevelChapterConfig,
     LevelDefinition,
     LevelCatalogDocument,
     LevelFileFormat,
+} from './types';
+
+export {
+    LEVEL_FORMULA_BUILTIN_TARGETS,
+    resolveBuiltinFormulaTarget,
+    formatLevelFormulaTargetLabel,
 } from './types';
 
 export {
