@@ -21,6 +21,7 @@ import type {
     LevelChapterId,
     LevelFormulaTarget,
     LevelGuidanceFailureThreshold,
+    LevelStateDefinitionMode,
 } from './types';
 
 /**
@@ -248,6 +249,8 @@ export const normalizeLevelCatalogDocument = (
         chapters,
         levels: normalizeChapterOrders(sourceLevels, chapters).map((level) => {
             const normalizedGoals = normalizeLevelGoalStates(level);
+            const stateDefinitionMode: LevelStateDefinitionMode = level.stateDefinitionMode
+                ?? (level.rotationFormula?.trim() ? 'formula' : 'brightness');
             return {
                 ...level,
                 ...normalizedGoals,
@@ -260,9 +263,11 @@ export const normalizeLevelCatalogDocument = (
                 hint: level.hint?.trim() || undefined,
                 rotationFormula: level.rotationFormula?.trim() || undefined,
                 rotationTarget: level.rotationTarget as LevelFormulaTarget | undefined,
+                rotationTargetLabel: level.rotationTargetLabel?.trim() || undefined,
                 formulaOrientation: level.formulaOrientation
                     ? { ...level.formulaOrientation }
                     : undefined,
+                stateDefinitionMode,
                 guidanceFormula: level.guidanceFormula?.trim() || undefined,
                 guidanceFailureThreshold: resolveLevelGuidanceFailureThreshold(
                     level.guidanceFailureThreshold,
@@ -417,8 +422,21 @@ const validateLevelDefinition = (
     if (!level.title?.trim() || !level.description?.trim()) {
         throw new Error(`Level ${level.id}: missing title or description`);
     }
-    if (level.rotationTarget !== undefined && !['f2l', 'oll', 'pll'].includes(level.rotationTarget)) {
-        throw new Error(`Level ${level.id}: invalid rotationTarget`);
+    if (level.rotationTarget !== undefined) {
+        const allowed = ['f2l', 'oll', 'pll', 'custom'];
+        if (!allowed.includes(level.rotationTarget)) {
+            throw new Error(`Level ${level.id}: invalid rotationTarget`);
+        }
+        if (level.rotationTarget === 'custom' && !level.rotationTargetLabel?.trim()) {
+            throw new Error(`Level ${level.id}: custom rotationTarget requires rotationTargetLabel`);
+        }
+    }
+    if (
+        level.rotationTargetLabel !== undefined
+        && typeof level.rotationTargetLabel === 'string'
+        && !level.rotationTargetLabel.trim()
+    ) {
+        throw new Error(`Level ${level.id}: invalid rotationTargetLabel`);
     }
     if (level.formulaOrientation !== undefined) {
         try {
@@ -426,6 +444,12 @@ const validateLevelDefinition = (
         } catch {
             throw new Error(`Level ${level.id}: invalid formulaOrientation`);
         }
+    }
+    if (
+        level.stateDefinitionMode !== undefined
+        && !['formula', 'brightness'].includes(level.stateDefinitionMode)
+    ) {
+        throw new Error(`Level ${level.id}: invalid stateDefinitionMode`);
     }
     if (level.guidanceFormula !== undefined && !isNonEmptyString(level.guidanceFormula)) {
         throw new Error(`Level ${level.id}: invalid guidanceFormula`);

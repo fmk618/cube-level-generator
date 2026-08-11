@@ -35,12 +35,16 @@ function getVisualFaceColors(
   cubelet: Cubelet,
   colorMatrix: ColorMatrix,
   brightnessMatrix: BrightnessMatrix,
+  dimUnlitWithFaceColor: boolean,
 ): string[] {
   return cubelet.stickerIds.map((stickerId, i) => {
     if (stickerId < 0) return cubelet.faceColors[i];
     const brightness = findBrightnessByStateId(stickerId, brightnessMatrix);
-    if (brightness <= 0) return LED_OFF_COLOR;
-    return colorIndexToHex(findColorByStateId(stickerId, colorMatrix));
+    const faceHex = colorIndexToHex(findColorByStateId(stickerId, colorMatrix));
+    if (brightness <= 0) {
+      return dimUnlitWithFaceColor ? blendByBrightness(faceHex, 0.28) : LED_OFF_COLOR;
+    }
+    return faceHex;
   });
 }
 
@@ -48,6 +52,7 @@ type CubeletMeshProps = {
   cubelet: Cubelet;
   colorMatrix: ColorMatrix;
   brightnessMatrix: BrightnessMatrix;
+  dimUnlitWithFaceColor?: boolean;
   activeTurn: ActiveTurn | null;
   progress: number;
 };
@@ -62,10 +67,17 @@ function rotateVecAroundAxis(pos: Vec3, axis: Axis, angle: number): Vec3 {
   return [v.x, v.y, v.z];
 }
 
-function CubeletMesh({ cubelet, colorMatrix, brightnessMatrix, activeTurn, progress }: CubeletMeshProps) {
+function CubeletMesh({
+  cubelet,
+  colorMatrix,
+  brightnessMatrix,
+  dimUnlitWithFaceColor = false,
+  activeTurn,
+  progress,
+}: CubeletMeshProps) {
   const visualFaceColors = useMemo(
-    () => getVisualFaceColors(cubelet, colorMatrix, brightnessMatrix),
-    [cubelet, colorMatrix, brightnessMatrix],
+    () => getVisualFaceColors(cubelet, colorMatrix, brightnessMatrix, dimUnlitWithFaceColor),
+    [cubelet, colorMatrix, brightnessMatrix, dimUnlitWithFaceColor],
   );
 
   const materials = useMemo(() => {
@@ -122,6 +134,8 @@ export type CubeSceneProps = {
   stateMatrix: StateMatrix;
   brightnessMatrix: BrightnessMatrix;
   colorMatrix?: ColorMatrix;
+  /** 编辑器：熄灭格用本色压暗，便于认出顶/前色 */
+  dimUnlitWithFaceColor?: boolean;
   playRequest?: CubePlayRequest | null;
   onPlayComplete?: (requestId: number) => void;
 };
@@ -130,6 +144,7 @@ export function CubeScene({
   stateMatrix,
   brightnessMatrix,
   colorMatrix,
+  dimUnlitWithFaceColor = false,
   playRequest = null,
   onPlayComplete,
 }: CubeSceneProps) {
@@ -270,6 +285,7 @@ export function CubeScene({
           cubelet={cubelet}
           colorMatrix={resolvedColorMatrix}
           brightnessMatrix={brightnessMatrix}
+          dimUnlitWithFaceColor={dimUnlitWithFaceColor}
           activeTurn={activeTurn}
           progress={progress}
         />

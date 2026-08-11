@@ -130,31 +130,57 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
 
       // 强制拉取：云端优先；平时仍本地优先避免启动被 MySQL 卡住
       if (force) {
-        try {
-          const cloud = await Promise.race([
-            window.api.db.pullSkills(),
-            new Promise<null>((resolve) => {
-              window.setTimeout(() => resolve(null), 8000);
+        type PullOutcome =
+          | { status: 'data'; cloud: NonNullable<Awaited<ReturnType<typeof window.api.db.pullSkills>>> }
+          | { status: 'empty' }
+          | { status: 'timeout' }
+          | { status: 'error'; error: Error };
+
+        let settled = false;
+        const outcome = await Promise.race([
+          window.api.db.pullSkills()
+            .then((cloud): PullOutcome => {
+              settled = true;
+              if (cloud && Array.isArray(cloud.skills) && cloud.skills.length > 0) {
+                return { status: 'data', cloud };
+              }
+              return { status: 'empty' };
+            })
+            .catch((error: unknown): PullOutcome => {
+              settled = true;
+              return {
+                status: 'error',
+                error: error instanceof Error ? error : new Error(String(error)),
+              };
             }),
-          ]);
-          if (cloud && Array.isArray(cloud.skills) && cloud.skills.length > 0) {
-            const cloudErrors = validateSkillGraph(cloud);
-            if (cloudErrors.length > 0) {
-              throw new Error(cloudErrors.join('; '));
-            }
-            if (!cloud.stages || cloud.stages.length === 0) {
-              throw new Error(
-                '云端能力标签缺少阶段定义（skill_stages 为空）。请在源电脑重新「保存到本地」同步阶段后再拉取',
-              );
-            }
-            skillGraph = cloud;
-            fromCloud = true;
+          new Promise<PullOutcome>((resolve) => {
+            window.setTimeout(() => {
+              if (!settled) resolve({ status: 'timeout' });
+            }, 30_000);
+          }),
+        ]);
+
+        if (outcome.status === 'data') {
+          const cloud = outcome.cloud;
+          const cloudErrors = validateSkillGraph(cloud);
+          if (cloudErrors.length > 0) {
+            throw new Error(cloudErrors.join('; '));
           }
-        } catch (error) {
-          if (persistLocal) throw error;
-        }
-        if (!skillGraph && persistLocal) {
-          throw new Error('无法从云端拉取能力标签，请检查网络与数据库连接');
+          if (!cloud.stages || cloud.stages.length === 0) {
+            throw new Error(
+              '云端能力标签缺少阶段定义（skill_stages 为空）。请在源电脑重新「保存到本地」同步阶段后再拉取',
+            );
+          }
+          skillGraph = cloud;
+          fromCloud = true;
+        } else if (persistLocal) {
+          if (outcome.status === 'error') throw outcome.error;
+          if (outcome.status === 'timeout') {
+            throw new Error('拉取能力标签超时（30 秒）。请检查网络与数据库连接后重试');
+          }
+          throw new Error(
+            '云端暂无能力标签数据。请先在源电脑打开「AI 能力标签」并保存同步到云端后再拉取',
+          );
         }
       }
 
@@ -308,17 +334,17 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
       ...skillGraph,
       stages: resolveStages(skillGraph),
     };
-    void (async () => {
-      try {
-        sync.setProgress(70, '正在上传能力标签到云端…');
-        await window.api.db.pushSkills(snapshot);
-        sync.finishOk(
-          `能力标签已保存并同步到云端（${snapshot.stages.length} 个阶段 / ${snapshot.skills.length} 个标签）`,
-        );
-      } catch (error) {
-        sync.finishError(error instanceof Error ? error.message : String(error));
-      }
-    })();
+    try {
+      sync.setProgress(70, '正在上传能力标签到云端…');
+      await window.api.db.pushSkills(snapshot);
+      sync.finishOk(
+        `能力标签已保存并同步到云端（${snapshot.stages.length} 个阶段 / ${snapshot.skills.length} 个标签）`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sync.finishError(message, '本地已保存，云端同步失败');
+      throw new Error(`本地已保存，但云端同步失败：${message}`);
+    }
 
     return filePath;
   },

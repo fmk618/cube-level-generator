@@ -3,11 +3,13 @@ import type {
     LevelDefinition,
     LevelGuidanceFailureThreshold,
 } from './types';
+import { resolveBuiltinFormulaTarget } from './types';
 import { applyTokensToState, mapTokensByOrientation, parseFormulaTokens } from '../formula/moves';
 import { notationToFace } from '../formula/notationToFace';
 import { INITIAL_COLOR_MATRIX } from '../cube';
 import { isLevelGoalReachedForLevel } from './goalStates';
 import { resolveLevelGuidanceFailureThreshold } from './utils';
+import { toPhysicalTokensFromGrip } from './debugFormulaOrientation';
 
 export type LevelGuidanceStatus = 'ready' | 'missing' | 'invalid';
 
@@ -38,14 +40,18 @@ const expandGuidanceSteps = (tokens: string[]): string[] => tokens.flatMap((toke
     return [base, base];
 });
 
-/** 将含 x/y/z、切片、宽转的公式改写为硬件可提示的外层步骤 */
-const toHardwareGuidanceTokens = (formula: string): string[] => {
+/** 将含 x/y/z、切片、宽转的公式改写为硬件可提示的外层步骤；面字母按握持朝向映射到物理面 */
+export const mapGuidanceFormulaToPhysicalTokens = (
+    formula: string,
+    orientation = DEFAULT_LEVEL_FORMULA_ORIENTATION,
+): string[] => {
     const parsed = parseFormulaTokens(formula);
     if (parsed.invalidTokens.length > 0) {
         throw new Error(`无效动作：${parsed.invalidTokens.join(', ')}`);
     }
+    const physicalFaceTokens = toPhysicalTokensFromGrip(parsed.tokens, orientation);
     return mapTokensByOrientation(
-        parsed.tokens,
+        physicalFaceTokens,
         DEFAULT_LEVEL_FORMULA_ORIENTATION,
         DEFAULT_LEVEL_FORMULA_ORIENTATION,
     );
@@ -87,10 +93,16 @@ export const getLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceSu
     }
 
     try {
-        // guidanceFormula 也需吸收整转 x/y/z：硬件只能提示 6 个外层面
+        // guidanceFormula：握持面→物理面，再吸收整转 x/y/z（硬件只能提示 6 个外层面）
         const mappedTokens = guidanceFormula
-            ? toHardwareGuidanceTokens(guidanceFormula)
-            : deriveLevelFormulaPreset(formula, level.rotationTarget ?? 'f2l').mappedTokens;
+            ? mapGuidanceFormulaToPhysicalTokens(
+                guidanceFormula,
+                level.formulaOrientation ?? DEFAULT_LEVEL_FORMULA_ORIENTATION,
+            )
+            : deriveLevelFormulaPreset(
+                formula,
+                resolveBuiltinFormulaTarget(level.rotationTarget),
+            ).mappedTokens;
         const steps = expandGuidanceSteps(mappedTokens);
         if (steps.length === 0) {
             throw new Error('推荐解法没有可执行步骤（整转/切片改写后为空）');

@@ -1,38 +1,54 @@
-import type { CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
+import { colorIndexToHex } from '@/core/cube';
+import { formatLevelDebugOrientation } from '@/core/levels';
+import {
+  resolveOrientationRecord,
+  type DevCustomColor,
+  type DevCustomOrientation,
+} from '@/core/formula';
 
-const MOVE_FACES = [
-  { token: 'U', label: 'U', color: '#e7e5e4', text: '#44403c' },
-  { token: 'D', label: 'D', color: '#facc15', text: '#713f12' },
-  { token: 'F', label: 'F', color: '#22c55e', text: '#14532d' },
-  { token: 'B', label: 'B', color: '#3b82f6', text: '#1e3a8a' },
-  { token: 'L', label: 'L', color: '#f97316', text: '#7c2d12' },
-  { token: 'R', label: 'R', color: '#ef4444', text: '#7f1d1d' },
-] as const;
+const FACE_TOKENS = ['U', 'D', 'F', 'B', 'L', 'R'] as const;
 
 type EditorMovePadProps = {
   onMove: (token: string) => void;
+  orientation: DevCustomOrientation;
 };
 
-export function EditorMovePad({ onMove }: EditorMovePadProps) {
+export function EditorMovePad({ onMove, orientation }: EditorMovePadProps) {
+  const faces = useMemo(() => {
+    const { faceToColor } = resolveOrientationRecord(orientation);
+    return FACE_TOKENS.map((token) => {
+      const colorIndex = faceToColor[token] as DevCustomColor;
+      return {
+        token,
+        label: token,
+        color: colorIndexToHex(colorIndex),
+      };
+    });
+  }, [orientation]);
+
+  const gripLabel = useMemo(
+    () => formatLevelDebugOrientation(orientation),
+    [orientation],
+  );
+
   return (
     <section className="editor-move-pad" aria-label="手动转动">
       <div className="editor-move-pad-header">
         <strong>手动转动</strong>
-        <span>白顶 · 绿前</span>
+        <p className="editor-move-pad-hint">键位为握持字母：U=顶色面，F=前色面</p>
+        <p className="editor-move-pad-grip" title={gripLabel}>握持 · {gripLabel}</p>
       </div>
 
       <div className="editor-move-pad-grid">
-        {MOVE_FACES.map((face) => (
+        {faces.map((face) => (
           <button
             key={face.token}
             type="button"
             className="editor-move-pad-btn editor-move-pad-btn--cw"
-            style={{
-              '--move-face-color': face.color,
-              '--move-face-text': face.text,
-            } as CSSProperties}
+            style={{ '--move-face-color': face.color } as CSSProperties}
             onClick={() => onMove(face.token)}
-            title={`${face.label} 顺时针 90°`}
+            title={`握持 ${face.label} 顺时针 90°`}
           >
             <span className="editor-move-pad-face">{face.label}</span>
             <span className="editor-move-pad-dir">90°</span>
@@ -41,17 +57,14 @@ export function EditorMovePad({ onMove }: EditorMovePadProps) {
       </div>
 
       <div className="editor-move-pad-grid editor-move-pad-grid--prime">
-        {MOVE_FACES.map((face) => (
+        {faces.map((face) => (
           <button
             key={`${face.token}-prime`}
             type="button"
             className="editor-move-pad-btn editor-move-pad-btn--ccw"
-            style={{
-              '--move-face-color': face.color,
-              '--move-face-text': face.text,
-            } as CSSProperties}
+            style={{ '--move-face-color': face.color } as CSSProperties}
             onClick={() => onMove(`${face.token}'`)}
-            title={`${face.label} 逆时针 90°`}
+            title={`握持 ${face.label} 逆时针 90°`}
           >
             <span className="editor-move-pad-face">{face.label}′</span>
             <span className="editor-move-pad-dir">90°</span>

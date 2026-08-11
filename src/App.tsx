@@ -244,7 +244,6 @@ export default function App() {
           </div>
         </nav>
         <div className="titlebar-identity">
-          <img className="titlebar-logo" src="/app-icon.png" alt="" width={22} height={22} />
           <div className="titlebar-copy">
             <strong>cube-level-generator</strong>
           </div>

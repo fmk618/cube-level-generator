@@ -2,11 +2,19 @@ export type {
     LevelId,
     LevelChapterId,
     LevelFormulaTarget,
+    LevelFormulaBuiltinTarget,
     LevelGuidanceFailureThreshold,
+    LevelStateDefinitionMode,
     LevelChapterConfig,
     LevelDefinition,
     LevelCatalogDocument,
     LevelFileFormat,
+} from './types';
+
+export {
+    LEVEL_FORMULA_BUILTIN_TARGETS,
+    resolveBuiltinFormulaTarget,
+    formatLevelFormulaTargetLabel,
 } from './types';
 
 export {
@@ -52,6 +60,7 @@ export {
     resolveDebugFrontColor,
     toPhysicalTokensFromGrip,
     toRuntimeViewTokens,
+    getOrientationViewQuaternion,
     type DebugOrientationColorOption,
 } from './debugFormulaOrientation';
 
@@ -79,6 +88,7 @@ export {
     peekLevelGuidanceSummary,
     getLevelGuidanceFailureThreshold,
     getGuidanceFailuresRequiredToUnlock,
+    mapGuidanceFormulaToPhysicalTokens,
     type LevelGuidanceStatus,
     type LevelGuidanceSummary,
 } from './guidance';
