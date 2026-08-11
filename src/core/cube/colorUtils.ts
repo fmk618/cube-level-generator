@@ -31,6 +31,33 @@ export const findInitialPositionByStateId = (stateId: number): FaceRowCol | null
     return getStateIdToPositionMap().get(stateId) ?? null;
 };
 
+/** 根据当前 stateMatrix 查找贴纸所在格子（仿 LED：按面槽取色） */
+export const buildStateIdToCurrentPositionMap = (
+    stateMatrix: StateMatrix,
+): Map<number, FaceRowCol> => {
+    const map = new Map<number, FaceRowCol>();
+    for (let face = 0; face < 6; face += 1) {
+        for (let row = 0; row < 3; row += 1) {
+            for (let col = 0; col < 3; col += 1) {
+                map.set(stateMatrix[face][row][col], { face, row, col });
+            }
+        }
+    }
+    return map;
+};
+
+/** 按贴纸当前所在物理面格子从 colorMatrix 取色（非 home） */
+export const findColorByCurrentSlot = (
+    stateId: number,
+    stateMatrix: StateMatrix,
+    colorMatrix: number[][][],
+    positionMap?: Map<number, FaceRowCol>,
+): number => {
+    const pos = (positionMap ?? buildStateIdToCurrentPositionMap(stateMatrix)).get(stateId);
+    if (!pos) return 0;
+    return colorMatrix[pos.face]?.[pos.row]?.[pos.col] ?? 0;
+};
+
 // 颜色工具
 
 /** 颜色索引 (0-15) → 十六进制颜色 */

@@ -22,6 +22,8 @@ import {
   LEVEL_DEBUG_TOP_FACE_OPTIONS,
   LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
   normalizeLevelGoalStates,
+  buildPhysicalOrientationColorMatrix,
+  remapBrightnessByGripSlots,
   resolveDebugFrontColor,
   resolveLevelGuidanceFailureThreshold,
   resolveStarThresholds,
@@ -513,6 +515,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   }, [goalStateMatrix, goalStateMatrices]);
 
   const previewStateMatrix = liveStateMatrix ?? startStateMatrix;
+  const editorLedColorMatrix = useMemo(
+    () => buildPhysicalOrientationColorMatrix(formulaOrientation),
+    [formulaOrientation],
+  );
 
   const applyManualToken = useCallback((token: string) => {
     if (playingRef.current) return;
@@ -759,26 +765,6 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     }
   }, [formulaText, formulaTarget, goalStateMatrix, rotationTargetLabel]);
 
-  const applyFormulaPresetForOrientation = useCallback((orientation: DevCustomOrientation) => {
-    const trimmed = formulaText.trim();
-    if (!trimmed) return true;
-    const result = applyInvertStartFromGoal(orientation);
-    if (!result) return false;
-    if (result.seededGoal) {
-      setGoalStateMatrix(cloneStateMatrix(result.seededGoal));
-      setGoalStateMatrices(undefined);
-      setSelectedGoalVariantIndex(0);
-    }
-    setStartStateMatrix(cloneStateMatrix(result.start));
-    setLiveStateMatrix(cloneStateMatrix(result.start));
-    // 不覆盖手调点亮掩码
-    setPreviewMode('start');
-    setFormulaAppliedOk(true);
-    setFormulaVerifiedOk(false);
-    setStartCapturedOk(true);
-    return true;
-  }, [applyInvertStartFromGoal]);
-
   const currentTargetDisplayLabel = formatLevelFormulaTargetLabel(formulaTarget, rotationTargetLabel);
 
   const addCustomTargetType = () => {
@@ -811,30 +797,25 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const applyOrientationChange = useCallback((orientation: DevCustomOrientation) => {
     if (orientationEquals(formulaOrientation, orientation)) return;
 
+    const stateForSlots = previewStateMatrix ?? startStateMatrix ?? INITIAL_STATE_MATRIX;
+    setBrightnessMatrix(
+      remapBrightnessByGripSlots(
+        stateForSlots,
+        brightnessMatrix,
+        formulaOrientation,
+        orientation,
+      ),
+    );
     setFormulaOrientation(orientation);
-
-    const trimmed = formulaText.trim();
-    if (!trimmed) {
-      setSaveError(null);
-      setSaveNotice(
-        `朝向已更新为 ${formatLevelDebugOrientation(orientation)}。握持/3D 已切换；点亮掩码未改。有公式时可再应用以按新握持逆推初始。`,
-      );
-      return;
-    }
-
-    if (!applyFormulaPresetForOrientation(orientation)) {
-      setSaveNotice('当前公式无法按这个朝向映射，请先检查公式内容。');
-      return;
-    }
-
     setSaveError(null);
     setSaveNotice(
-      `已按新朝向相对当前目标重算初始态（${formatLevelDebugOrientation(orientation)}）；点亮掩码未改。若填写了推荐解法，请重新校验。`,
+      `朝向已切换为 ${formatLevelDebugOrientation(orientation)}。打乱位置未改，点亮已跟到新顶/前面格子。`,
     );
   }, [
-    applyFormulaPresetForOrientation,
+    brightnessMatrix,
     formulaOrientation,
-    formulaText,
+    previewStateMatrix,
+    startStateMatrix,
   ]);
 
   const formulaPreviewText = useMemo(() => {
@@ -1507,7 +1488,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             className="cube-preview cube-preview-editor cube-preview-resizable"
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
+            colorMatrix={editorLedColorMatrix}
             orientation={formulaOrientation}
+            dimUnlitWithFaceColor
+            paintByCurrentSlot
             playRequest={playRequest}
             onPlayComplete={handlePlayComplete}
           />

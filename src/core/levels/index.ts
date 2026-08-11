@@ -69,6 +69,8 @@ export {
     buildOLLBrightnessMatrixForOrientation,
     buildPLLBrightnessMatrixForOrientation,
     getPhysicalFaceForColor,
+    buildPhysicalOrientationColorMatrix,
+    remapBrightnessByGripSlots,
 } from './orientationBrightness';
 
 export { isLevelGoalReached } from './goalEvaluation';

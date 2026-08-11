@@ -20,7 +20,8 @@ export {
 
 export {
     colorIndexToHex, findColorByStateId, findBrightnessByStateId,
-    findInitialPositionByStateId, computeCubeStatus, parseNotation,
+    findInitialPositionByStateId, buildStateIdToCurrentPositionMap, findColorByCurrentSlot,
+    computeCubeStatus, parseNotation,
     getStickerIdsForPosition, getFaceColorsFromMatrices, getBrightnessArrayForPosition,
 } from './colorUtils';
 
