@@ -17,8 +17,6 @@ export type CubePreviewProps = {
   orientation?: DevCustomOrientation;
   /** 编辑器：熄灭格本色压暗 */
   dimUnlitWithFaceColor?: boolean;
-  /** 编辑器仿 LED：按当前物理面格子取色 */
-  paintByCurrentSlot?: boolean;
   className?: string;
   playRequest?: CubePlayRequest | null;
   onPlayComplete?: (requestId: number) => void;
@@ -31,7 +29,6 @@ function SceneContent({
   colorMatrix,
   orientation = DEFAULT_LEVEL_DEBUG_ORIENTATION,
   dimUnlitWithFaceColor = false,
-  paintByCurrentSlot = false,
   playRequest,
   onPlayComplete,
 }: Omit<CubePreviewProps, 'className' | 'hideViewControls'>) {
@@ -60,7 +57,6 @@ function SceneContent({
           brightnessMatrix={brightnessMatrix}
           colorMatrix={colorMatrix}
           dimUnlitWithFaceColor={dimUnlitWithFaceColor}
-          paintByCurrentSlot={paintByCurrentSlot}
           playRequest={playRequest}
           onPlayComplete={onPlayComplete}
         />
@@ -91,7 +87,6 @@ export function CubePreview({
   colorMatrix,
   orientation = DEFAULT_LEVEL_DEBUG_ORIENTATION,
   dimUnlitWithFaceColor = false,
-  paintByCurrentSlot = false,
   className,
   playRequest = null,
   onPlayComplete,
@@ -135,7 +130,6 @@ export function CubePreview({
             colorMatrix={colorMatrix}
             orientation={orientation}
             dimUnlitWithFaceColor={dimUnlitWithFaceColor}
-            paintByCurrentSlot={paintByCurrentSlot}
             playRequest={playRequest}
             onPlayComplete={onPlayComplete}
           />

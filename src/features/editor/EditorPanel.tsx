@@ -22,8 +22,6 @@ import {
   LEVEL_DEBUG_TOP_FACE_OPTIONS,
   LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
   normalizeLevelGoalStates,
-  buildPhysicalOrientationColorMatrix,
-  remapBrightnessByGripSlots,
   resolveDebugFrontColor,
   resolveLevelGuidanceFailureThreshold,
   resolveStarThresholds,
@@ -515,10 +513,6 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   }, [goalStateMatrix, goalStateMatrices]);
 
   const previewStateMatrix = liveStateMatrix ?? startStateMatrix;
-  const editorLedColorMatrix = useMemo(
-    () => buildPhysicalOrientationColorMatrix(formulaOrientation),
-    [formulaOrientation],
-  );
 
   const applyManualToken = useCallback((token: string) => {
     if (playingRef.current) return;
@@ -796,27 +790,12 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
 
   const applyOrientationChange = useCallback((orientation: DevCustomOrientation) => {
     if (orientationEquals(formulaOrientation, orientation)) return;
-
-    const stateForSlots = previewStateMatrix ?? startStateMatrix ?? INITIAL_STATE_MATRIX;
-    setBrightnessMatrix(
-      remapBrightnessByGripSlots(
-        stateForSlots,
-        brightnessMatrix,
-        formulaOrientation,
-        orientation,
-      ),
-    );
     setFormulaOrientation(orientation);
     setSaveError(null);
     setSaveNotice(
-      `朝向已切换为 ${formatLevelDebugOrientation(orientation)}。打乱位置未改，点亮已跟到新顶/前面格子。`,
+      `朝向已切换为 ${formatLevelDebugOrientation(orientation)}。点亮掩码未改（仍按贴纸 home）。`,
     );
-  }, [
-    brightnessMatrix,
-    formulaOrientation,
-    previewStateMatrix,
-    startStateMatrix,
-  ]);
+  }, [formulaOrientation]);
 
   const formulaPreviewText = useMemo(() => {
     const trimmed = formulaText.trim();
@@ -1327,6 +1306,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           ? rotationTargetLabel.trim()
           : undefined,
       formulaOrientation: { ...formulaOrientation },
+      stateDefinitionMode: rotationFormula ? 'formula' : 'brightness',
       guidanceFormula: guidanceFormula || undefined,
       guidanceFailureThreshold,
     };
@@ -1488,10 +1468,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             className="cube-preview cube-preview-editor cube-preview-resizable"
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
-            colorMatrix={editorLedColorMatrix}
             orientation={formulaOrientation}
             dimUnlitWithFaceColor
-            paintByCurrentSlot
             playRequest={playRequest}
             onPlayComplete={handlePlayComplete}
           />

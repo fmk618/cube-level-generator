@@ -5,8 +5,6 @@ import {
   makeInitialCube,
   findBrightnessByStateId,
   findColorByStateId,
-  findColorByCurrentSlot,
-  buildStateIdToCurrentPositionMap,
   colorIndexToHex,
   rotateStateMatrixLayer,
   INITIAL_COLOR_MATRIX,
@@ -20,7 +18,6 @@ import {
   type BrightnessMatrix,
   type ColorMatrix,
   type Cubelet,
-  type FaceRowCol,
   type StateMatrix,
   type TurnDir,
   type Vec3,
@@ -39,17 +36,11 @@ function getVisualFaceColors(
   colorMatrix: ColorMatrix,
   brightnessMatrix: BrightnessMatrix,
   dimUnlitWithFaceColor: boolean,
-  paintByCurrentSlot: boolean,
-  stateMatrix: StateMatrix | null,
-  currentPositionMap: Map<number, FaceRowCol> | null,
 ): string[] {
   return cubelet.stickerIds.map((stickerId, i) => {
     if (stickerId < 0) return cubelet.faceColors[i];
     const brightness = findBrightnessByStateId(stickerId, brightnessMatrix);
-    const colorIndex = paintByCurrentSlot && stateMatrix
-      ? findColorByCurrentSlot(stickerId, stateMatrix, colorMatrix, currentPositionMap ?? undefined)
-      : findColorByStateId(stickerId, colorMatrix);
-    const faceHex = colorIndexToHex(colorIndex);
+    const faceHex = colorIndexToHex(findColorByStateId(stickerId, colorMatrix));
     if (brightness <= 0) {
       return dimUnlitWithFaceColor ? blendByBrightness(faceHex, 0.28) : LED_OFF_COLOR;
     }
@@ -62,9 +53,6 @@ type CubeletMeshProps = {
   colorMatrix: ColorMatrix;
   brightnessMatrix: BrightnessMatrix;
   dimUnlitWithFaceColor?: boolean;
-  paintByCurrentSlot?: boolean;
-  stateMatrix?: StateMatrix | null;
-  currentPositionMap?: Map<number, FaceRowCol> | null;
   activeTurn: ActiveTurn | null;
   progress: number;
 };
@@ -84,31 +72,12 @@ function CubeletMesh({
   colorMatrix,
   brightnessMatrix,
   dimUnlitWithFaceColor = false,
-  paintByCurrentSlot = false,
-  stateMatrix = null,
-  currentPositionMap = null,
   activeTurn,
   progress,
 }: CubeletMeshProps) {
   const visualFaceColors = useMemo(
-    () => getVisualFaceColors(
-      cubelet,
-      colorMatrix,
-      brightnessMatrix,
-      dimUnlitWithFaceColor,
-      paintByCurrentSlot,
-      stateMatrix,
-      currentPositionMap,
-    ),
-    [
-      cubelet,
-      colorMatrix,
-      brightnessMatrix,
-      dimUnlitWithFaceColor,
-      paintByCurrentSlot,
-      stateMatrix,
-      currentPositionMap,
-    ],
+    () => getVisualFaceColors(cubelet, colorMatrix, brightnessMatrix, dimUnlitWithFaceColor),
+    [cubelet, colorMatrix, brightnessMatrix, dimUnlitWithFaceColor],
   );
 
   const materials = useMemo(() => {
@@ -167,8 +136,6 @@ export type CubeSceneProps = {
   colorMatrix?: ColorMatrix;
   /** 编辑器：熄灭格用本色压暗，便于认出顶/前色 */
   dimUnlitWithFaceColor?: boolean;
-  /** 编辑器仿 LED：按当前物理面格子取 colorMatrix，不跟贴纸 home */
-  paintByCurrentSlot?: boolean;
   playRequest?: CubePlayRequest | null;
   onPlayComplete?: (requestId: number) => void;
 };
@@ -178,7 +145,6 @@ export function CubeScene({
   brightnessMatrix,
   colorMatrix,
   dimUnlitWithFaceColor = false,
-  paintByCurrentSlot = false,
   playRequest = null,
   onPlayComplete,
 }: CubeSceneProps) {
@@ -310,11 +276,6 @@ export function CubeScene({
   const activeTurn = activeTurnRef.current;
   const progress = progressRef.current;
   const resolvedColorMatrix = colorMatrix ?? INITIAL_COLOR_MATRIX;
-  const renderStateMatrix = stateMatrixRef.current;
-  const currentPositionMap = useMemo(
-    () => (paintByCurrentSlot ? buildStateIdToCurrentPositionMap(renderStateMatrix) : null),
-    [paintByCurrentSlot, renderStateMatrix],
-  );
 
   return (
     <group>
@@ -325,9 +286,6 @@ export function CubeScene({
           colorMatrix={resolvedColorMatrix}
           brightnessMatrix={brightnessMatrix}
           dimUnlitWithFaceColor={dimUnlitWithFaceColor}
-          paintByCurrentSlot={paintByCurrentSlot}
-          stateMatrix={paintByCurrentSlot ? renderStateMatrix : null}
-          currentPositionMap={currentPositionMap}
           activeTurn={activeTurn}
           progress={progress}
         />

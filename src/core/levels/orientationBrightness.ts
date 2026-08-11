@@ -1,19 +1,14 @@
 /**
- * 关卡编辑器专用：按 runtime 握持朝向计算 F2L / OLL / PLL 熄灭区；
- * 改朝向时只按握持格子搬 brightness，不改写 state（对齐 App LED：颜色由配色漆面）。
+ * 关卡编辑器专用：按 runtime 握持朝向计算 F2L / OLL / PLL 熄灭区。
+ * brightnessMatrix 按贴纸 home 索引；换朝向不改写亮度矩阵。
  */
-import { findInitialPositionByStateId } from '../cube/colorUtils';
 import { INITIAL_COLOR_MATRIX } from '../cube/constants';
-import type { BrightnessMatrix, ColorMatrix, StateMatrix } from '../cube/types';
-import { resolveOrientationRecord } from '../formula/orientation';
+import type { BrightnessMatrix } from '../cube/types';
 import {
     DEV_CUSTOM_COLOR_VALUES,
     type DevCustomColor,
     type DevCustomOrientation,
 } from '../formula/types';
-
-type GripFaceName = 'U' | 'L' | 'F' | 'R' | 'B' | 'D';
-const GRIP_FACE_NAMES: GripFaceName[] = ['U', 'L', 'F', 'R', 'B', 'D'];
 
 type Vec3 = readonly [number, number, number];
 
@@ -77,66 +72,6 @@ export const getPhysicalFaceForColor = (color: DevCustomColor): number => {
         throw new Error(`Unknown DevCustomColor: ${color}`);
     }
     return face;
-};
-
-const gripFaceToPhysicalIndex = (
-    gripFace: GripFaceName,
-    orientation: DevCustomOrientation,
-): number => {
-    const { faceToColor } = resolveOrientationRecord(orientation);
-    return getPhysicalFaceForColor(faceToColor[gripFace]);
-};
-
-/**
- * 仿 App LED：按物理面索引漆朝向色（顶色面整面为顶色）。
- * 预览需配合按当前 state 格子取色，而非贴纸 home 查色。
- */
-export const buildPhysicalOrientationColorMatrix = (
-    orientation: DevCustomOrientation,
-): ColorMatrix => {
-    const { faceToColor } = resolveOrientationRecord(orientation);
-    const matrix = Array.from({ length: 6 }, () =>
-        Array.from({ length: 3 }, () => Array(3).fill(0)),
-    ) as ColorMatrix;
-    for (const gripFace of GRIP_FACE_NAMES) {
-        const phys = gripFaceToPhysicalIndex(gripFace, orientation);
-        const color = faceToColor[gripFace];
-        for (let row = 0; row < 3; row += 1) {
-            for (let col = 0; col < 3; col += 1) {
-                matrix[phys][row][col] = color;
-            }
-        }
-    }
-    return matrix;
-};
-
-/**
- * 只读 state：把旧握持物理面格子上贴纸的亮度，搬到新握持同格当前贴纸的 home 槽。
- * 不改写 state（打乱位置保持）。
- */
-export const remapBrightnessByGripSlots = (
-    state: StateMatrix,
-    brightness: BrightnessMatrix,
-    fromOrientation: DevCustomOrientation,
-    toOrientation: DevCustomOrientation,
-): BrightnessMatrix => {
-    const nextBright = makeFullBrightMatrix(0);
-
-    for (const gripFace of GRIP_FACE_NAMES) {
-        const physOld = gripFaceToPhysicalIndex(gripFace, fromOrientation);
-        const physNew = gripFaceToPhysicalIndex(gripFace, toOrientation);
-        for (let row = 0; row < 3; row += 1) {
-            for (let col = 0; col < 3; col += 1) {
-                const oldHome = findInitialPositionByStateId(state[physOld][row][col]);
-                const newHome = findInitialPositionByStateId(state[physNew][row][col]);
-                if (!oldHome || !newHome) continue;
-                nextBright[newHome.face][newHome.row][newHome.col] =
-                    brightness[oldHome.face][oldHome.row][oldHome.col] ?? 0;
-            }
-        }
-    }
-
-    return nextBright;
 };
 
 export const buildF2LBrightnessMatrixForOrientation = (

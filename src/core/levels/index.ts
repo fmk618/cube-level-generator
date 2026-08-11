@@ -4,6 +4,7 @@ export type {
     LevelFormulaTarget,
     LevelFormulaBuiltinTarget,
     LevelGuidanceFailureThreshold,
+    LevelStateDefinitionMode,
     LevelChapterConfig,
     LevelDefinition,
     LevelCatalogDocument,
@@ -69,8 +70,6 @@ export {
     buildOLLBrightnessMatrixForOrientation,
     buildPLLBrightnessMatrixForOrientation,
     getPhysicalFaceForColor,
-    buildPhysicalOrientationColorMatrix,
-    remapBrightnessByGripSlots,
 } from './orientationBrightness';
 
 export { isLevelGoalReached } from './goalEvaluation';

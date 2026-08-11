@@ -21,6 +21,7 @@ import type {
     LevelChapterId,
     LevelFormulaTarget,
     LevelGuidanceFailureThreshold,
+    LevelStateDefinitionMode,
 } from './types';
 
 /**
@@ -248,6 +249,8 @@ export const normalizeLevelCatalogDocument = (
         chapters,
         levels: normalizeChapterOrders(sourceLevels, chapters).map((level) => {
             const normalizedGoals = normalizeLevelGoalStates(level);
+            const stateDefinitionMode: LevelStateDefinitionMode = level.stateDefinitionMode
+                ?? (level.rotationFormula?.trim() ? 'formula' : 'brightness');
             return {
                 ...level,
                 ...normalizedGoals,
@@ -264,6 +267,7 @@ export const normalizeLevelCatalogDocument = (
                 formulaOrientation: level.formulaOrientation
                     ? { ...level.formulaOrientation }
                     : undefined,
+                stateDefinitionMode,
                 guidanceFormula: level.guidanceFormula?.trim() || undefined,
                 guidanceFailureThreshold: resolveLevelGuidanceFailureThreshold(
                     level.guidanceFailureThreshold,
@@ -440,6 +444,12 @@ const validateLevelDefinition = (
         } catch {
             throw new Error(`Level ${level.id}: invalid formulaOrientation`);
         }
+    }
+    if (
+        level.stateDefinitionMode !== undefined
+        && !['formula', 'brightness'].includes(level.stateDefinitionMode)
+    ) {
+        throw new Error(`Level ${level.id}: invalid stateDefinitionMode`);
     }
     if (level.guidanceFormula !== undefined && !isNonEmptyString(level.guidanceFormula)) {
         throw new Error(`Level ${level.id}: invalid guidanceFormula`);
