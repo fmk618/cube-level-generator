@@ -207,7 +207,13 @@ export function CatalogPanel() {
     ) {
       return;
     }
-    void run('import', () => importFromDisk());
+    void run('import', async () => {
+      const ok = await importFromDisk();
+      if (ok) {
+        const count = useCatalogStore.getState().levels.length;
+        setBanner(`✓ 导入成功，共 ${count} 个关卡已加载`);
+      }
+    });
   };
 
   const handleSubmitChapter = () => {
@@ -263,7 +269,7 @@ export function CatalogPanel() {
         </div>
 
         {loadError && <div className="banner banner-error">{loadError}</div>}
-        {banner && <div className="banner banner-error">{banner}</div>}
+        {banner && <div className={`banner ${banner.startsWith('✓') ? 'banner-ok' : 'banner-error'}`}>{banner}</div>}
 
         <div className="panel-section" data-tour="level-search">
           <div className="search-field">
