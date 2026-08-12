@@ -154,15 +154,19 @@ select {
 }
 
 .titlebar-nav {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   justify-content: flex-start;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .titlebar-actions {
+  flex: 0 1 auto;
   justify-content: flex-end;
   margin-left: auto;
   gap: 8px;
-  min-width: 220px;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .titlebar-save-slot {
@@ -2102,7 +2106,7 @@ textarea.text-input--sm {
 .editor-workspace {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 220px;
   overflow: hidden;
   background: var(--surface);

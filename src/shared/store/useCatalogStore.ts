@@ -47,6 +47,7 @@ type CatalogState = {
     hasUnsavedChanges: boolean;
     runtimeFilePath: string | null;
     loadError: string | null;
+    catalogEpoch: number;
 
     refreshCatalog: (options?: { force?: boolean; persistLocal?: boolean }) => Promise<void>;
     importCatalogFromJSON: (json: string) => void;
@@ -194,6 +195,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
     hasUnsavedChanges: false,
     runtimeFilePath: null,
     loadError: null,
+    catalogEpoch: 0,
 
     refreshCatalog: async (options) => {
         const force = options?.force === true;
@@ -255,6 +257,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         const catalog = importLevelsFromJSON(json);
         const savedCatalog = get().savedCatalog ?? get().catalog ?? null;
         applyCatalog(set, catalog, savedCatalog ? cloneCatalog(savedCatalog) : null, true);
+        set({ catalogEpoch: get().catalogEpoch + 1 });
     },
 
     importFromDisk: async () => {
@@ -307,6 +310,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         const savedCatalog = get().savedCatalog;
         if (!savedCatalog) return;
         applyCatalog(set, savedCatalog, savedCatalog, false);
+        set({ catalogEpoch: get().catalogEpoch + 1 });
     },
 
     resetToDefault: async () => {
@@ -314,6 +318,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         const catalog = importLevelsFromJSON(json);
         const savedCatalog = get().savedCatalog ?? get().catalog ?? null;
         applyCatalog(set, catalog, savedCatalog ? cloneCatalog(savedCatalog) : null, true);
+        set({ catalogEpoch: get().catalogEpoch + 1 });
     },
 
     createChapter: (input) => {

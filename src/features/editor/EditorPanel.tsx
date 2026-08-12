@@ -290,7 +290,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const selectLevel = useUiStore((s) => s.selectLevel);
   const formulaAdoptionRequest = useUiStore((s) => s.formulaAdoptionRequest);
   const clearFormulaAdoptionRequest = useUiStore((s) => s.clearFormulaAdoptionRequest);
-  const { levels, chapters, hasUnsavedChanges, updateLevel, deleteLevel, saveLocal } = useCatalogStore();
+  const { levels, chapters, hasUnsavedChanges, updateLevel, deleteLevel, saveLocal, catalogEpoch } = useCatalogStore();
   const level = useMemo(() => levels.find((l) => l.id === selectedLevelId) ?? null, [levels, selectedLevelId]);
   const getPrimary = useLevelSkillMapStore((s) => s.getPrimary);
   const skills = useSkillGraphStore((s) => s.skills);
@@ -454,9 +454,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setActiveTab('meta');
     setSaveError(null);
     setSaveNotice(null);
-    // 只在切换关卡时重置表单，避免目录状态更新覆盖尚未保存的编辑内容。
+    // 切换关卡 或 整体替换目录（导入/重置/放弃草稿）时重置表单
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [level?.id]);
+  }, [level?.id, catalogEpoch]);
 
   useEffect(() => {
     if (!formulaAdoptionRequest || !level) return;
@@ -1408,11 +1408,11 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   return (
     <>
       {headerActionsHost && createPortal(
-        <>
+        <div className="titlebar-save-slot">
           {(hasEditorChanges || hasUnsavedChanges) && <span className="save-state"><i />未保存</span>}
           <button
             type="button"
-            className="btn titlebar-save"
+            className="btn btn-sm titlebar-save"
             disabled={saving || (!hasEditorChanges && !hasUnsavedChanges)}
             onClick={() => void handleSave('local')}
             title="写入内存并落盘本地，不推 MySQL"
@@ -1421,14 +1421,14 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           </button>
           <button
             type="button"
-            className="btn btn-primary titlebar-save"
+            className="btn btn-sm btn-primary titlebar-save"
             disabled={saving}
             onClick={() => void handleSave('remote')}
             title="先落盘当前关卡草稿，再批量推送关卡 / 能力标签 / 推荐配置"
           >
             {saving ? <><span className="spinner" />推送中</> : '保存远程'}
           </button>
-        </>,
+        </div>,
         headerActionsHost,
       )}
       <div className="panel panel--main editor-panel" data-tour="level-editor">
