@@ -4,7 +4,7 @@ import type {
     LevelGuidanceFailureThreshold,
 } from './types';
 import { resolveBuiltinFormulaTarget } from './types';
-import { applyTokensToState, mapTokensByOrientation, parseFormulaTokens } from '../formula/moves';
+import { applyTokensToState, mapTokensByOrientationWithSource, parseFormulaTokens } from '../formula/moves';
 import { notationToFace } from '../formula/notationToFace';
 import { INITIAL_COLOR_MATRIX } from '../cube';
 import { isLevelGoalReachedForLevel } from './goalStates';
@@ -49,12 +49,12 @@ export const mapGuidanceFormulaToPhysicalTokens = (
     if (parsed.invalidTokens.length > 0) {
         throw new Error(`无效动作：${parsed.invalidTokens.join(', ')}`);
     }
-    const physicalFaceTokens = toPhysicalTokensFromGrip(parsed.tokens, orientation);
-    return mapTokensByOrientation(
-        physicalFaceTokens,
-        DEFAULT_LEVEL_FORMULA_ORIENTATION,
-        DEFAULT_LEVEL_FORMULA_ORIENTATION,
+    const { mapped: gripTokens } = mapTokensByOrientationWithSource(
+        parsed.tokens,
+        orientation,
+        orientation,
     );
+    return toPhysicalTokensFromGrip(gripTokens, orientation);
 };
 
 /** 列表首屏用：只看有没有公式，不做矩阵推演（大批量关卡时避免卡死） */

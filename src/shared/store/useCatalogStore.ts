@@ -205,25 +205,28 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         try {
             let catalog: LevelCatalogDocument | null = null;
             let fromCloud = false;
-            try {
-                const cloud = await Promise.race([
-                    window.api.db.pullCatalog(),
-                    new Promise<null>((resolve) => {
-                        window.setTimeout(() => resolve(null), 8000);
-                    }),
-                ]);
-                if (cloud) {
-                    catalog = normalizeLevelCatalogDocument(cloud);
-                    fromCloud = true;
+
+            if (force) {
+                try {
+                    const cloud = await Promise.race([
+                        window.api.db.pullCatalog(),
+                        new Promise<null>((resolve) => {
+                            window.setTimeout(() => resolve(null), 8000);
+                        }),
+                    ]);
+                    if (cloud) {
+                        catalog = normalizeLevelCatalogDocument(cloud);
+                        fromCloud = true;
+                    }
+                } catch {
+                    // 云端不可用时回退本地
                 }
-            } catch {
-                // 云端不可用时回退本地
+                if (!catalog && persistLocal) {
+                    throw new Error('无法从云端拉取关卡目录，请检查网络与数据库连接');
+                }
             }
 
             if (!catalog) {
-                if (force && persistLocal) {
-                    throw new Error('无法从云端拉取关卡目录，请检查网络与数据库连接');
-                }
                 const runtimeJson = await window.api.catalog.loadRuntime();
                 const json = runtimeJson ?? await window.api.catalog.loadDefault();
                 catalog = importLevelsFromJSON(json);
@@ -280,7 +283,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         const filePath = await window.api.catalog.saveRuntime(json);
         applyCatalog(set, catalog, catalog, false);
         set({ runtimeFilePath: filePath });
-        if (manageSync) sync.finishOk('关卡已保存到本地（未推远程）');
+        if (manageSync) sync.finishOk(`关卡已保存到本地：${filePath}`);
         return filePath;
     },
 

@@ -24,10 +24,18 @@ export async function saveAllLocal(): Promise<void> {
 
   sync.beginLocal(`正在本地保存（${parts.join(' / ')}）…`);
   try {
-    if (catalog.hasUnsavedChanges) await catalog.saveLocal(quiet);
-    if (skills.hasUnsavedChanges) await skills.saveLocal(quiet);
-    if (map.hasUnsavedChanges) await map.saveLocal(quiet);
-    sync.finishOk(`已保存到本地（未推远程；${parts.join(' / ')}）`);
+    const savedPaths: string[] = [];
+    if (catalog.hasUnsavedChanges) {
+      savedPaths.push(await catalog.saveLocal(quiet));
+    }
+    if (skills.hasUnsavedChanges) {
+      savedPaths.push(await skills.saveLocal(quiet));
+    }
+    if (map.hasUnsavedChanges) {
+      savedPaths.push(await map.saveLocal(quiet));
+    }
+    const pathHint = savedPaths.length > 0 ? `（${savedPaths.join('、')}）` : '';
+    sync.finishOk(`已保存到本地${pathHint}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sync.finishError(message, '本地保存失败');
