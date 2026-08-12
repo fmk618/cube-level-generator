@@ -170,22 +170,10 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
           if (cloudErrors.length > 0) {
             throw new Error(cloudErrors.join('; '));
           }
-          if (!cloud.stages || cloud.stages.length === 0) {
-            throw new Error(
-              '云端能力标签缺少阶段定义（skill_stages 为空）。请在源电脑重新「保存到本地」同步阶段后再拉取',
-            );
-          }
           skillGraph = cloud;
           fromCloud = true;
-        } else if (persistLocal) {
-          if (outcome.status === 'error') throw outcome.error;
-          if (outcome.status === 'timeout') {
-            throw new Error('拉取能力标签超时（30 秒）。请检查网络与数据库连接后重试');
-          }
-          throw new Error(
-            '云端暂无能力标签数据。请先在源电脑打开「AI 能力标签」并保存同步到云端后再拉取',
-          );
         }
+        // 云端无数据 / 超时 / 失败：不阻断拉取，回退本地 runtime 或默认模板
       }
 
       if (!skillGraph) {
@@ -216,6 +204,25 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
             set({ runtimeFilePath: path });
           }
         }).catch(() => undefined);
+      }
+
+      // 云端技能有数据但缺阶段：用本地阶段补齐，避免空阶段覆盖自定义配置
+      if (fromCloud && skillGraph && (!skillGraph.stages || skillGraph.stages.length === 0)) {
+        try {
+          const runtime = await window.api.skillGraph.loadRuntime();
+          if (runtime?.content) {
+            const parsed = JSON.parse(runtime.content) as unknown;
+            if (
+              isSkillGraphDocumentShape(parsed)
+              && parsed.stages
+              && parsed.stages.length > 0
+            ) {
+              skillGraph = { ...skillGraph, stages: parsed.stages };
+            }
+          }
+        } catch {
+          // 本地阶段不可读时继续用云端技能
+        }
       }
 
       const errors = validateSkillGraph(skillGraph);
