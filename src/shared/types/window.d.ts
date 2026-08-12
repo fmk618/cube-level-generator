@@ -82,6 +82,11 @@ declare global {
           systemPrompt?: string;
         }) => Promise<string>;
       };
+      app: {
+        setUnsaved: (hasUnsaved: boolean) => void;
+        confirmQuit: () => Promise<void>;
+        onSaveAndQuit: (callback: () => void) => () => void;
+      };
     };
     platform: 'darwin' | 'win32' | 'linux' | string;
   }

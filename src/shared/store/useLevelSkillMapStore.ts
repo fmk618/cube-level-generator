@@ -160,28 +160,30 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     set({ isLoading: true, loadError: null });
     try {
       let raw: LevelSkillMap | null = null;
-      try {
-        raw = await Promise.race([
-          window.api.db.pullLevelSkillMap(),
-          new Promise<null>((resolve) => {
-            window.setTimeout(() => resolve(null), 8000);
-          }),
-        ]);
-      } catch {
-        // 云端不可用时回退本地
+      let fromCloud = false;
+
+      if (force) {
+        try {
+          raw = await Promise.race([
+            window.api.db.pullLevelSkillMap(),
+            new Promise<null>((resolve) => {
+              window.setTimeout(() => resolve(null), 8000);
+            }),
+          ]);
+          if (raw) fromCloud = true;
+        } catch {
+          // 云端不可用时回退本地
+        }
       }
 
       let map: LevelSkillMap;
       let ambiguous: Record<string, LevelSkillBinding[]> = {};
-      let fromCloud = false;
 
       if (raw) {
         const split = splitMultiBindings(raw.mappings);
         map = split.map;
         ambiguous = split.ambiguous;
-        fromCloud = true;
       } else {
-        // 云端无推荐配置时不阻断拉取，回退本地 runtime
         const runtime = await window.api.levelSkillMap.loadRuntime();
         if (runtime?.content) {
           const imported = importLevelSkillMapFromJSON(runtime.content);
@@ -252,10 +254,10 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     const sync = useCloudSyncStore.getState();
     if (manageSync) sync.beginLocal('正在保存推荐配置到本地…');
     const json = exportLevelSkillMapToJSON(map);
-    await window.api.levelSkillMap.saveRuntime(json);
+    const filePath = await window.api.levelSkillMap.saveRuntime(json);
     applyMap(set, map, cloneMap(map), false);
-    if (manageSync) sync.finishOk('推荐配置已保存到本地（未推远程）');
-    return 'saved';
+    if (manageSync) sync.finishOk(`推荐配置已保存到本地：${filePath}`);
+    return filePath;
   },
 
   pushRemote: async (options) => {

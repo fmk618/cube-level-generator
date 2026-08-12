@@ -246,36 +246,6 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
         isLoading: false,
         runtimeFilePath: runtimeFilePath ?? get().runtimeFilePath,
       });
-
-      // 非强制：云端后台拉取，有数据且本地无未保存改动时再覆盖
-      if (!force) {
-        void (async () => {
-          try {
-            const cloud = await Promise.race([
-              window.api.db.pullSkills(),
-              new Promise<null>((resolve) => {
-                window.setTimeout(() => resolve(null), 5000);
-              }),
-            ]);
-            if (!cloud || !Array.isArray(cloud.skills) || cloud.skills.length === 0) return;
-            if (get().hasUnsavedChanges) return;
-            const cloudErrors = validateSkillGraph(cloud);
-            if (cloudErrors.length > 0) return;
-            // 旧云端数据可能没有 stages：勿用空阶段覆盖本机已有自定义阶段
-            const current = get().skillGraph;
-            const merged: SkillGraphDocument = {
-              ...cloud,
-              stages:
-                cloud.stages && cloud.stages.length > 0
-                  ? cloud.stages
-                  : current?.stages,
-            };
-            applySkillGraph(set, merged, cloneSkillGraph(merged), false);
-          } catch {
-            // 云端失败不影响已展示的本地技能树
-          }
-        })();
-      }
     } catch (error) {
       set({
         isLoading: false,
@@ -348,7 +318,7 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     };
     if (manageSync) {
       sync.finishOk(
-        `能力标签已保存到本地（未推远程；${snapshot.stages.length} 个阶段 / ${snapshot.skills.length} 个标签）`,
+        `能力标签已保存到本地：${filePath}（${snapshot.stages.length} 个阶段 / ${snapshot.skills.length} 个标签）`,
       );
     }
     return filePath;

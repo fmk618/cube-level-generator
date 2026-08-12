@@ -62,6 +62,43 @@ const DEFAULT_SKILL_GRAPH_FILE = () => (
 );
 
 let mainWindow: BrowserWindow | null = null;
+let rendererHasUnsaved = false;
+let quittingAfterSave = false;
+
+function attachCloseGuard(win: BrowserWindow) {
+  win.on('close', (event) => {
+    if (quittingAfterSave || !rendererHasUnsaved) return;
+    event.preventDefault();
+    void (async () => {
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'warning',
+        title: '未保存的修改',
+        message: '有未保存到本地的修改，退出后将丢失。',
+        buttons: ['取消', '不保存并退出', '保存并退出'],
+        defaultId: 2,
+        cancelId: 0,
+      });
+      if (response === 0) return;
+      if (response === 1) {
+        quittingAfterSave = true;
+        rendererHasUnsaved = false;
+        win.close();
+        return;
+      }
+      win.webContents.send('app:save-and-quit');
+    })();
+  });
+}
+
+ipcMain.on('app:set-unsaved', (_event, hasUnsaved: boolean) => {
+  rendererHasUnsaved = hasUnsaved;
+});
+
+ipcMain.handle('app:confirm-quit', () => {
+  quittingAfterSave = true;
+  rendererHasUnsaved = false;
+  mainWindow?.close();
+});
 
 function createWindow() {
   const iconPath = resolveAppIconPath();
@@ -97,6 +134,8 @@ function createWindow() {
   } else {
     void mainWindow.loadFile(path.join(RENDERER_DIST, 'index.html'));
   }
+
+  attachCloseGuard(mainWindow);
 }
 
 async function readJsonFileIfExists(filePath: string): Promise<string | null> {

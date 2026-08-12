@@ -76,6 +76,21 @@ const api = {
       systemPrompt?: string;
     }): Promise<string> => ipcRenderer.invoke('dashscope:generate', args),
   },
+  app: {
+    setUnsaved: (hasUnsaved: boolean): void => {
+      ipcRenderer.send('app:set-unsaved', hasUnsaved);
+    },
+    confirmQuit: (): Promise<void> => ipcRenderer.invoke('app:confirm-quit'),
+    onSaveAndQuit: (callback: () => void): (() => void) => {
+      const listener = (): void => {
+        callback();
+      };
+      ipcRenderer.on('app:save-and-quit', listener);
+      return () => {
+        ipcRenderer.removeListener('app:save-and-quit', listener);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

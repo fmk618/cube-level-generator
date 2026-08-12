@@ -1324,11 +1324,12 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       const updatedLevel = updateLevel(level.id, patch);
       if (!updatedLevel) throw new Error(`找不到要保存的关卡：${level.id}`);
       let remoteError: string | null = null;
+      let savedLocalPath: string | null = null;
       try {
         if (mode === 'remote') {
           await pushAllRemote();
         } else {
-          await saveLocal();
+          savedLocalPath = await saveLocal({ manageSync: false });
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -1368,7 +1369,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         setSaveError(null);
         const syncHint = mode === 'remote'
           ? '已批量推送到远程（关卡 / 能力标签 / 推荐配置）。'
-          : '已保存到本地（未推远程）。';
+          : savedLocalPath
+            ? `已保存到本地：${savedLocalPath}`
+            : '已保存到本地（未推远程）。';
         setSaveNotice(warnings.length > 0 ? `${syncHint} ${warnings.join(' ')}` : syncHint);
       }
     } catch (error) {

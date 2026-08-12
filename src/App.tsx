@@ -91,6 +91,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    window.api.app.setUnsaved(anyUnsaved);
+  }, [anyUnsaved]);
+
+  useEffect(() => {
+    const unsubscribe = window.api.app.onSaveAndQuit(() => {
+      void (async () => {
+        try {
+          await saveAllLocal();
+          await window.api.app.confirmQuit();
+        } catch {
+          // 保存失败时不退出
+        }
+      })();
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     void Promise.allSettled([
       refreshCatalog(),
       refreshSkillGraph(),

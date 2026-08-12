@@ -63,6 +63,7 @@ body,
 #root {
   width: 100%;
   height: 100%;
+  -webkit-app-region: no-drag;
 }
 
 body {
@@ -80,9 +81,6 @@ input,
 textarea,
 select {
   font: inherit;
-}
-
-button {
   -webkit-app-region: no-drag;
 }
 
@@ -115,6 +113,7 @@ button {
   width: 100%;
   height: 100vh;
   background: var(--page-bg);
+  -webkit-app-region: no-drag;
 }
 
 .studio-titlebar {
@@ -128,11 +127,11 @@ button {
   padding: 0 var(--page-pad);
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--border);
-  -webkit-app-region: drag;
 }
 
 [data-platform="darwin"] .studio-titlebar {
   padding-left: 80px;
+  -webkit-app-region: drag;
 }
 
 .titlebar-identity,
@@ -140,6 +139,7 @@ button {
 .titlebar-actions {
   display: flex;
   align-items: center;
+  -webkit-app-region: no-drag;
 }
 
 .titlebar-identity {
@@ -393,6 +393,7 @@ button {
   gap: 16px;
   padding: var(--page-pad);
   overflow: hidden;
+  -webkit-app-region: no-drag;
 }
 
 .studio-column {
