@@ -12,6 +12,7 @@ import { useUiStore } from '@/shared/store/useUiStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useCloudSyncStore } from '@/shared/store/useCloudSyncStore';
+import { pushAllRemote, saveAllLocal } from '@/shared/store/localRemoteSave';
 
 const CATALOG_WIDTH_KEY = 'catalog-panel-width';
 const DEFAULT_CATALOG_WIDTH = 300;
@@ -59,7 +60,8 @@ export default function App() {
   const [catalogWidth, setCatalogWidth] = useState(readCatalogWidth);
   const [assistantWidth, setAssistantWidth] = useState(readAssistantWidth);
   const [llmCollapsed, setLlmCollapsed] = useState(false);
-  const [savingCatalog, setSavingCatalog] = useState(false);
+  const [savingLocal, setSavingLocal] = useState(false);
+  const [pushingRemote, setPushingRemote] = useState(false);
   const [pullingRemote, setPullingRemote] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState<'catalog' | 'skills' | 'levelSkillMap'>('catalog');
@@ -69,7 +71,7 @@ export default function App() {
   const hasUnsavedChanges = useCatalogStore((state) => state.hasUnsavedChanges);
   const skillsUnsaved = useSkillGraphStore((state) => state.hasUnsavedChanges);
   const mapUnsaved = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
-  const saveCatalog = useCatalogStore((state) => state.saveCatalog);
+  const anyUnsaved = hasUnsavedChanges || skillsUnsaved || mapUnsaved;
   const refreshCatalog = useCatalogStore((state) => state.refreshCatalog);
   const refreshSkillGraph = useSkillGraphStore((state) => state.refreshSkillGraph);
   const refreshMap = useLevelSkillMapStore((state) => state.refreshMap);
@@ -165,15 +167,31 @@ export default function App() {
     document.addEventListener('mouseup', onUp);
   }, [assistantWidth, catalogWidth, llmCollapsed]);
 
-  const handleCatalogSave = async () => {
-    setSavingCatalog(true);
+  const busySync = syncPhase === 'local' || syncPhase === 'cloud' || savingLocal || pushingRemote || pullingRemote;
+
+  const handleSaveLocal = async () => {
+    if (savingLocal || pushingRemote) return;
+    setSavingLocal(true);
     setSaveError(null);
     try {
-      await saveCatalog();
+      await saveAllLocal();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
-      setSavingCatalog(false);
+      setSavingLocal(false);
+    }
+  };
+
+  const handlePushRemote = async () => {
+    if (savingLocal || pushingRemote) return;
+    setPushingRemote(true);
+    setSaveError(null);
+    try {
+      await pushAllRemote();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPushingRemote(false);
     }
   };
 
@@ -252,7 +270,7 @@ export default function App() {
           <button
             type="button"
             className="btn btn-sm"
-            disabled={pullingRemote || syncPhase === 'local' || syncPhase === 'cloud'}
+            disabled={busySync}
             onClick={() => void handlePullRemote()}
             title="从云端拉取关卡、能力标签与推荐配置，并覆盖本地缓存"
           >
@@ -263,16 +281,26 @@ export default function App() {
           </button>
           <HelpOnboardingMenu />
           <div className="titlebar-save-slot">
-            {!selectedLevelId && editMode === 'catalog' ? (
+            {!(selectedLevelId && editMode === 'catalog') ? (
               <>
-                {hasUnsavedChanges && <span className="save-state"><i />未保存</span>}
+                {anyUnsaved && <span className="save-state"><i />未保存</span>}
+                <button
+                  type="button"
+                  className="btn btn-sm titlebar-save"
+                  disabled={busySync || !anyUnsaved}
+                  onClick={() => void handleSaveLocal()}
+                  title="仅写入本机 runtime，不推 MySQL"
+                >
+                  {savingLocal ? <><span className="spinner" />保存中</> : '本地保存'}
+                </button>
                 <button
                   type="button"
                   className="btn btn-sm btn-primary titlebar-save"
-                  disabled={!hasUnsavedChanges || savingCatalog}
-                  onClick={() => void handleCatalogSave()}
+                  disabled={busySync}
+                  onClick={() => void handlePushRemote()}
+                  title="有草稿先本地保存，再批量推送关卡 / 能力标签 / 推荐配置"
                 >
-                  {savingCatalog ? <><span className="spinner" />保存中</> : '保存到本地'}
+                  {pushingRemote ? <><span className="spinner" />推送中</> : '保存远程'}
                 </button>
               </>
             ) : null}

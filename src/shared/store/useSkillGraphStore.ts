@@ -26,6 +26,10 @@ type SkillGraphState = {
   importFromDisk: () => Promise<boolean>;
   exportToDisk: () => Promise<string | null>;
   saveSkillGraph: () => Promise<string>;
+  /** 仅写本地 runtime，不推远程 */
+  saveLocal: (options?: { manageSync?: boolean }) => Promise<string>;
+  /** 仅推当前能力标签到 MySQL */
+  pushRemote: (options?: { manageSync?: boolean }) => Promise<void>;
   discardChanges: () => void;
   resetToDefault: () => Promise<void>;
 
@@ -319,34 +323,52 @@ export const useSkillGraphStore = create<SkillGraphState>((set, get) => ({
     return window.api.skillGraph.exportToDisk(json, 'skill_graph_cfop.json');
   },
 
-  saveSkillGraph: async () => {
+  saveSkillGraph: async () => get().saveLocal(),
+
+  saveLocal: async (options) => {
+    const manageSync = options?.manageSync !== false;
     const skillGraph = get().skillGraph;
     if (!skillGraph) throw new Error('Skill graph not loaded');
     const sync = useCloudSyncStore.getState();
-    sync.beginLocal('正在保存能力标签到本地…');
+    if (manageSync) sync.beginLocal('正在保存能力标签到本地…');
     const json = exportSkillGraphToJSON(skillGraph);
     const filePath = await window.api.skillGraph.saveRuntime(json);
     applySkillGraph(set, skillGraph, cloneSkillGraph(skillGraph), false);
     set({ runtimeFilePath: filePath });
-    sync.markCloud('本地已保存，正在同步云端…', 45);
-
     const snapshot = {
       ...skillGraph,
       stages: resolveStages(skillGraph),
     };
-    try {
-      sync.setProgress(70, '正在上传能力标签到云端…');
-      await window.api.db.pushSkills(snapshot);
+    if (manageSync) {
       sync.finishOk(
-        `能力标签已保存并同步到云端（${snapshot.stages.length} 个阶段 / ${snapshot.skills.length} 个标签）`,
+        `能力标签已保存到本地（未推远程；${snapshot.stages.length} 个阶段 / ${snapshot.skills.length} 个标签）`,
       );
+    }
+    return filePath;
+  },
+
+  pushRemote: async (options) => {
+    const manageSync = options?.manageSync !== false;
+    const skillGraph = get().skillGraph;
+    if (!skillGraph) throw new Error('Skill graph not loaded');
+    const sync = useCloudSyncStore.getState();
+    const snapshot = {
+      ...skillGraph,
+      stages: resolveStages(skillGraph),
+    };
+    if (manageSync) sync.markCloud('正在上传能力标签到云端…', 70);
+    try {
+      await window.api.db.pushSkills(snapshot);
+      if (manageSync) {
+        sync.finishOk(
+          `能力标签已推送到远程（${snapshot.stages.length} 个阶段 / ${snapshot.skills.length} 个标签）`,
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      sync.finishError(message, '本地已保存，云端同步失败');
-      throw new Error(`本地已保存，但云端同步失败：${message}`);
+      if (manageSync) sync.finishError(message, '能力标签远程推送失败');
+      throw new Error(`能力标签远程推送失败：${message}`);
     }
-
-    return filePath;
   },
 
   discardChanges: () => {

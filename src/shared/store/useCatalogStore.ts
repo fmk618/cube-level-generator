@@ -53,6 +53,10 @@ type CatalogState = {
     importFromDisk: () => Promise<boolean>;
     exportToDisk: () => Promise<string | null>;
     saveCatalog: () => Promise<string>;
+    /** 仅写本地 runtime，不推远程 */
+    saveLocal: (options?: { manageSync?: boolean }) => Promise<string>;
+    /** 仅推当前内存目录到 MySQL */
+    pushRemote: (options?: { manageSync?: boolean }) => Promise<void>;
     discardChanges: () => void;
     resetToDefault: () => Promise<void>;
 
@@ -264,28 +268,36 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         return window.api.catalog.exportToDisk(json, 'game_levels_english.json');
     },
 
-    saveCatalog: async () => {
+    saveCatalog: async () => get().saveLocal(),
+
+    saveLocal: async (options) => {
+        const manageSync = options?.manageSync !== false;
         const catalog = get().catalog;
         if (!catalog) throw new Error('关卡目录尚未加载。');
         const sync = useCloudSyncStore.getState();
-        sync.beginLocal('正在保存关卡到本地…');
+        if (manageSync) sync.beginLocal('正在保存关卡到本地…');
         const json = exportLevelsToJSON(catalog);
         const filePath = await window.api.catalog.saveRuntime(json);
         applyCatalog(set, catalog, catalog, false);
         set({ runtimeFilePath: filePath });
-        sync.markCloud('本地已保存，正在同步云端…', 45);
+        if (manageSync) sync.finishOk('关卡已保存到本地（未推远程）');
+        return filePath;
+    },
 
+    pushRemote: async (options) => {
+        const manageSync = options?.manageSync !== false;
+        const catalog = get().catalog;
+        if (!catalog) throw new Error('关卡目录尚未加载。');
+        const sync = useCloudSyncStore.getState();
+        if (manageSync) sync.markCloud('正在上传关卡到云端…', 70);
         try {
-            sync.setProgress(70, '正在上传关卡到云端…');
             await window.api.db.pushCatalog(catalog);
-            sync.finishOk('关卡已保存并同步到云端');
+            if (manageSync) sync.finishOk('关卡已推送到远程');
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            sync.finishError(message, '本地已保存，云端同步失败');
-            throw new Error(`本地已保存，但云端同步失败：${message}`);
+            if (manageSync) sync.finishError(message, '关卡远程推送失败');
+            throw new Error(`关卡远程推送失败：${message}`);
         }
-
-        return filePath;
     },
 
     discardChanges: () => {
@@ -448,6 +460,9 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
                         hint: Object.prototype.hasOwnProperty.call(partial, 'hint')
                             ? (partial.hint?.trim() || undefined)
                             : level.hint,
+                        goalStateMatrices: Object.prototype.hasOwnProperty.call(partial, 'goalStateMatrices')
+                            ? partial.goalStateMatrices
+                            : level.goalStateMatrices,
                     }
                     : level
             )));

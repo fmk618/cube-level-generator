@@ -34,6 +34,10 @@ type LevelSkillMapState = {
   exportToDisk: () => Promise<string | null>;
   /** Export only when publish checks should gate externally; always writes App v1 JSON. */
   saveMap: () => Promise<string>;
+  /** 仅写本地 runtime，不推远程 */
+  saveLocal: (options?: { manageSync?: boolean }) => Promise<string>;
+  /** 仅推当前推荐配置到 MySQL */
+  pushRemote: (options?: { manageSync?: boolean }) => Promise<void>;
   discardChanges: () => void;
 
   getPrimary: (levelId: string) => LevelSkillBinding | null;
@@ -238,30 +242,41 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
     return window.api.levelSkillMap.exportToDisk(json, 'level_skill_map.json');
   },
 
-  saveMap: async () => {
+  saveMap: async () => get().saveLocal(),
+
+  saveLocal: async (options) => {
+    const manageSync = options?.manageSync !== false;
     const map = get().levelSkillMap;
     if (!map) throw new Error('Level skill map not loaded');
     if (Object.keys(get().ambiguous).length > 0) {
       throw new Error('仍有关卡待选择主能力标签，无法保存');
     }
     const sync = useCloudSyncStore.getState();
-    sync.beginLocal('正在保存推荐配置到本地…');
+    if (manageSync) sync.beginLocal('正在保存推荐配置到本地…');
     const json = exportLevelSkillMapToJSON(map);
     await window.api.levelSkillMap.saveRuntime(json);
     applyMap(set, map, cloneMap(map), false);
-    sync.markCloud('本地已保存，正在同步云端…', 45);
+    if (manageSync) sync.finishOk('推荐配置已保存到本地（未推远程）');
+    return 'saved';
+  },
 
+  pushRemote: async (options) => {
+    const manageSync = options?.manageSync !== false;
+    const map = get().levelSkillMap;
+    if (!map) throw new Error('Level skill map not loaded');
+    if (Object.keys(get().ambiguous).length > 0) {
+      throw new Error('仍有关卡待选择主能力标签，无法推送');
+    }
+    const sync = useCloudSyncStore.getState();
+    if (manageSync) sync.markCloud('正在上传推荐配置到云端…', 70);
     try {
-      sync.setProgress(70, '正在上传推荐配置到云端…');
       await window.api.db.pushLevelSkillMap(map);
-      sync.finishOk('推荐配置已保存并同步到云端');
+      if (manageSync) sync.finishOk('推荐配置已推送到远程');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      sync.finishError(message, '本地已保存，云端同步失败');
-      throw new Error(`本地已保存，但云端同步失败：${message}`);
+      if (manageSync) sync.finishError(message, '推荐配置远程推送失败');
+      throw new Error(`推荐配置远程推送失败：${message}`);
     }
-
-    return 'saved';
   },
 
   discardChanges: () => {

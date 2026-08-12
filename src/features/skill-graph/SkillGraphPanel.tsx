@@ -3,6 +3,7 @@ import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
+import { pushAllRemote } from '@/shared/store/localRemoteSave';
 import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import type { MasteryStandard, SkillDefinition, SkillStage } from '@/core/skill-graph/types';
 import { resolveStageLabel, resolveStages } from '@/core/skill-graph/utils';
@@ -31,6 +32,7 @@ export function SkillGraphPanel() {
   const [newStageLabel, setNewStageLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pushingRemote, setPushingRemote] = useState(false);
 
   const skills = useSkillGraphStore((state) => state.skills);
   const hasUnsavedChanges = useSkillGraphStore((state) => state.hasUnsavedChanges);
@@ -46,7 +48,7 @@ export function SkillGraphPanel() {
   const createSkill = useSkillGraphStore((state) => state.createSkill);
   const exportToDisk = useSkillGraphStore((state) => state.exportToDisk);
   const importFromDisk = useSkillGraphStore((state) => state.importFromDisk);
-  const saveSkillGraph = useSkillGraphStore((state) => state.saveSkillGraph);
+  const saveLocal = useSkillGraphStore((state) => state.saveLocal);
   const resetToDefault = useSkillGraphStore((state) => state.resetToDefault);
   const aiTouchedSkillIds = useUiStore((state) => state.aiTouchedSkillIds);
   const clearAiTouched = useUiStore((state) => state.clearAiTouched);
@@ -134,7 +136,7 @@ export function SkillGraphPanel() {
     try {
       setError(null);
       const imported = await importFromDisk();
-      setError(imported ? '✓ 已导入 JSON，请检查后保存并同步' : null);
+      setError(imported ? '✓ 已导入 JSON，请检查后本地保存或保存远程' : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '导入失败');
     }
@@ -144,13 +146,27 @@ export function SkillGraphPanel() {
     setSaving(true);
     try {
       setError(null);
-      await saveSkillGraph();
+      await saveLocal();
       clearAiTouched();
-      setError('✓ 已保存到本地，云端后台同步中');
+      setError('✓ 已保存到本地（未推远程）');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePushRemote = async () => {
+    setPushingRemote(true);
+    try {
+      setError(null);
+      await pushAllRemote();
+      clearAiTouched();
+      setError('✓ 已批量推送到远程（关卡 / 能力标签 / 推荐配置）');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '远程推送失败');
+    } finally {
+      setPushingRemote(false);
     }
   };
 
@@ -245,7 +261,7 @@ export function SkillGraphPanel() {
       setNewStageId('');
       setNewStageLabel('');
       setFilterStage(created.id);
-      setError('✓ 已新增阶段（请保存并同步）');
+      setError('✓ 已新增阶段（请本地保存或保存远程）');
     } catch (err) {
       setError(err instanceof Error ? err.message : '新增阶段失败');
     }
@@ -265,7 +281,7 @@ export function SkillGraphPanel() {
       setError(null);
       removeStage(stageId);
       if (filterStage === stageId) setFilterStage('all');
-      setError('✓ 已删除阶段（请保存并同步）');
+      setError('✓ 已删除阶段（请本地保存或保存远程）');
     } catch (err) {
       setError(err instanceof Error ? err.message : '删除阶段失败');
     }
@@ -317,10 +333,18 @@ export function SkillGraphPanel() {
           <button className="btn btn-sm" onClick={() => void handleImport()}>导入 JSON</button>
           <button className="btn btn-sm" onClick={() => void handleExport()}>导出 JSON</button>
           {hasUnsavedChanges && (
-            <button className="btn btn-sm btn-primary" onClick={() => void handleSave()} disabled={saving}>
-              {saving ? '保存中...' : '保存到本地'}
+            <button className="btn btn-sm" onClick={() => void handleSave()} disabled={saving || pushingRemote}>
+              {saving ? '保存中...' : '本地保存'}
             </button>
           )}
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => void handlePushRemote()}
+            disabled={saving || pushingRemote}
+            title="有草稿先本地保存，再批量推送三份数据"
+          >
+            {pushingRemote ? '推送中...' : '保存远程'}
+          </button>
         </div>
       </div>
 

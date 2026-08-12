@@ -60,7 +60,7 @@ export const normalizeLevelGoalStates = (
     const primary = level.goalStateMatrix;
     const merged = resolveLevelGoalStates(level);
     if (merged.length <= 1) {
-        return { goalStateMatrix: primary };
+        return { goalStateMatrix: primary, goalStateMatrices: undefined };
     }
     return {
         goalStateMatrix: primary,
