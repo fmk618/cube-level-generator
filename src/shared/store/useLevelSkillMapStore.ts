@@ -181,9 +181,7 @@ export const useLevelSkillMapStore = create<LevelSkillMapState>((set, get) => ({
         ambiguous = split.ambiguous;
         fromCloud = true;
       } else {
-        if (force && persistLocal) {
-          throw new Error('无法从云端拉取推荐配置，请检查网络与数据库连接');
-        }
+        // 云端无推荐配置时不阻断拉取，回退本地 runtime
         const runtime = await window.api.levelSkillMap.loadRuntime();
         if (runtime?.content) {
           const imported = importLevelSkillMapFromJSON(runtime.content);

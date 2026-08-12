@@ -214,7 +214,7 @@ export default function App() {
       await refreshSkillGraph({ force: true, persistLocal: true });
       setProgress(70, '正在拉取推荐配置…');
       await refreshMap({ force: true, persistLocal: true });
-      finishOk('已从云端拉取并更新本地');
+      finishOk('已从云端拉取关卡目录；能力标签与推荐配置若云端无数据则保留本地');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setSaveError(message);
