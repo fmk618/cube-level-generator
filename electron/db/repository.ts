@@ -1,5 +1,5 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { getPool } from './pool.ts';
+import { getPool, isTransientConnectionError, resetPool } from './pool.ts';
 import { ensureSchema } from './schema.ts';
 import { resolveDbConfig } from './config.ts';
 import { withDeadlockRetry, withWriteLock } from './writeLock.ts';
@@ -46,51 +46,99 @@ async function setMeta(db: Queryable, key: string, value: string): Promise<void>
   );
 }
 
+async function withPoolRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientConnectionError(error) || attempt >= maxAttempts) {
+        throw error;
+      }
+      await resetPool();
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+    }
+  }
+  throw lastError;
+}
+
 async function getMeta(key: string): Promise<string | null> {
-  const pool = getPool();
-  const [rows] = await pool.query<RowDataPacket[]>(
-    'SELECT meta_value FROM app_meta WHERE meta_key = ? LIMIT 1',
-    [key],
-  );
-  return rows[0]?.meta_value != null ? String(rows[0].meta_value) : null;
+  return withPoolRetry(async () => {
+    const pool = getPool();
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT meta_value FROM app_meta WHERE meta_key = ? LIMIT 1',
+      [key],
+    );
+    return rows[0]?.meta_value != null ? String(rows[0].meta_value) : null;
+  });
+}
+
+async function safeRollback(conn: PoolConnection): Promise<void> {
+  try {
+    await conn.rollback();
+  } catch {
+    // 连接已关闭时 rollback 会再抛 closed state，忽略
+  }
 }
 
 async function runWriteTransaction(run: (conn: PoolConnection) => Promise<void>): Promise<void> {
-  await withWriteLock(() =>
-    withDeadlockRetry(async () => {
-      await ensureSchema();
-      const pool = getPool();
-      const conn = await pool.getConnection();
+  await withWriteLock(async () => {
+    const maxAttempts = 4;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        await conn.beginTransaction();
-        await run(conn);
-        await conn.commit();
+        await withDeadlockRetry(async () => {
+          await ensureSchema();
+          const pool = getPool();
+          const conn = await pool.getConnection();
+          try {
+            await conn.beginTransaction();
+            await run(conn);
+            await conn.commit();
+          } catch (error) {
+            await safeRollback(conn);
+            throw error;
+          } finally {
+            try {
+              conn.release();
+            } catch {
+              // ignore
+            }
+          }
+        });
+        return;
       } catch (error) {
-        await conn.rollback();
-        throw error;
-      } finally {
-        conn.release();
+        lastError = error;
+        if (!isTransientConnectionError(error) || attempt >= maxAttempts) {
+          throw error;
+        }
+        await resetPool();
+        await new Promise((resolve) => setTimeout(resolve, 120 * attempt));
       }
-    }),
-  );
+    }
+    throw lastError;
+  });
 }
 
 export async function pingDb(): Promise<DbPingResult> {
   const config = resolveDbConfig();
   try {
-    await ensureSchema();
-    const pool = getPool();
-    const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT DATABASE() AS db, VERSION() AS version, CURRENT_USER() AS user',
-    );
-    const row = rows[0];
-    return {
-      ok: true,
-      database: String(row?.db ?? config.database),
-      version: String(row?.version ?? ''),
-      user: String(row?.user ?? ''),
-      host: config.host,
-    };
+    return await withPoolRetry(async () => {
+      await ensureSchema();
+      const pool = getPool();
+      const [rows] = await pool.query<RowDataPacket[]>(
+        'SELECT DATABASE() AS db, VERSION() AS version, CURRENT_USER() AS user',
+      );
+      const row = rows[0];
+      return {
+        ok: true,
+        database: String(row?.db ?? config.database),
+        version: String(row?.version ?? ''),
+        user: String(row?.user ?? ''),
+        host: config.host,
+      };
+    });
   } catch (error) {
     return {
       ok: false,
@@ -192,59 +240,61 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
 }
 
 export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
-  await ensureSchema();
-  const pool = getPool();
-  const [chapterRows] = await pool.query<RowDataPacket[]>(
-    'SELECT id, part_number, part_name, title, description, capacity FROM chapters ORDER BY part_number ASC',
-  );
-  const [levelRows] = await pool.query<RowDataPacket[]>(
-    `SELECT id, chapter_id, level_order, title, description,
-            start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
-            max_moves, star_thresholds, hint, rotation_formula, rotation_target,
-            formula_orientation, guidance_formula, guidance_failure_threshold, hidden
-     FROM levels
-     ORDER BY chapter_id ASC, level_order ASC`,
-  );
+  return withPoolRetry(async () => {
+    await ensureSchema();
+    const pool = getPool();
+    const [chapterRows] = await pool.query<RowDataPacket[]>(
+      'SELECT id, part_number, part_name, title, description, capacity FROM chapters ORDER BY part_number ASC',
+    );
+    const [levelRows] = await pool.query<RowDataPacket[]>(
+      `SELECT id, chapter_id, level_order, title, description,
+              start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
+              max_moves, star_thresholds, hint, rotation_formula, rotation_target,
+              formula_orientation, guidance_formula, guidance_failure_threshold, hidden
+       FROM levels
+       ORDER BY chapter_id ASC, level_order ASC`,
+    );
 
-  if (chapterRows.length === 0 && levelRows.length === 0) return null;
+    if (chapterRows.length === 0 && levelRows.length === 0) return null;
 
-  const versionRaw = await getMeta('catalog_version');
-  return {
-    version: Number(versionRaw ?? 1),
-    chapters: chapterRows.map((row: RowDataPacket) => ({
-      id: String(row.id),
-      partNumber: Number(row.part_number),
-      partName: String(row.part_name),
-      title: String(row.title),
-      description: row.description != null ? String(row.description) : undefined,
-      capacity: Number(row.capacity),
-    })),
-    levels: levelRows.map((row: RowDataPacket) => ({
-      id: String(row.id),
-      chapterId: String(row.chapter_id),
-      order: Number(row.level_order),
-      title: String(row.title),
-      description: String(row.description ?? ''),
-      startStateMatrix: parseJsonField(row.start_state_matrix, []),
-      goalStateMatrix: parseJsonField(row.goal_state_matrix, []),
-      goalStateMatrices: row.goal_state_matrices != null
-        ? parseJsonField(row.goal_state_matrices, [])
-        : undefined,
-      brightnessMatrix: parseJsonField(row.brightness_matrix, []),
-      maxMoves: Number(row.max_moves),
-      starThresholds: parseJsonField<[number, number]>(row.star_thresholds, [0, 0]),
-      hint: row.hint != null ? String(row.hint) : undefined,
-      rotationFormula: row.rotation_formula != null ? String(row.rotation_formula) : undefined,
-      rotationTarget: row.rotation_target != null ? String(row.rotation_target) : undefined,
-      formulaOrientation: row.formula_orientation != null
-        ? parseJsonField(row.formula_orientation, undefined)
-        : undefined,
-      guidanceFormula: row.guidance_formula != null ? String(row.guidance_formula) : undefined,
-      guidanceFailureThreshold:
-        row.guidance_failure_threshold != null ? Number(row.guidance_failure_threshold) : undefined,
-      hidden: Boolean(row.hidden),
-    })),
-  };
+    const versionRaw = await getMeta('catalog_version');
+    return {
+      version: Number(versionRaw ?? 1),
+      chapters: chapterRows.map((row: RowDataPacket) => ({
+        id: String(row.id),
+        partNumber: Number(row.part_number),
+        partName: String(row.part_name),
+        title: String(row.title),
+        description: row.description != null ? String(row.description) : undefined,
+        capacity: Number(row.capacity),
+      })),
+      levels: levelRows.map((row: RowDataPacket) => ({
+        id: String(row.id),
+        chapterId: String(row.chapter_id),
+        order: Number(row.level_order),
+        title: String(row.title),
+        description: String(row.description ?? ''),
+        startStateMatrix: parseJsonField(row.start_state_matrix, []),
+        goalStateMatrix: parseJsonField(row.goal_state_matrix, []),
+        goalStateMatrices: row.goal_state_matrices != null
+          ? parseJsonField(row.goal_state_matrices, [])
+          : undefined,
+        brightnessMatrix: parseJsonField(row.brightness_matrix, []),
+        maxMoves: Number(row.max_moves),
+        starThresholds: parseJsonField<[number, number]>(row.star_thresholds, [0, 0]),
+        hint: row.hint != null ? String(row.hint) : undefined,
+        rotationFormula: row.rotation_formula != null ? String(row.rotation_formula) : undefined,
+        rotationTarget: row.rotation_target != null ? String(row.rotation_target) : undefined,
+        formulaOrientation: row.formula_orientation != null
+          ? parseJsonField(row.formula_orientation, undefined)
+          : undefined,
+        guidanceFormula: row.guidance_formula != null ? String(row.guidance_formula) : undefined,
+        guidanceFailureThreshold:
+          row.guidance_failure_threshold != null ? Number(row.guidance_failure_threshold) : undefined,
+        hidden: Boolean(row.hidden),
+      })),
+    };
+  });
 }
 
 export async function pushSkills(doc: CloudSkillGraphDocument): Promise<void> {

@@ -3,6 +3,7 @@ import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useUiStore } from '@/shared/store/useUiStore';
+import { pushAllRemote } from '@/shared/store/localRemoteSave';
 import { SelectDropdown } from '@/shared/ui/SelectDropdown';
 import type { LevelDefinition } from '@/core/levels';
 import {
@@ -28,6 +29,7 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
   const [batchTeachMode, setBatchTeachMode] = useState<TeachMode>('guided');
   const [batchDifficulty, setBatchDifficulty] = useState('2');
   const [publishIssues, setPublishIssues] = useState<PublishCheckIssue[] | null>(null);
+  const [pushingRemote, setPushingRemote] = useState(false);
   const setAiMapLevelIds = useUiStore((state) => state.setAiMapLevelIds);
   const aiTouchedLevelIds = useUiStore((state) => state.aiTouchedLevelIds);
   const clearAiTouched = useUiStore((state) => state.clearAiTouched);
@@ -55,7 +57,7 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
   const exportToDisk = useLevelSkillMapStore((state) => state.exportToDisk);
   const importFromDisk = useLevelSkillMapStore((state) => state.importFromDisk);
   const hasUnsavedChanges = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
-  const saveMap = useLevelSkillMapStore((state) => state.saveMap);
+  const saveLocal = useLevelSkillMapStore((state) => state.saveLocal);
   const refreshMap = useLevelSkillMapStore((state) => state.refreshMap);
   const isMapLoading = useLevelSkillMapStore((state) => state.isLoading);
 
@@ -172,11 +174,25 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
   const handleSave = async () => {
     try {
       setError(null);
-      await saveMap();
+      await saveLocal();
       clearAiTouched();
-      setError('✓ 已保存到本地，云端后台同步中（App v1）');
+      setError('✓ 已保存到本地（未推远程）');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
+    }
+  };
+
+  const handlePushRemote = async () => {
+    setPushingRemote(true);
+    try {
+      setError(null);
+      await pushAllRemote();
+      clearAiTouched();
+      setError('✓ 已批量推送到远程（关卡 / 能力标签 / 推荐配置）');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '远程推送失败');
+    } finally {
+      setPushingRemote(false);
     }
   };
 
@@ -224,8 +240,19 @@ export function LevelSkillMapPanel({ onOpenLevelContent }: LevelSkillMapPanelPro
           <button type="button" className="btn btn-sm" onClick={runPublishCheck}>发布检查</button>
           <button type="button" className="btn btn-sm" onClick={() => void handleExport()}>导出 JSON</button>
           {hasUnsavedChanges && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={() => void handleSave()}>保存到本地</button>
+            <button type="button" className="btn btn-sm" onClick={() => void handleSave()} disabled={pushingRemote}>
+              本地保存
+            </button>
           )}
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() => void handlePushRemote()}
+            disabled={pushingRemote}
+            title="有草稿先本地保存，再批量推送三份数据"
+          >
+            {pushingRemote ? '推送中...' : '保存远程'}
+          </button>
         </div>
       </div>
 

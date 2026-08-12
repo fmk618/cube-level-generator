@@ -48,17 +48,20 @@ export function AppDataImportWizard({ open, onClose, onOpenPage }: AppDataImport
   const catalog = useCatalogStore((state) => state.catalog);
   const levels = useCatalogStore((state) => state.levels);
   const catalogUnsaved = useCatalogStore((state) => state.hasUnsavedChanges);
-  const saveCatalog = useCatalogStore((state) => state.saveCatalog);
+  const saveLocalCatalog = useCatalogStore((state) => state.saveLocal);
+  const pushRemoteCatalog = useCatalogStore((state) => state.pushRemote);
 
   const skillGraph = useSkillGraphStore((state) => state.skillGraph);
   const skills = useSkillGraphStore((state) => state.skills);
   const skillsUnsaved = useSkillGraphStore((state) => state.hasUnsavedChanges);
-  const saveSkillGraph = useSkillGraphStore((state) => state.saveSkillGraph);
+  const saveLocalSkills = useSkillGraphStore((state) => state.saveLocal);
+  const pushRemoteSkills = useSkillGraphStore((state) => state.pushRemote);
 
   const levelSkillMap = useLevelSkillMapStore((state) => state.levelSkillMap);
   const ambiguous = useLevelSkillMapStore((state) => state.ambiguous);
   const mapUnsaved = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
-  const saveMap = useLevelSkillMapStore((state) => state.saveMap);
+  const saveLocalMap = useLevelSkillMapStore((state) => state.saveLocal);
+  const pushRemoteMap = useLevelSkillMapStore((state) => state.pushRemote);
 
   const publishIssues = useMemo(() => {
     if (!levelSkillMap) return [];
@@ -161,17 +164,19 @@ export function AppDataImportWizard({ open, onClose, onOpenPage }: AppDataImport
     setNotice(null);
     try {
       if (step === 'catalog') {
-        await saveCatalog();
+        await saveLocalCatalog();
+        await pushRemoteCatalog();
         setSavedSteps((current) => ({ ...current, catalog: true }));
         setActiveStep('skills');
-        setNotice({ kind: 'ok', text: '关卡内容已写入 runtime 并同步云端。现在导入能力标签。' });
+        setNotice({ kind: 'ok', text: '关卡内容已写入本地并推送到远程。现在导入能力标签。' });
         return;
       }
       if (step === 'skills') {
-        await saveSkillGraph();
+        await saveLocalSkills();
+        await pushRemoteSkills();
         setSavedSteps((current) => ({ ...current, skills: true }));
         setActiveStep('map');
-        setNotice({ kind: 'ok', text: '能力标签已写入 runtime 并同步云端。现在导入推荐配置。' });
+        setNotice({ kind: 'ok', text: '能力标签已写入本地并推送到远程。现在导入推荐配置。' });
         return;
       }
       if (ambiguousCount > 0) {
@@ -180,10 +185,11 @@ export function AppDataImportWizard({ open, onClose, onOpenPage }: AppDataImport
       if (publishErrors.length > 0) {
         throw new Error(`发布检查发现 ${publishErrors.length} 个阻断项，请先修复后再保存。`);
       }
-      await saveMap();
+      await saveLocalMap();
+      await pushRemoteMap();
       setSavedSteps((current) => ({ ...current, map: true }));
       setActiveStep('review');
-      setNotice({ kind: 'ok', text: '推荐配置已保存为 App v1，并同步云端。' });
+      setNotice({ kind: 'ok', text: '推荐配置已保存为 App v1，并已推送到远程。' });
     } catch (error) {
       setNotice({ kind: 'error', text: error instanceof Error ? error.message : String(error) });
     } finally {

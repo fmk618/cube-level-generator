@@ -4,6 +4,7 @@ import { useCatalogStore } from '@/shared/store/useCatalogStore';
 import { useUiStore } from '@/shared/store/useUiStore';
 import { useLevelSkillMapStore } from '@/shared/store/useLevelSkillMapStore';
 import { useSkillGraphStore } from '@/shared/store/useSkillGraphStore';
+import { pushAllRemote } from '@/shared/store/localRemoteSave';
 import {
   buildYawEquivalentGoalStates,
   deriveLevelDebugFormulaPreset,
@@ -289,7 +290,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const selectLevel = useUiStore((s) => s.selectLevel);
   const formulaAdoptionRequest = useUiStore((s) => s.formulaAdoptionRequest);
   const clearFormulaAdoptionRequest = useUiStore((s) => s.clearFormulaAdoptionRequest);
-  const { levels, chapters, hasUnsavedChanges, updateLevel, deleteLevel, saveCatalog } = useCatalogStore();
+  const { levels, chapters, hasUnsavedChanges, updateLevel, deleteLevel, saveLocal } = useCatalogStore();
   const level = useMemo(() => levels.find((l) => l.id === selectedLevelId) ?? null, [levels, selectedLevelId]);
   const getPrimary = useLevelSkillMapStore((s) => s.getPrimary);
   const skills = useSkillGraphStore((s) => s.skills);
@@ -1254,7 +1255,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     startStateMatrix, goalStateMatrix, goalStateMatrices, brightnessMatrix,
   ]);
 
-  const handleSave = async () => {
+  const handleSave = async (mode: 'local' | 'remote' = 'local') => {
     if (!level) return;
     setSaveError(null);
     setSaveNotice(null);
@@ -1322,13 +1323,17 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     try {
       const updatedLevel = updateLevel(level.id, patch);
       if (!updatedLevel) throw new Error(`找不到要保存的关卡：${level.id}`);
-      let cloudSyncError: string | null = null;
+      let remoteError: string | null = null;
       try {
-        await saveCatalog();
+        if (mode === 'remote') {
+          await pushAllRemote();
+        } else {
+          await saveLocal();
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message.includes('云端同步失败')) {
-          cloudSyncError = message;
+        if (mode === 'remote' && (message.includes('远程推送失败') || message.includes('推送'))) {
+          remoteError = message;
         } else {
           throw error;
         }
@@ -1356,12 +1361,14 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setLiveStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setBrightnessMatrix(cloneBrightness(updatedLevel.brightnessMatrix));
       useUiStore.getState().clearAiTouched();
-      if (cloudSyncError) {
-        setSaveError(cloudSyncError);
+      if (remoteError) {
+        setSaveError(remoteError);
         setSaveNotice(warnings.length > 0 ? `本地草稿已保留。${warnings.join(' ')}` : '本地草稿已保留。');
       } else {
         setSaveError(null);
-        const syncHint = '关卡已保存并同步到云端。';
+        const syncHint = mode === 'remote'
+          ? '已批量推送到远程（关卡 / 能力标签 / 推荐配置）。'
+          : '已保存到本地（未推远程）。';
         setSaveNotice(warnings.length > 0 ? `${syncHint} ${warnings.join(' ')}` : syncHint);
       }
     } catch (error) {
@@ -1402,11 +1409,21 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           {(hasEditorChanges || hasUnsavedChanges) && <span className="save-state"><i />未保存</span>}
           <button
             type="button"
-            className="btn btn-primary titlebar-save"
+            className="btn titlebar-save"
             disabled={saving || (!hasEditorChanges && !hasUnsavedChanges)}
-            onClick={() => void handleSave()}
+            onClick={() => void handleSave('local')}
+            title="写入内存并落盘本地，不推 MySQL"
           >
-            {saving ? <><span className="spinner" />保存中</> : '保存关卡'}
+            {saving ? <><span className="spinner" />保存中</> : '本地保存'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary titlebar-save"
+            disabled={saving}
+            onClick={() => void handleSave('remote')}
+            title="先落盘当前关卡草稿，再批量推送关卡 / 能力标签 / 推荐配置"
+          >
+            {saving ? <><span className="spinner" />推送中</> : '保存远程'}
           </button>
         </>,
         headerActionsHost,

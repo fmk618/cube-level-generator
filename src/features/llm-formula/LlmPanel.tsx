@@ -639,7 +639,7 @@ export function LlmPanel({
       markAiTouchedSkills(ids);
       await saveSkillGraph();
       clearAiTouched();
-      setNotice('✓ 技能提案已应用并保存到云端。');
+      setNotice('✓ 技能提案已应用并保存到本地（未推远程）。');
       setSkillProposals([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -669,7 +669,7 @@ export function LlmPanel({
       markAiTouchedLevels(levelIds);
       await saveMap();
       clearAiTouched();
-      setNotice('✓ 推荐配置已应用并保存到云端。');
+      setNotice('✓ 推荐配置已应用并保存到本地（未推远程）。');
       setMappingProposals([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -700,7 +700,7 @@ export function LlmPanel({
       if (levelIds[0]) selectLevel(levelIds[0]);
       await saveCatalog();
       clearAiTouched();
-      setNotice('✓ 章节提案已应用并保存到云端。');
+      setNotice('✓ 章节提案已应用并保存到本地（未推远程）。');
       setChapterProposals([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -728,7 +728,7 @@ export function LlmPanel({
       if (createdIds[0]) selectLevel(createdIds[0]);
       await saveCatalog();
       clearAiTouched();
-      setNotice('✓ 关卡提案已应用并保存到云端。');
+      setNotice('✓ 关卡提案已应用并保存到本地（未推远程）。');
       setLevelProposals([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

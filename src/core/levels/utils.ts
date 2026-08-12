@@ -268,6 +268,9 @@ export const normalizeLevelCatalogDocument = (
                     ? { ...level.formulaOrientation }
                     : undefined,
                 stateDefinitionMode,
+                // 显式覆盖，避免 ...level 把已删除的多目标数组残留回来
+                goalStateMatrix: normalizedGoals.goalStateMatrix,
+                goalStateMatrices: normalizedGoals.goalStateMatrices,
                 guidanceFormula: level.guidanceFormula?.trim() || undefined,
                 guidanceFailureThreshold: resolveLevelGuidanceFailureThreshold(
                     level.guidanceFailureThreshold,
