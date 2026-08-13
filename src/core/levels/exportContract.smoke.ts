@@ -2,11 +2,12 @@
  * 桌面导出契约冒烟：确保 App 需要的字段会出现在 JSON 里。
  * 运行: npx tsx src/core/levels/exportContract.smoke.ts
  */
-import { INITIAL_BRIGHTNESS_MATRIX, INITIAL_STATE_MATRIX } from '../cube/constants';
+import { INITIAL_BRIGHTNESS_MATRIX, INITIAL_COLOR_MATRIX, INITIAL_STATE_MATRIX } from '../cube/constants';
 import { DEV_CUSTOM_COLOR_VALUES } from '../formula/types';
 import { LEVEL_LAYOUT_CHAPTERS } from './chapters';
 import { exportLevelsToJSON, importLevelsFromJSON, normalizeLevelCatalogDocument } from './utils';
 import type { LevelCatalogDocument, LevelDefinition } from './types';
+import { isLevelGoalReached } from './goalEvaluation';
 
 const assert = (condition: unknown, message: string): void => {
   if (!condition) throw new Error(message);
@@ -61,5 +62,24 @@ const brightnessOnly = normalizeLevelCatalogDocument({
   levels: [createLevel({ rotationFormula: undefined, stateDefinitionMode: undefined })],
 });
 assert(brightnessOnly.levels[0].stateDefinitionMode === 'brightness', 'no formula → brightness');
+
+const visibleEquivalent = INITIAL_STATE_MATRIX.map((face) => face.map((row) => [...row]));
+[visibleEquivalent[0][0][1], visibleEquivalent[0][1][1]] = [
+  visibleEquivalent[0][1][1],
+  visibleEquivalent[0][0][1],
+];
+const bothLit = INITIAL_BRIGHTNESS_MATRIX.map((face) => face.map((row) => row.map(() => 0)));
+bothLit[0][0][1] = 8;
+bothLit[0][1][1] = 8;
+assert(
+  isLevelGoalReached(visibleEquivalent, INITIAL_STATE_MATRIX, bothLit, INITIAL_COLOR_MATRIX),
+  'same visible pattern must ignore same-color sticker ID',
+);
+const oneLit = INITIAL_BRIGHTNESS_MATRIX.map((face) => face.map((row) => row.map(() => 0)));
+oneLit[0][1][1] = 8;
+assert(
+  !isLevelGoalReached(visibleEquivalent, INITIAL_STATE_MATRIX, oneLit, INITIAL_COLOR_MATRIX),
+  'different visible brightness layout must fail',
+);
 
 console.log('exportContract.smoke: ok');
