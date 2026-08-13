@@ -35,6 +35,6 @@ export const buildLevelForChapter = (
         maxMoves: 8,
         starThresholds: getMinimumStarThresholds(8),
         hint: 'Set the initial and goal states in the editor.',
-        guidanceFailureThreshold: 3,
+        guidanceFailureThreshold: -1,
     };
 };

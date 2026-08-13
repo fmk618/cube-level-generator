@@ -93,7 +93,7 @@ export const calculateStars = (
 const LEVEL_FILE_VERSION = 2;
 const MIN_STICKER_ID = 0;
 const MAX_STICKER_ID = 53;
-export const DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD: LevelGuidanceFailureThreshold = 3;
+export const DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD: LevelGuidanceFailureThreshold = -1;
 
 export const LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS: LevelGuidanceFailureThreshold[] = [
     -1, 0, 1, 2, 3, 4, 5,
