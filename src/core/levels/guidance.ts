@@ -7,7 +7,7 @@ import { resolveBuiltinFormulaTarget } from './types';
 import { applyTokensToState, mapTokensByOrientationWithSource, parseFormulaTokens } from '../formula/moves';
 import { notationToFace } from '../formula/notationToFace';
 import { INITIAL_COLOR_MATRIX } from '../cube';
-import { isLevelGoalReachedForLevel } from './goalStates';
+import { isFormulaLevelGoalReachedForLevel } from './goalStates';
 import { resolveLevelGuidanceFailureThreshold } from './utils';
 import { toPhysicalTokensFromGrip } from './debugFormulaOrientation';
 
@@ -114,7 +114,7 @@ export const getLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceSu
         }
 
         const result = applyTokensToState(level.startStateMatrix, mappedTokens);
-        if (!isLevelGoalReachedForLevel(
+        if (!isFormulaLevelGoalReachedForLevel(
             result,
             level,
             level.brightnessMatrix,

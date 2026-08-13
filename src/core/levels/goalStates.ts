@@ -1,7 +1,7 @@
 import { applyTokensToState } from '../formula/moves';
 import type { StateMatrix } from '../cube/types';
 import type { LevelDefinition } from './types';
-import { isLevelGoalReached } from './goalEvaluation';
+import { isFormulaLevelGoalReached, isLevelGoalReached } from './goalEvaluation';
 import type { BrightnessMatrix, ColorMatrix } from '../cube';
 
 const cloneStateMatrix = (matrix: StateMatrix): StateMatrix =>
@@ -79,3 +79,12 @@ export const isLevelGoalReachedForLevel = (
         isLevelGoalReached(currentState, goal, brightnessMatrix, colorMatrix),
     );
 };
+
+export const isFormulaLevelGoalReachedForLevel = (
+    currentState: StateMatrix,
+    level: Pick<LevelDefinition, 'goalStateMatrix' | 'goalStateMatrices'>,
+    brightnessMatrix: BrightnessMatrix,
+    colorMatrix: ColorMatrix,
+): boolean => resolveLevelGoalStates(level).some((goal) =>
+    isFormulaLevelGoalReached(currentState, goal, brightnessMatrix, colorMatrix),
+);

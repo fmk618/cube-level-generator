@@ -72,11 +72,12 @@ export {
     getPhysicalFaceForColor,
 } from './orientationBrightness';
 
-export { isLevelGoalReached } from './goalEvaluation';
+export { isFormulaLevelGoalReached, isLevelGoalReached } from './goalEvaluation';
 export {
     buildYawEquivalentGoalStates,
     isYawEquivalentGoalSet,
     isLevelGoalReachedForLevel,
+    isFormulaLevelGoalReachedForLevel,
     normalizeLevelGoalStates,
     resolveLevelGoalStates,
 } from './goalStates';

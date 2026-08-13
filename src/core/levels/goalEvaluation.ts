@@ -1,5 +1,6 @@
 import {
     findBrightnessByStateId,
+    findColorByStateId,
     type BrightnessMatrix,
     type ColorMatrix,
     type StateMatrix,
@@ -9,7 +10,7 @@ export const isLevelGoalReached = (
     currentState: StateMatrix,
     goalState: StateMatrix,
     brightnessMatrix: BrightnessMatrix,
-    _colorMatrix: ColorMatrix,
+    colorMatrix: ColorMatrix,
 ): boolean => {
     for (let face = 0; face < 6; face += 1) {
         for (let row = 0; row < 3; row += 1) {
@@ -19,12 +20,37 @@ export const isLevelGoalReached = (
                 const currentIsTarget = findBrightnessByStateId(currentStickerId, brightnessMatrix) > 0;
                 const goalIsTarget = findBrightnessByStateId(goalStickerId, brightnessMatrix) > 0;
 
-                // 目标贴纸不能只比较颜色：同色贴纸交换位置时颜色仍相同，
-                // 但目标区域的实际位置已经错误。目标区域内外只要有目标
-                // 贴纸发生位移，就不能判定完成。
-                if ((currentIsTarget || goalIsTarget) && currentStickerId !== goalStickerId) {
-                    return false;
-                }
+                // 与 App 正式 Game 保持一致：比较玩家实际看到的完整灯光图案。
+                // 亮暗布局不同直接失败；双方都熄灭时忽略；双方都点亮时比较颜色。
+                if (currentIsTarget !== goalIsTarget) return false;
+                if (!goalIsTarget) continue;
+                if (
+                    findColorByStateId(currentStickerId, colorMatrix)
+                    !== findColorByStateId(goalStickerId, colorMatrix)
+                ) return false;
+            }
+        }
+    }
+    return true;
+};
+
+/** 旧关卡推荐解法兼容校验：仅验证目标点颜色。 */
+export const isFormulaLevelGoalReached = (
+    currentState: StateMatrix,
+    goalState: StateMatrix,
+    brightnessMatrix: BrightnessMatrix,
+    colorMatrix: ColorMatrix,
+): boolean => {
+    for (let face = 0; face < 6; face += 1) {
+        for (let row = 0; row < 3; row += 1) {
+            for (let col = 0; col < 3; col += 1) {
+                const goalStickerId = goalState[face][row][col];
+                if (findBrightnessByStateId(goalStickerId, brightnessMatrix) <= 0) continue;
+                const currentStickerId = currentState[face][row][col];
+                if (
+                    findColorByStateId(currentStickerId, colorMatrix)
+                    !== findColorByStateId(goalStickerId, colorMatrix)
+                ) return false;
             }
         }
     }
