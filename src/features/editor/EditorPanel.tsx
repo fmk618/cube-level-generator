@@ -314,7 +314,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     ...DEFAULT_LEVEL_DEBUG_ORIENTATION,
   }));
   const [guidanceFormulaText, setGuidanceFormulaText] = useState('');
-  const [guidanceFailureThreshold, setGuidanceFailureThreshold] = useState<LevelGuidanceFailureThreshold>(3);
+  const [guidanceFailureThreshold, setGuidanceFailureThreshold] = useState<LevelGuidanceFailureThreshold>(-1);
   const [startStateMatrix, setStartStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrix, setGoalStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrices, setGoalStateMatrices] = useState<StateMatrix[] | undefined>(undefined);
@@ -1312,10 +1312,19 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       guidanceFailureThreshold,
     };
 
+    if (guidanceFailureThreshold >= 0 && !guidanceFormula) {
+      setSaveError('当前已设置指引开启条件，但推荐解法为空。请先填写并校验推荐解法，或改为“不启用”。');
+      return;
+    }
+
     if (guidanceFormula) {
       const summary = getLevelGuidanceSummary({ ...level, ...patch } as LevelDefinition);
       if (summary.status !== 'ready') {
-        warnings.push(`推荐解法暂未通过校验（已按草稿保存）：${summary.message}`);
+        if (guidanceFailureThreshold >= 0) {
+          setSaveError(`推荐解法无效：${summary.message}`);
+          return;
+        }
+        warnings.push(`推荐解法暂未通过校验（指引未启用）：${summary.message}`);
       }
     }
 
