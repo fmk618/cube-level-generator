@@ -42,11 +42,8 @@ import {
   expandTokenToLayerMoves,
   applyTokensToState,
   invertReverseTokens,
-  notationToFace,
-  notationToGuidanceArrow,
   resolveOrientationRecord,
   type DevCustomOrientation,
-  type GuidanceArrowMove,
 } from '@/core/formula';
 import { getLevelRecommendStatus, getTeachModeLabel } from '@/core/skill-graph/utils';
 import {
@@ -63,12 +60,6 @@ import {
 } from '@/core/cube';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
 import type { CubePlayRequest } from '@/features/preview-3d/CubeScene';
-import {
-  buildChaseOverlayBrightness,
-  buildChaseOverlayFromPath,
-  getChaseRingLength,
-} from '@/features/guidance-preview';
-import { buildGuidanceStickerChasePath } from '@/features/guidance-preview/chasePath';
 import { FormulaKeyboard } from './FormulaKeyboard';
 import { EditorMovePad } from './EditorMovePad';
 import { BrightnessCrossPreview } from './BrightnessCrossPreview';
@@ -340,12 +331,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   const [blinkMaskMatrix, setBlinkMaskMatrix] = useState<BlinkMaskMatrix>(createEmptyBlinkMaskMatrix());
   const [blinkEditMode, setBlinkEditMode] = useState(false);
   const [demoPlaying, setDemoPlaying] = useState(false);
-  const [demoStateMatrix, setDemoStateMatrix] = useState<StateMatrix | null>(null);
-  const [demoOverlayBrightness, setDemoOverlayBrightness] = useState<BrightnessMatrix | null>(null);
-  const [demoArrow, setDemoArrow] = useState<GuidanceArrowMove | null>(null);
   const [demoStepLabel, setDemoStepLabel] = useState<string | null>(null);
-  const demoRunRef = useRef(0);
-  const demoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [startStateMatrix, setStartStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrix, setGoalStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrices, setGoalStateMatrices] = useState<StateMatrix[] | undefined>(undefined);
@@ -490,14 +476,12 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setActiveTab('meta');
     setSaveError(null);
     setSaveNotice(null);
-    demoTimersRef.current.forEach(clearTimeout);
-    demoTimersRef.current = [];
-    demoRunRef.current += 1;
     setDemoPlaying(false);
-    setDemoStateMatrix(null);
-    setDemoOverlayBrightness(null);
-    setDemoArrow(null);
     setDemoStepLabel(null);
+    playingRef.current = false;
+    setPlayRequest(null);
+    pendingGuidancePreviewRef.current = null;
+    pendingGuidancePreviewNoticeRef.current = null;
     // 切换关卡 或 整体替换目录（导入/重置/放弃草稿）时重置表单
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [level?.id, catalogEpoch]);
@@ -557,7 +541,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     return isYawEquivalentGoalSet(goalStateMatrix, goalStateMatrices);
   }, [goalStateMatrix, goalStateMatrices]);
 
-  const previewStateMatrix = demoStateMatrix ?? liveStateMatrix ?? startStateMatrix;
+  const previewStateMatrix = liveStateMatrix ?? startStateMatrix;
 
   const applyManualToken = useCallback((token: string) => {
     if (playingRef.current) return;
@@ -592,6 +576,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       pendingGuidancePreviewRef.current = null;
       setSaveNotice(pendingGuidancePreviewNoticeRef.current);
       pendingGuidancePreviewNoticeRef.current = null;
+      setDemoPlaying(false);
+      setDemoStepLabel(null);
     } else if (pendingFormulaApplyRef.current) {
       const pending = pendingFormulaApplyRef.current;
       pendingFormulaApplyRef.current = null;
@@ -1119,154 +1105,77 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   ]);
 
   const stopGuidanceDemo = useCallback(() => {
-    demoTimersRef.current.forEach(clearTimeout);
-    demoTimersRef.current = [];
-    demoRunRef.current += 1;
     setDemoPlaying(false);
-    setDemoStateMatrix(null);
-    setDemoOverlayBrightness(null);
-    setDemoArrow(null);
     setDemoStepLabel(null);
+    playingRef.current = false;
+    setPlayRequest(null);
+    pendingGuidancePreviewRef.current = null;
+    pendingGuidancePreviewNoticeRef.current = null;
   }, []);
 
   const startGuidanceDemo = useCallback(() => {
-    if (!level || !startStateMatrix || !goalStateMatrix) {
-      setSaveError('请先配置起始状态和目标状态。');
+    if (playingRef.current) return;
+    if (!startStateMatrix) {
+      setSaveError('请先配置起始状态。');
       return;
     }
-    const formula = guidanceFormulaText.trim();
+    const formula = guidanceFormulaText.trim() || formulaText.trim();
     if (!formula) {
-      setSaveError('请先输入推荐解法。');
-      return;
-    }
-    const physicalFormula = (() => {
-      try {
-        return mapGuidanceFormulaToPhysicalTokens(formula, formulaOrientation).join(' ');
-      } catch {
-        return formula;
-      }
-    })();
-    const summary = getLevelGuidanceSummary({
-      ...level,
-      startStateMatrix,
-      goalStateMatrix,
-      goalStateMatrices: allGoalVariants.length > 1 ? allGoalVariants : undefined,
-      brightnessMatrix,
-      blinkMaskMatrix,
-      formulaOrientation,
-      guidanceSourceFormula: formula,
-      guidanceFormula: physicalFormula,
-      guidancePresentationMode,
-      guidanceStickerPathChase,
-      guidanceFailureThreshold,
-    });
-    if (summary.status !== 'ready' || summary.executionSteps.length === 0) {
-      setSaveError(summary.message || '推荐解法无法演示。');
+      setSaveError('请先填写推荐解法，或填写自定义公式。');
       return;
     }
 
+    let physicalTokens: string[];
+    try {
+      physicalTokens = mapGuidanceFormulaToPhysicalTokens(formula, formulaOrientation);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    if (physicalTokens.length === 0) {
+      setSaveError('公式没有可执行的转动。');
+      return;
+    }
+
+    let moves: ReturnType<typeof expandTokenToLayerMoves> = [];
+    try {
+      moves = physicalTokens.flatMap((token) => expandTokenToLayerMoves(token));
+    } catch {
+      moves = [];
+    }
+
+    const result = applyTokensToState(startStateMatrix, physicalTokens);
     stopGuidanceDemo();
-    const runId = demoRunRef.current + 1;
-    demoRunRef.current = runId;
-    setDemoPlaying(true);
     setPreviewMode('start');
+    setLiveStateMatrix(cloneStateMatrix(startStateMatrix));
     setSaveError(null);
-    setSaveNotice(null);
 
-    let state = cloneStateMatrix(startStateMatrix);
-    setDemoStateMatrix(state);
-    setDemoOverlayBrightness(null);
-    setDemoArrow(null);
+    if (moves.length === 0) {
+      setLiveStateMatrix(cloneStateMatrix(result));
+      setSaveNotice('公式已应用到预览（无可动画层转）。');
+      return;
+    }
 
-    const schedule = (delayMs: number, fn: () => void) => {
-      const timer = setTimeout(() => {
-        if (demoRunRef.current !== runId) return;
-        fn();
-      }, delayMs);
-      demoTimersRef.current.push(timer);
-    };
-
-    const showFormulaCue = guidancePresentationMode === 'full';
-    let cursorMs = 280;
-    setDemoStepLabel('演示开始…');
-    setSaveNotice('正在 3D 预览中演示指引：箭头 → 流水灯 → 转体。可点「停止演示」中断。');
-    summary.executionSteps.forEach((step, stepIndex) => {
-      const notation = step.notation;
-      const faceHint = notationToFace(notation);
-      const arrow = notationToGuidanceArrow(notation);
-      const useStickerPath = guidanceStickerPathChase;
-      const stickerPath = useStickerPath
-        ? buildGuidanceStickerChasePath(
-          blinkMaskMatrix,
-          brightnessMatrix,
-          goalStateMatrix,
-          state,
-          faceHint?.face ?? null,
-          (faceHint?.dir === -1 ? -1 : 1),
-        )
-        : null;
-      const ringLen = stickerPath?.length
-        ?? (faceHint ? getChaseRingLength(faceHint.face) : 0);
-
-      schedule(cursorMs, () => {
-        const label = showFormulaCue
-          ? `${stepIndex + 1}/${summary.executionSteps.length} · ${notation}`
-          : `${stepIndex + 1}/${summary.executionSteps.length}`;
-        setDemoStepLabel(label);
-        setDemoArrow(arrow);
-        setDemoOverlayBrightness(null);
-      });
-      cursorMs += showFormulaCue ? 520 : 360;
-
-      if (ringLen > 0) {
-        for (let lit = 1; lit <= ringLen; lit += 1) {
-          const count = lit;
-          schedule(cursorMs, () => {
-            if (stickerPath) {
-              setDemoOverlayBrightness(buildChaseOverlayFromPath(brightnessMatrix, stickerPath, count));
-            } else if (faceHint) {
-              setDemoOverlayBrightness(buildChaseOverlayBrightness(brightnessMatrix, faceHint.face, count));
-            }
-          });
-          cursorMs += 110;
-        }
-        cursorMs += 280;
-      } else {
-        cursorMs += 520;
-      }
-
-      schedule(cursorMs, () => {
-        state = applyTokensToState(state, [notation]);
-        setDemoStateMatrix(cloneStateMatrix(state));
-        setDemoOverlayBrightness(null);
-        setDemoArrow(null);
-      });
-      cursorMs += 560;
-    });
-
-    schedule(cursorMs, () => {
-      setDemoStepLabel('演示完成');
-      setDemoOverlayBrightness(null);
-      setDemoArrow(null);
-    });
-    schedule(cursorMs + 1200, () => {
-      stopGuidanceDemo();
-      setSaveNotice('指引演示已结束。若流水灯路径不对，可改「流水灯路径」后再点演示。');
-    });
+    const sourceLabel = guidanceFormulaText.trim() ? '推荐解法' : '自定义公式';
+    setDemoPlaying(true);
+    setDemoStepLabel(`按${sourceLabel}演示 ${physicalTokens.length} 步…`);
+    setSaveNotice(`正在按${sourceLabel}从初始态逐步转动 3D 预览…`);
+    pendingGuidancePreviewRef.current = result;
+    pendingGuidancePreviewNoticeRef.current = `${sourceLabel}演示完成。`;
+    playCounterRef.current += 1;
+    playingRef.current = true;
+    setPlayRequest({ id: playCounterRef.current, moves });
   }, [
-    allGoalVariants,
-    blinkMaskMatrix,
-    brightnessMatrix,
     formulaOrientation,
-    goalStateMatrix,
-    guidanceFailureThreshold,
+    formulaText,
     guidanceFormulaText,
-    guidancePresentationMode,
-    guidanceStickerPathChase,
-    level,
     startStateMatrix,
     stopGuidanceDemo,
   ]);
+
+  const canPlayFormulaDemo = Boolean(
+    startStateMatrix && (guidanceFormulaText.trim() || formulaText.trim()),
+  );
 
   const applyGuidanceValidation = () => {
     const formula = guidanceFormulaText.trim();
@@ -1727,13 +1636,13 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               <button
                 type="button"
                 className="btn btn-sm"
-                disabled={!startStateMatrix || !goalStateMatrix || !guidanceFormulaText.trim()}
+                disabled={!canPlayFormulaDemo}
                 onClick={() => {
                   if (demoPlaying) stopGuidanceDemo();
                   else startGuidanceDemo();
                 }}
               >
-                {demoPlaying ? '停止演示' : '演示指引'}
+                {demoPlaying ? '停止演示' : '演示公式'}
               </button>
               <div className="preview-state-segmented" role="tablist" aria-label="预览状态切换">
               <button
@@ -1778,8 +1687,6 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
             blinkMaskMatrix={blinkMaskMatrix}
-            overlayBrightnessMatrix={demoOverlayBrightness}
-            guidanceArrow={demoArrow}
             orientation={formulaOrientation}
             dimUnlitWithFaceColor
             playRequest={playRequest}
@@ -2245,18 +2152,18 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!startStateMatrix || !goalStateMatrix || !guidanceFormulaText.trim()}
+                disabled={!canPlayFormulaDemo}
                 onClick={() => {
                   document.querySelector('.preview-hero')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                   if (demoPlaying) stopGuidanceDemo();
                   else startGuidanceDemo();
                 }}
               >
-                {demoPlaying ? '停止演示' : '演示指引（箭头 + 流水灯）'}
+                {demoPlaying ? '停止演示' : '演示公式'}
               </button>
             </div>
             <p className="guidance-demo-hint">
-              改「指引呈现 / 流水灯路径」不会立刻动 3D。先填推荐解法并校验通过，再点「演示指引」，上方预览会依次出现箭头、青色流水灯、转体。
+              优先用推荐解法；若为空则用自定义公式。从初始态按公式逐步转动 3D，不再播放流水灯路径叠层。
             </p>
             <div className="preview-card brightness-preview-card">{guidancePreviewText}</div>
             <div className="guidance-config-card">
