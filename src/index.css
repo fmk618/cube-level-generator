@@ -3356,26 +3356,26 @@ textarea.text-input--sm {
 .brightness-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
   width: 100%;
-  max-width: 640px;
+  max-width: none;
 }
 
 .brightness-actions .btn {
-  min-width: 132px;
-  min-height: 40px;
+  min-width: 112px;
+  min-height: 36px;
 }
 
 .brightness-formula-panel .formula-keyboard {
   width: 100%;
-  max-width: 640px;
+  max-width: none;
   text-align: left;
 }
 
 .brightness-preview-card {
   width: 100%;
-  max-width: 640px;
+  max-width: none;
   text-align: left;
   color: var(--text-primary);
   border-left-color: var(--brightness-accent);
@@ -3384,7 +3384,7 @@ textarea.text-input--sm {
 .guidance-flow-list {
   margin: 0;
   width: 100%;
-  max-width: 520px;
+  max-width: none;
   padding: 12px 14px 12px 28px;
   border-radius: var(--radius-region);
   border: 1px solid var(--border);
