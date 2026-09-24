@@ -1,6 +1,6 @@
 export type {
     Axis, TurnDir, Vec3, Quat, Cubelet, Move, ActiveTurn, TurnSnapshot, FlowingLightFace,
-    ColorMatrix, StateMatrix, LocationMatrix, BrightnessMatrix, BrightnessArray,
+    ColorMatrix, StateMatrix, LocationMatrix, BrightnessMatrix, BlinkMaskMatrix, BrightnessArray,
     MatrixIndex, FaceRowCol,
 } from './types';
 
@@ -15,6 +15,7 @@ export {
     rotateStateMatrixLayer, rotateLocationMatrixLayer, rotateColorMatrixLayer,
     cloneStateMatrix, cloneColorMatrix, cloneLocationMatrix, cloneBrightnessMatrix,
     brightnessMatrixToArray, brightnessArrayToMatrix,
+    createEmptyBlinkMaskMatrix, cloneBlinkMaskMatrix, hasAnyBlinkMask, sanitizeBlinkMaskMatrix,
     qFromAxisAngle, qMul,
 } from './matrixOps';
 

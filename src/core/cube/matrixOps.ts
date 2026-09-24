@@ -3,7 +3,7 @@
  */
 import type {
     Axis, TurnDir, Vec3, Quat,
-    ColorMatrix, StateMatrix, LocationMatrix, BrightnessMatrix, BrightnessArray,
+    ColorMatrix, StateMatrix, LocationMatrix, BrightnessMatrix, BlinkMaskMatrix, BrightnessArray,
     FaceRowCol,
 } from './types';
 import { applyMat3ToVec3, makeMat3, type Mat3 } from '../utils/matrix';
@@ -287,4 +287,44 @@ export const brightnessArrayToMatrix = (
         }
     }
     return matrix;
+};
+
+export const createEmptyBlinkMaskMatrix = (): BlinkMaskMatrix =>
+    Array.from({ length: 6 }, () => Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => 0)));
+
+export const cloneBlinkMaskMatrix = (matrix: BlinkMaskMatrix): BlinkMaskMatrix =>
+    matrix.map((face) => face.map((row) => [...row]));
+
+export const hasAnyBlinkMask = (matrix: BlinkMaskMatrix | undefined): boolean => {
+    if (!matrix) return false;
+    for (let face = 0; face < 6; face += 1) {
+        for (let row = 0; row < 3; row += 1) {
+            for (let col = 0; col < 3; col += 1) {
+                if (matrix[face][row][col] > 0) return true;
+            }
+        }
+    }
+    return false;
+};
+
+export const sanitizeBlinkMaskMatrix = (
+    blinkMask: BlinkMaskMatrix | undefined,
+    brightnessMatrix: BrightnessMatrix,
+): BlinkMaskMatrix | undefined => {
+    if (!blinkMask) return undefined;
+    const next = createEmptyBlinkMaskMatrix();
+    let hasBlink = false;
+    for (let face = 0; face < 6; face += 1) {
+        for (let row = 0; row < 3; row += 1) {
+            for (let col = 0; col < 3; col += 1) {
+                const blink = blinkMask[face]?.[row]?.[col] ?? 0;
+                const lit = (brightnessMatrix[face]?.[row]?.[col] ?? 0) > 0;
+                if (blink > 0 && lit) {
+                    next[face][row][col] = 1;
+                    hasBlink = true;
+                }
+            }
+        }
+    }
+    return hasBlink ? next : undefined;
 };

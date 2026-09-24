@@ -32,4 +32,12 @@ export {
     buildPLLGoalStateMatrix,
     buildPLLBrightnessMatrix,
 } from './goalBuilders';
-export { notationToFace, normalizeNotationToken, type NotationHint, type HintFace, type HintDir } from './notationToFace';
+export {
+    notationToFace,
+    notationToGuidanceArrow,
+    normalizeNotationToken,
+    type NotationHint,
+    type HintFace,
+    type HintDir,
+    type GuidanceArrowMove,
+} from './notationToFace';

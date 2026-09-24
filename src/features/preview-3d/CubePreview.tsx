@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { TrackballControls } from '@react-three/drei';
 import { CubeScene, type CubePlayRequest } from './CubeScene';
 import type { BrightnessMatrix, ColorMatrix, StateMatrix } from '@/core/cube';
+import type { GuidanceArrowMove } from '@/core/formula';
 import {
   DEFAULT_LEVEL_DEBUG_ORIENTATION,
   getOrientationViewQuaternion,
@@ -13,6 +14,8 @@ export type CubePreviewProps = {
   stateMatrix: StateMatrix;
   brightnessMatrix: BrightnessMatrix;
   colorMatrix?: ColorMatrix;
+  overlayBrightnessMatrix?: BrightnessMatrix | null;
+  guidanceArrow?: GuidanceArrowMove | null;
   /** 握持朝向：3D 将顶色朝上、前色朝前 */
   orientation?: DevCustomOrientation;
   /** 编辑器：熄灭格本色压暗 */
@@ -27,6 +30,8 @@ function SceneContent({
   stateMatrix,
   brightnessMatrix,
   colorMatrix,
+  overlayBrightnessMatrix = null,
+  guidanceArrow = null,
   orientation = DEFAULT_LEVEL_DEBUG_ORIENTATION,
   dimUnlitWithFaceColor = false,
   playRequest,
@@ -56,6 +61,8 @@ function SceneContent({
           stateMatrix={stateMatrix}
           brightnessMatrix={brightnessMatrix}
           colorMatrix={colorMatrix}
+          overlayBrightnessMatrix={overlayBrightnessMatrix}
+          guidanceArrow={guidanceArrow}
           dimUnlitWithFaceColor={dimUnlitWithFaceColor}
           playRequest={playRequest}
           onPlayComplete={onPlayComplete}
@@ -85,6 +92,8 @@ export function CubePreview({
   stateMatrix,
   brightnessMatrix,
   colorMatrix,
+  overlayBrightnessMatrix = null,
+  guidanceArrow = null,
   orientation = DEFAULT_LEVEL_DEBUG_ORIENTATION,
   dimUnlitWithFaceColor = false,
   className,
@@ -128,6 +137,8 @@ export function CubePreview({
             stateMatrix={stateMatrix}
             brightnessMatrix={brightnessMatrix}
             colorMatrix={colorMatrix}
+            overlayBrightnessMatrix={overlayBrightnessMatrix}
+            guidanceArrow={guidanceArrow}
             orientation={orientation}
             dimUnlitWithFaceColor={dimUnlitWithFaceColor}
             playRequest={playRequest}

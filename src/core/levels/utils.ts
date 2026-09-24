@@ -6,6 +6,7 @@ import {
     parseNotation,
     rotateStateMatrixLayer,
     INITIAL_STATE_MATRIX,
+    sanitizeBlinkMaskMatrix,
     type StateMatrix,
     type BrightnessMatrix,
 } from '../cube';
@@ -21,6 +22,7 @@ import type {
     LevelChapterId,
     LevelFormulaTarget,
     LevelGuidanceFailureThreshold,
+    LevelGuidancePresentationMode,
     LevelStateDefinitionMode,
 } from './types';
 
@@ -123,6 +125,20 @@ export const resolveLevelGuidanceFailureThreshold = (
     value: unknown,
 ): LevelGuidanceFailureThreshold => (
     isGuidanceFailureThreshold(value) ? value : DEFAULT_LEVEL_GUIDANCE_FAILURE_THRESHOLD
+);
+
+export const resolveLevelGuidancePresentationMode = (
+    value: unknown,
+): LevelGuidancePresentationMode => (
+    value === 'arrow_chase' ? 'arrow_chase' : 'full'
+);
+
+export const resolveSuccessNextShortcutHint = (value: unknown): boolean => (
+    value === true
+);
+
+export const resolveGuidanceStickerPathChase = (value: unknown): boolean => (
+    value === true
 );
 
 export const formatGuidanceFailureThresholdLabel = (
@@ -271,10 +287,25 @@ export const normalizeLevelCatalogDocument = (
                 // 显式覆盖，避免 ...level 把已删除的多目标数组残留回来
                 goalStateMatrix: normalizedGoals.goalStateMatrix,
                 goalStateMatrices: normalizedGoals.goalStateMatrices,
+                guidanceSourceFormula: stateDefinitionMode === 'brightness'
+                    ? (level.guidanceSourceFormula?.trim() || undefined)
+                    : undefined,
                 guidanceFormula: level.guidanceFormula?.trim() || undefined,
                 guidanceFailureThreshold: resolveLevelGuidanceFailureThreshold(
                     level.guidanceFailureThreshold,
                 ),
+                guidancePresentationMode: resolveLevelGuidancePresentationMode(
+                    level.guidancePresentationMode,
+                ) === 'arrow_chase'
+                    ? 'arrow_chase'
+                    : undefined,
+                successNextShortcutHint: resolveSuccessNextShortcutHint(
+                    level.successNextShortcutHint,
+                ) || undefined,
+                guidanceStickerPathChase: resolveGuidanceStickerPathChase(
+                    level.guidanceStickerPathChase,
+                ) || undefined,
+                blinkMaskMatrix: sanitizeBlinkMaskMatrix(level.blinkMaskMatrix, level.brightnessMatrix),
                 hidden: level.hidden === true ? true : undefined,
             };
         }),
@@ -457,11 +488,33 @@ const validateLevelDefinition = (
     if (level.guidanceFormula !== undefined && !isNonEmptyString(level.guidanceFormula)) {
         throw new Error(`Level ${level.id}: invalid guidanceFormula`);
     }
+    if (level.guidanceSourceFormula !== undefined && !isNonEmptyString(level.guidanceSourceFormula)) {
+        throw new Error(`Level ${level.id}: invalid guidanceSourceFormula`);
+    }
     if (
         level.guidanceFailureThreshold !== undefined
         && !isGuidanceFailureThreshold(level.guidanceFailureThreshold)
     ) {
         throw new Error(`Level ${level.id}: invalid guidanceFailureThreshold`);
+    }
+    if (
+        level.guidancePresentationMode !== undefined
+        && level.guidancePresentationMode !== 'full'
+        && level.guidancePresentationMode !== 'arrow_chase'
+    ) {
+        throw new Error(`Level ${level.id}: invalid guidancePresentationMode`);
+    }
+    if (
+        level.successNextShortcutHint !== undefined
+        && typeof level.successNextShortcutHint !== 'boolean'
+    ) {
+        throw new Error(`Level ${level.id}: invalid successNextShortcutHint`);
+    }
+    if (
+        level.guidanceStickerPathChase !== undefined
+        && typeof level.guidanceStickerPathChase !== 'boolean'
+    ) {
+        throw new Error(`Level ${level.id}: invalid guidanceStickerPathChase`);
     }
 
     for (const matrixName of ['startStateMatrix', 'goalStateMatrix'] as const) {
@@ -492,6 +545,31 @@ const validateLevelDefinition = (
                 const value = level.brightnessMatrix[face][row][col];
                 if (!Number.isInteger(value) || value < 0 || value > 10) {
                     throw new Error(`Level ${level.id}: brightnessMatrix[${face}][${row}][${col}] invalid brightness`);
+                }
+            }
+        }
+    }
+
+    if (level.blinkMaskMatrix !== undefined) {
+        if (!Array.isArray(level.blinkMaskMatrix) || level.blinkMaskMatrix.length !== 6) {
+            throw new Error(`Level ${level.id}: blinkMaskMatrix must be a 6x3x3 array`);
+        }
+        for (let face = 0; face < 6; face += 1) {
+            if (!Array.isArray(level.blinkMaskMatrix[face]) || level.blinkMaskMatrix[face].length !== 3) {
+                throw new Error(`Level ${level.id}: blinkMaskMatrix[${face}] must be a 3x3 array`);
+            }
+            for (let row = 0; row < 3; row += 1) {
+                if (!Array.isArray(level.blinkMaskMatrix[face][row]) || level.blinkMaskMatrix[face][row].length !== 3) {
+                    throw new Error(`Level ${level.id}: blinkMaskMatrix[${face}][${row}] must have 3 elements`);
+                }
+                for (let col = 0; col < 3; col += 1) {
+                    const blink = level.blinkMaskMatrix[face][row][col];
+                    if (blink !== 0 && blink !== 1) {
+                        throw new Error(`Level ${level.id}: blinkMaskMatrix[${face}][${row}][${col}] must be 0 or 1`);
+                    }
+                    if (blink === 1 && (level.brightnessMatrix[face]?.[row]?.[col] ?? 0) <= 0) {
+                        throw new Error(`Level ${level.id}: blinkMaskMatrix[${face}][${row}][${col}] requires brightness > 0`);
+                    }
                 }
             }
         }

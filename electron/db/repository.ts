@@ -38,6 +38,35 @@ function parseJsonField<T>(value: unknown, fallback: T): T {
   return value as T;
 }
 
+const LEVEL_COLUMN_KEYS = new Set([
+  'id', 'chapterId', 'order', 'title', 'description',
+  'startStateMatrix', 'goalStateMatrix', 'goalStateMatrices', 'brightnessMatrix', 'blinkMaskMatrix',
+  'maxMoves', 'starThresholds', 'hint', 'rotationFormula', 'rotationTarget',
+  'formulaOrientation', 'guidanceFormula', 'guidanceFailureThreshold', 'hidden', 'extras',
+]);
+
+const CHAPTER_COLUMN_KEYS = new Set([
+  'id', 'partNumber', 'partName', 'title', 'description', 'capacity', 'extras',
+]);
+
+function packLevelExtras(level: CloudCatalogDocument['levels'][number]): Record<string, unknown> | null {
+  const extras: Record<string, unknown> = { ...(level.extras ?? {}) };
+  for (const [key, value] of Object.entries(level)) {
+    if (LEVEL_COLUMN_KEYS.has(key)) continue;
+    if (value !== undefined) extras[key] = value;
+  }
+  return Object.keys(extras).length > 0 ? extras : null;
+}
+
+function packChapterExtras(chapter: CloudCatalogDocument['chapters'][number]): Record<string, unknown> | null {
+  const extras: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(chapter)) {
+    if (CHAPTER_COLUMN_KEYS.has(key)) continue;
+    if (value !== undefined) extras[key] = value;
+  }
+  return Object.keys(extras).length > 0 ? extras : null;
+}
+
 async function setMeta(db: Queryable, key: string, value: string): Promise<void> {
   await db.query(
     `INSERT INTO app_meta (meta_key, meta_value) VALUES (?, ?)
@@ -156,15 +185,17 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
 
   await runWriteTransaction(async (conn) => {
     for (const chapter of doc.chapters) {
+      const chapterExtras = packChapterExtras(chapter);
       await conn.query(
-        `INSERT INTO chapters (id, part_number, part_name, title, description, capacity, sync_uuid)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO chapters (id, part_number, part_name, title, description, capacity, extras_json, sync_uuid)
+         VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?)
          ON DUPLICATE KEY UPDATE
            part_number = VALUES(part_number),
            part_name = VALUES(part_name),
            title = VALUES(title),
            description = VALUES(description),
            capacity = VALUES(capacity),
+           extras_json = VALUES(extras_json),
            sync_uuid = VALUES(sync_uuid)`,
         [
           chapter.id,
@@ -173,6 +204,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
           chapter.title,
           chapter.description ?? null,
           chapter.capacity,
+          chapterExtras != null ? JSON.stringify(chapterExtras) : null,
           syncUuid,
         ],
       );
@@ -181,13 +213,14 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
     for (let i = 0; i < doc.levels.length; i += BATCH_SIZE) {
       const chunk = doc.levels.slice(i, i + BATCH_SIZE);
       for (const level of chunk) {
+        const extras = packLevelExtras(level);
         await conn.query(
           `INSERT INTO levels (
             id, chapter_id, level_order, title, description,
-            start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
+            start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix, blink_mask_matrix,
             max_moves, star_thresholds, hint, rotation_formula, rotation_target,
-            formula_orientation, guidance_formula, guidance_failure_threshold, hidden, sync_uuid
-          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, CAST(? AS JSON), ?, ?, ?, ?)
+            formula_orientation, guidance_formula, guidance_failure_threshold, hidden, extras_json, sync_uuid
+          ) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), ?, ?, ?, CAST(? AS JSON), ?, ?, ?, CAST(? AS JSON), ?)
           ON DUPLICATE KEY UPDATE
             chapter_id = VALUES(chapter_id),
             level_order = VALUES(level_order),
@@ -197,6 +230,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             goal_state_matrix = VALUES(goal_state_matrix),
             goal_state_matrices = VALUES(goal_state_matrices),
             brightness_matrix = VALUES(brightness_matrix),
+            blink_mask_matrix = VALUES(blink_mask_matrix),
             max_moves = VALUES(max_moves),
             star_thresholds = VALUES(star_thresholds),
             hint = VALUES(hint),
@@ -206,6 +240,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             guidance_formula = VALUES(guidance_formula),
             guidance_failure_threshold = VALUES(guidance_failure_threshold),
             hidden = VALUES(hidden),
+            extras_json = VALUES(extras_json),
             sync_uuid = VALUES(sync_uuid)`,
           [
             level.id,
@@ -217,6 +252,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             JSON.stringify(level.goalStateMatrix),
             level.goalStateMatrices != null ? JSON.stringify(level.goalStateMatrices) : null,
             JSON.stringify(level.brightnessMatrix),
+            level.blinkMaskMatrix != null ? JSON.stringify(level.blinkMaskMatrix) : null,
             level.maxMoves,
             JSON.stringify(level.starThresholds),
             level.hint ?? null,
@@ -226,6 +262,7 @@ export async function pushCatalog(doc: CloudCatalogDocument): Promise<void> {
             level.guidanceFormula ?? null,
             level.guidanceFailureThreshold ?? null,
             level.hidden ? 1 : 0,
+            extras != null ? JSON.stringify(extras) : null,
             syncUuid,
           ],
         );
@@ -244,13 +281,13 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
     await ensureSchema();
     const pool = getPool();
     const [chapterRows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, part_number, part_name, title, description, capacity FROM chapters ORDER BY part_number ASC',
+      'SELECT id, part_number, part_name, title, description, capacity, extras_json FROM chapters ORDER BY part_number ASC',
     );
     const [levelRows] = await pool.query<RowDataPacket[]>(
       `SELECT id, chapter_id, level_order, title, description,
-              start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix,
+              start_state_matrix, goal_state_matrix, goal_state_matrices, brightness_matrix, blink_mask_matrix,
               max_moves, star_thresholds, hint, rotation_formula, rotation_target,
-              formula_orientation, guidance_formula, guidance_failure_threshold, hidden
+              formula_orientation, guidance_formula, guidance_failure_threshold, hidden, extras_json
        FROM levels
        ORDER BY chapter_id ASC, level_order ASC`,
     );
@@ -260,39 +297,50 @@ export async function pullCatalog(): Promise<CloudCatalogDocument | null> {
     const versionRaw = await getMeta('catalog_version');
     return {
       version: Number(versionRaw ?? 1),
-      chapters: chapterRows.map((row: RowDataPacket) => ({
-        id: String(row.id),
-        partNumber: Number(row.part_number),
-        partName: String(row.part_name),
-        title: String(row.title),
-        description: row.description != null ? String(row.description) : undefined,
-        capacity: Number(row.capacity),
-      })),
-      levels: levelRows.map((row: RowDataPacket) => ({
-        id: String(row.id),
-        chapterId: String(row.chapter_id),
-        order: Number(row.level_order),
-        title: String(row.title),
-        description: String(row.description ?? ''),
-        startStateMatrix: parseJsonField(row.start_state_matrix, []),
-        goalStateMatrix: parseJsonField(row.goal_state_matrix, []),
-        goalStateMatrices: row.goal_state_matrices != null
-          ? parseJsonField(row.goal_state_matrices, [])
-          : undefined,
-        brightnessMatrix: parseJsonField(row.brightness_matrix, []),
-        maxMoves: Number(row.max_moves),
-        starThresholds: parseJsonField<[number, number]>(row.star_thresholds, [0, 0]),
-        hint: row.hint != null ? String(row.hint) : undefined,
-        rotationFormula: row.rotation_formula != null ? String(row.rotation_formula) : undefined,
-        rotationTarget: row.rotation_target != null ? String(row.rotation_target) : undefined,
-        formulaOrientation: row.formula_orientation != null
-          ? parseJsonField(row.formula_orientation, undefined)
-          : undefined,
-        guidanceFormula: row.guidance_formula != null ? String(row.guidance_formula) : undefined,
-        guidanceFailureThreshold:
-          row.guidance_failure_threshold != null ? Number(row.guidance_failure_threshold) : undefined,
-        hidden: Boolean(row.hidden),
-      })),
+      chapters: chapterRows.map((row: RowDataPacket) => {
+        const extras = parseJsonField<Record<string, unknown>>(row.extras_json, {});
+        return {
+          id: String(row.id),
+          partNumber: Number(row.part_number),
+          partName: String(row.part_name),
+          title: String(row.title),
+          description: row.description != null ? String(row.description) : undefined,
+          capacity: Number(row.capacity),
+          ...extras,
+        };
+      }),
+      levels: levelRows.map((row: RowDataPacket) => {
+        const extras = parseJsonField<Record<string, unknown>>(row.extras_json, {});
+        return {
+          id: String(row.id),
+          chapterId: String(row.chapter_id),
+          order: Number(row.level_order),
+          title: String(row.title),
+          description: String(row.description ?? ''),
+          startStateMatrix: parseJsonField(row.start_state_matrix, []),
+          goalStateMatrix: parseJsonField(row.goal_state_matrix, []),
+          goalStateMatrices: row.goal_state_matrices != null
+            ? parseJsonField(row.goal_state_matrices, [])
+            : undefined,
+          brightnessMatrix: parseJsonField(row.brightness_matrix, []),
+          blinkMaskMatrix: row.blink_mask_matrix != null
+            ? parseJsonField(row.blink_mask_matrix, undefined)
+            : undefined,
+          maxMoves: Number(row.max_moves),
+          starThresholds: parseJsonField<[number, number]>(row.star_thresholds, [0, 0]),
+          hint: row.hint != null ? String(row.hint) : undefined,
+          rotationFormula: row.rotation_formula != null ? String(row.rotation_formula) : undefined,
+          rotationTarget: row.rotation_target != null ? String(row.rotation_target) : undefined,
+          formulaOrientation: row.formula_orientation != null
+            ? parseJsonField(row.formula_orientation, undefined)
+            : undefined,
+          guidanceFormula: row.guidance_formula != null ? String(row.guidance_formula) : undefined,
+          guidanceFailureThreshold:
+            row.guidance_failure_threshold != null ? Number(row.guidance_failure_threshold) : undefined,
+          hidden: Boolean(row.hidden),
+          ...extras,
+        };
+      }),
     };
   });
 }

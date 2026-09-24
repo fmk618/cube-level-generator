@@ -22,7 +22,8 @@ import {
   type TurnDir,
   type Vec3,
 } from '@/core/cube';
-import type { FormulaLayerMove } from '@/core/formula';
+import type { FormulaLayerMove, GuidanceArrowMove } from '@/core/formula';
+import { GuidanceArrow } from '@/features/guidance-preview';
 import { blendByBrightness } from './colorBlend';
 
 const STEP = 0.54;
@@ -52,6 +53,7 @@ type CubeletMeshProps = {
   cubelet: Cubelet;
   colorMatrix: ColorMatrix;
   brightnessMatrix: BrightnessMatrix;
+  overlayBrightnessMatrix?: BrightnessMatrix | null;
   dimUnlitWithFaceColor?: boolean;
   activeTurn: ActiveTurn | null;
   progress: number;
@@ -71,6 +73,7 @@ function CubeletMesh({
   cubelet,
   colorMatrix,
   brightnessMatrix,
+  overlayBrightnessMatrix = null,
   dimUnlitWithFaceColor = false,
   activeTurn,
   progress,
@@ -91,16 +94,22 @@ function CubeletMesh({
           metalness: 0.02,
         });
       }
-      const brightness = findBrightnessByStateId(stickerId, brightnessMatrix) / 10;
+      const base = findBrightnessByStateId(stickerId, brightnessMatrix);
+      const overlay = overlayBrightnessMatrix
+        ? findBrightnessByStateId(stickerId, overlayBrightnessMatrix)
+        : base;
+      const brightness = Math.max(base, overlay) / 10;
       const color = blendByBrightness(visualFaceColors[faceIdx], brightness);
       return new THREE.MeshStandardMaterial({
         color,
         roughness: 0.55,
         metalness: 0.04,
         envMapIntensity: 0.5,
+        emissive: overlay > base ? new THREE.Color(visualFaceColors[faceIdx]) : new THREE.Color('#000000'),
+        emissiveIntensity: overlay > base ? 0.25 : 0,
       });
     });
-  }, [visualFaceColors, cubelet.stickerIds, brightnessMatrix]);
+  }, [visualFaceColors, cubelet.stickerIds, brightnessMatrix, overlayBrightnessMatrix]);
 
   const isAffected = Boolean(activeTurn?.affectedIds.includes(cubelet.id));
   let position: Vec3 = cubelet.pos;
@@ -134,6 +143,8 @@ export type CubeSceneProps = {
   stateMatrix: StateMatrix;
   brightnessMatrix: BrightnessMatrix;
   colorMatrix?: ColorMatrix;
+  overlayBrightnessMatrix?: BrightnessMatrix | null;
+  guidanceArrow?: GuidanceArrowMove | null;
   /** 编辑器：熄灭格用本色压暗，便于认出顶/前色 */
   dimUnlitWithFaceColor?: boolean;
   playRequest?: CubePlayRequest | null;
@@ -144,6 +155,8 @@ export function CubeScene({
   stateMatrix,
   brightnessMatrix,
   colorMatrix,
+  overlayBrightnessMatrix = null,
+  guidanceArrow = null,
   dimUnlitWithFaceColor = false,
   playRequest = null,
   onPlayComplete,
@@ -285,11 +298,13 @@ export function CubeScene({
           cubelet={cubelet}
           colorMatrix={resolvedColorMatrix}
           brightnessMatrix={brightnessMatrix}
+          overlayBrightnessMatrix={overlayBrightnessMatrix}
           dimUnlitWithFaceColor={dimUnlitWithFaceColor}
           activeTurn={activeTurn}
           progress={progress}
         />
       ))}
+      {guidanceArrow ? <GuidanceArrow hint={guidanceArrow} /> : null}
     </group>
   );
 }

@@ -22,9 +22,13 @@ import {
   LEVEL_DEBUG_FRONT_FACE_OPTIONS,
   LEVEL_DEBUG_TOP_FACE_OPTIONS,
   LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS,
+  mapGuidanceFormulaToPhysicalTokens,
   normalizeLevelGoalStates,
   resolveDebugFrontColor,
+  resolveGuidanceStickerPathChase,
   resolveLevelGuidanceFailureThreshold,
+  resolveLevelGuidancePresentationMode,
+  resolveSuccessNextShortcutHint,
   resolveStarThresholds,
   toPhysicalTokensFromGrip,
   formatLevelFormulaTargetLabel,
@@ -32,13 +36,17 @@ import {
   type LevelDefinition,
   type LevelFormulaTarget,
   type LevelGuidanceFailureThreshold,
+  type LevelGuidancePresentationMode,
 } from '@/core/levels';
 import {
   expandTokenToLayerMoves,
   applyTokensToState,
   invertReverseTokens,
+  notationToFace,
+  notationToGuidanceArrow,
   resolveOrientationRecord,
   type DevCustomOrientation,
+  type GuidanceArrowMove,
 } from '@/core/formula';
 import { getLevelRecommendStatus, getTeachModeLabel } from '@/core/skill-graph/utils';
 import {
@@ -46,13 +54,24 @@ import {
   INITIAL_STATE_MATRIX,
   colorIndexToHex,
   findInitialPositionByStateId,
+  createEmptyBlinkMaskMatrix,
+  cloneBlinkMaskMatrix,
+  sanitizeBlinkMaskMatrix,
+  type BlinkMaskMatrix,
   type BrightnessMatrix,
   type StateMatrix,
 } from '@/core/cube';
 import { CubePreview } from '@/features/preview-3d/CubePreview';
 import type { CubePlayRequest } from '@/features/preview-3d/CubeScene';
+import {
+  buildChaseOverlayBrightness,
+  buildChaseOverlayFromPath,
+  getChaseRingLength,
+} from '@/features/guidance-preview';
+import { buildGuidanceStickerChasePath } from '@/features/guidance-preview/chasePath';
 import { FormulaKeyboard } from './FormulaKeyboard';
 import { EditorMovePad } from './EditorMovePad';
+import { BrightnessCrossPreview } from './BrightnessCrossPreview';
 
 const FACE_NAMES = ['U', 'L', 'F', 'R', 'B', 'D'] as const;
 type GripFaceName = (typeof FACE_NAMES)[number];
@@ -315,6 +334,18 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
   }));
   const [guidanceFormulaText, setGuidanceFormulaText] = useState('');
   const [guidanceFailureThreshold, setGuidanceFailureThreshold] = useState<LevelGuidanceFailureThreshold>(-1);
+  const [guidancePresentationMode, setGuidancePresentationMode] = useState<LevelGuidancePresentationMode>('full');
+  const [guidanceStickerPathChase, setGuidanceStickerPathChase] = useState(false);
+  const [successNextShortcutHint, setSuccessNextShortcutHint] = useState(false);
+  const [blinkMaskMatrix, setBlinkMaskMatrix] = useState<BlinkMaskMatrix>(createEmptyBlinkMaskMatrix());
+  const [blinkEditMode, setBlinkEditMode] = useState(false);
+  const [demoPlaying, setDemoPlaying] = useState(false);
+  const [demoStateMatrix, setDemoStateMatrix] = useState<StateMatrix | null>(null);
+  const [demoOverlayBrightness, setDemoOverlayBrightness] = useState<BrightnessMatrix | null>(null);
+  const [demoArrow, setDemoArrow] = useState<GuidanceArrowMove | null>(null);
+  const [demoStepLabel, setDemoStepLabel] = useState<string | null>(null);
+  const demoRunRef = useRef(0);
+  const demoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [startStateMatrix, setStartStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrix, setGoalStateMatrix] = useState<StateMatrix | null>(null);
   const [goalStateMatrices, setGoalStateMatrices] = useState<StateMatrix[] | undefined>(undefined);
@@ -433,8 +464,13 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     );
     setCustomTargetDraft('');
     setFormulaOrientation({ ...(level.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION) });
-    setGuidanceFormulaText(level.guidanceFormula ?? '');
+    setGuidanceFormulaText(level.guidanceSourceFormula ?? level.guidanceFormula ?? '');
     setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold));
+    setGuidancePresentationMode(resolveLevelGuidancePresentationMode(level.guidancePresentationMode));
+    setGuidanceStickerPathChase(resolveGuidanceStickerPathChase(level.guidanceStickerPathChase));
+    setSuccessNextShortcutHint(resolveSuccessNextShortcutHint(level.successNextShortcutHint));
+    setBlinkMaskMatrix(cloneBlinkMaskMatrix(level.blinkMaskMatrix ?? createEmptyBlinkMaskMatrix()));
+    setBlinkEditMode(false);
     setStartStateMatrix(cloneStateMatrix(level.startStateMatrix));
     setGoalStateMatrix(cloneStateMatrix(level.goalStateMatrix));
     setGoalStateMatrices(level.goalStateMatrices?.map(cloneStateMatrix) ?? undefined);
@@ -454,6 +490,14 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     setActiveTab('meta');
     setSaveError(null);
     setSaveNotice(null);
+    demoTimersRef.current.forEach(clearTimeout);
+    demoTimersRef.current = [];
+    demoRunRef.current += 1;
+    setDemoPlaying(false);
+    setDemoStateMatrix(null);
+    setDemoOverlayBrightness(null);
+    setDemoArrow(null);
+    setDemoStepLabel(null);
     // 切换关卡 或 整体替换目录（导入/重置/放弃草稿）时重置表单
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [level?.id, catalogEpoch]);
@@ -513,7 +557,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     return isYawEquivalentGoalSet(goalStateMatrix, goalStateMatrices);
   }, [goalStateMatrix, goalStateMatrices]);
 
-  const previewStateMatrix = liveStateMatrix ?? startStateMatrix;
+  const previewStateMatrix = demoStateMatrix ?? liveStateMatrix ?? startStateMatrix;
 
   const applyManualToken = useCallback((token: string) => {
     if (playingRef.current) return;
@@ -1046,19 +1090,180 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     if (!level || !startStateMatrix || !goalStateMatrix) {
       return '请先设置初始状态，再设置目标状态，然后再校验推荐解法。';
     }
+    const physicalFormula = (() => {
+      try {
+        return mapGuidanceFormulaToPhysicalTokens(formula, formulaOrientation).join(' ');
+      } catch {
+        return formula;
+      }
+    })();
     const summary = getLevelGuidanceSummary({
       ...level,
       startStateMatrix,
       goalStateMatrix,
       goalStateMatrices: allGoalVariants.length > 1 ? allGoalVariants : undefined,
       brightnessMatrix,
-      guidanceFormula: formula,
+      blinkMaskMatrix,
+      guidanceSourceFormula: formula,
+      guidanceFormula: physicalFormula,
       formulaOrientation: { ...formulaOrientation },
+      guidancePresentationMode,
+      guidanceStickerPathChase,
+      guidanceFailureThreshold,
     });
     return summary.status === 'ready' ? `校验通过，可生成 ${summary.stepCount} 步流水灯指引。` : summary.message;
   }, [
     guidanceFormulaText, level, startStateMatrix, goalStateMatrix, allGoalVariants,
-    brightnessMatrix, formulaOrientation,
+    brightnessMatrix, blinkMaskMatrix, formulaOrientation, guidancePresentationMode,
+    guidanceStickerPathChase, guidanceFailureThreshold,
+  ]);
+
+  const stopGuidanceDemo = useCallback(() => {
+    demoTimersRef.current.forEach(clearTimeout);
+    demoTimersRef.current = [];
+    demoRunRef.current += 1;
+    setDemoPlaying(false);
+    setDemoStateMatrix(null);
+    setDemoOverlayBrightness(null);
+    setDemoArrow(null);
+    setDemoStepLabel(null);
+  }, []);
+
+  const startGuidanceDemo = useCallback(() => {
+    if (!level || !startStateMatrix || !goalStateMatrix) {
+      setSaveError('请先配置起始状态和目标状态。');
+      return;
+    }
+    const formula = guidanceFormulaText.trim();
+    if (!formula) {
+      setSaveError('请先输入推荐解法。');
+      return;
+    }
+    const physicalFormula = (() => {
+      try {
+        return mapGuidanceFormulaToPhysicalTokens(formula, formulaOrientation).join(' ');
+      } catch {
+        return formula;
+      }
+    })();
+    const summary = getLevelGuidanceSummary({
+      ...level,
+      startStateMatrix,
+      goalStateMatrix,
+      goalStateMatrices: allGoalVariants.length > 1 ? allGoalVariants : undefined,
+      brightnessMatrix,
+      blinkMaskMatrix,
+      formulaOrientation,
+      guidanceSourceFormula: formula,
+      guidanceFormula: physicalFormula,
+      guidancePresentationMode,
+      guidanceStickerPathChase,
+      guidanceFailureThreshold,
+    });
+    if (summary.status !== 'ready' || summary.executionSteps.length === 0) {
+      setSaveError(summary.message || '推荐解法无法演示。');
+      return;
+    }
+
+    stopGuidanceDemo();
+    const runId = demoRunRef.current + 1;
+    demoRunRef.current = runId;
+    setDemoPlaying(true);
+    setPreviewMode('start');
+    setSaveError(null);
+    setSaveNotice(null);
+
+    let state = cloneStateMatrix(startStateMatrix);
+    setDemoStateMatrix(state);
+    setDemoOverlayBrightness(null);
+    setDemoArrow(null);
+
+    const schedule = (delayMs: number, fn: () => void) => {
+      const timer = setTimeout(() => {
+        if (demoRunRef.current !== runId) return;
+        fn();
+      }, delayMs);
+      demoTimersRef.current.push(timer);
+    };
+
+    const showFormulaCue = guidancePresentationMode === 'full';
+    let cursorMs = 200;
+    summary.executionSteps.forEach((step, stepIndex) => {
+      const notation = step.notation;
+      const faceHint = notationToFace(notation);
+      const arrow = notationToGuidanceArrow(notation);
+      const useStickerPath = guidanceStickerPathChase;
+      const stickerPath = useStickerPath
+        ? buildGuidanceStickerChasePath(
+          blinkMaskMatrix,
+          brightnessMatrix,
+          goalStateMatrix,
+          state,
+          faceHint?.face ?? null,
+          (faceHint?.dir === -1 ? -1 : 1),
+        )
+        : null;
+      const ringLen = stickerPath?.length
+        ?? (faceHint ? getChaseRingLength(faceHint.face) : 0);
+
+      schedule(cursorMs, () => {
+        const label = showFormulaCue
+          ? `${stepIndex + 1}/${summary.executionSteps.length} · ${notation}`
+          : `${stepIndex + 1}/${summary.executionSteps.length}`;
+        setDemoStepLabel(label);
+        setDemoArrow(arrow);
+        setDemoOverlayBrightness(null);
+      });
+      cursorMs += showFormulaCue ? 320 : 200;
+
+      if (ringLen > 0) {
+        for (let lit = 1; lit <= ringLen; lit += 1) {
+          const count = lit;
+          schedule(cursorMs, () => {
+            if (stickerPath) {
+              setDemoOverlayBrightness(buildChaseOverlayFromPath(brightnessMatrix, stickerPath, count));
+            } else if (faceHint) {
+              setDemoOverlayBrightness(buildChaseOverlayBrightness(brightnessMatrix, faceHint.face, count));
+            }
+          });
+          cursorMs += 70;
+        }
+        cursorMs += 180;
+      } else {
+        cursorMs += 400;
+      }
+
+      schedule(cursorMs, () => {
+        state = applyTokensToState(state, [notation]);
+        setDemoStateMatrix(cloneStateMatrix(state));
+        setDemoOverlayBrightness(null);
+        setDemoArrow(null);
+      });
+      cursorMs += 420;
+    });
+
+    schedule(cursorMs, () => {
+      setDemoStepLabel('演示完成');
+      setDemoOverlayBrightness(null);
+      setDemoArrow(null);
+    });
+    schedule(cursorMs + 900, () => {
+      stopGuidanceDemo();
+      setSaveNotice('指引演示已结束。');
+    });
+  }, [
+    allGoalVariants,
+    blinkMaskMatrix,
+    brightnessMatrix,
+    formulaOrientation,
+    goalStateMatrix,
+    guidanceFailureThreshold,
+    guidanceFormulaText,
+    guidancePresentationMode,
+    guidanceStickerPathChase,
+    level,
+    startStateMatrix,
+    stopGuidanceDemo,
   ]);
 
   const applyGuidanceValidation = () => {
@@ -1074,14 +1279,26 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       return;
     }
     if (!ensureAuthoringPath('brightness')) return;
+    const physicalFormula = (() => {
+      try {
+        return mapGuidanceFormulaToPhysicalTokens(formula, formulaOrientation).join(' ');
+      } catch {
+        return formula;
+      }
+    })();
     const summary = getLevelGuidanceSummary({
       ...level,
       startStateMatrix,
       goalStateMatrix,
       goalStateMatrices: allGoalVariants.length > 1 ? allGoalVariants : undefined,
       brightnessMatrix,
-      guidanceFormula: formula,
+      blinkMaskMatrix,
+      guidanceSourceFormula: formula,
+      guidanceFormula: physicalFormula,
       formulaOrientation: { ...formulaOrientation },
+      guidancePresentationMode,
+      guidanceStickerPathChase,
+      guidanceFailureThreshold,
     });
     setAuthoringMode('brightness');
     if (summary.status === 'ready') {
@@ -1183,31 +1400,55 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     return brightnessMatrix[home.face][home.row][home.col] ?? 0;
   }, [brightnessMatrix, previewStateMatrix]);
 
-  const toggleBrightnessAtPreviewCell = useCallback((face: number, row: number, col: number) => {
+  const readBlinkAtPreviewCell = useCallback((face: number, row: number, col: number): boolean => {
+    const state = previewStateMatrix;
+    if (!state) return false;
+    const stickerId = state[face][row][col];
+    const home = findInitialPositionByStateId(stickerId);
+    if (!home) return false;
+    return (blinkMaskMatrix[home.face]?.[home.row]?.[home.col] ?? 0) > 0;
+  }, [blinkMaskMatrix, previewStateMatrix]);
+
+  const toggleBrightnessAtPreviewCell = useCallback((face: number, row: number, col: number, shiftKey = false) => {
     const state = previewStateMatrix;
     if (!state) return;
     const stickerId = state[face][row][col];
     const home = findInitialPositionByStateId(stickerId);
     if (!home) return;
+    const isLit = brightnessMatrix[home.face][home.row][home.col] > 0;
+    if ((blinkEditMode || shiftKey) && isLit) {
+      const nextBlink = cloneBlinkMaskMatrix(blinkMaskMatrix);
+      nextBlink[home.face][home.row][home.col] = blinkMaskMatrix[home.face][home.row][home.col] > 0 ? 0 : 1;
+      setBlinkMaskMatrix(nextBlink);
+      return;
+    }
     const next = cloneBrightness(brightnessMatrix);
-    next[home.face][home.row][home.col] = next[home.face][home.row][home.col] > 0 ? 0 : 8;
+    const nextBlink = cloneBlinkMaskMatrix(blinkMaskMatrix);
+    next[home.face][home.row][home.col] = isLit ? 0 : 8;
+    if (isLit) {
+      nextBlink[home.face][home.row][home.col] = 0;
+    }
     setBrightnessMatrix(next);
-  }, [brightnessMatrix, previewStateMatrix]);
+    setBlinkMaskMatrix(nextBlink);
+  }, [blinkEditMode, blinkMaskMatrix, brightnessMatrix, previewStateMatrix]);
 
   const setPreviewFaceAllBrightness = useCallback((face: number, value: number) => {
     const state = previewStateMatrix;
     if (!state) return;
     const next = cloneBrightness(brightnessMatrix);
+    const nextBlink = cloneBlinkMaskMatrix(blinkMaskMatrix);
     for (let row = 0; row < 3; row += 1) {
       for (let col = 0; col < 3; col += 1) {
         const stickerId = state[face][row][col];
         const home = findInitialPositionByStateId(stickerId);
         if (!home) continue;
         next[home.face][home.row][home.col] = value;
+        if (value <= 0) nextBlink[home.face][home.row][home.col] = 0;
       }
     }
     setBrightnessMatrix(next);
-  }, [brightnessMatrix, previewStateMatrix]);
+    setBlinkMaskMatrix(nextBlink);
+  }, [blinkMaskMatrix, brightnessMatrix, previewStateMatrix]);
 
   const gripFacePhysicalLabels = useMemo(() => {
     const map: Record<GripFaceName, string> = {
@@ -1242,17 +1483,22 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         formulaOrientation,
         level.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION,
       )
-      || guidanceFormulaText !== (level.guidanceFormula ?? '')
+      || guidanceFormulaText !== (level.guidanceSourceFormula ?? level.guidanceFormula ?? '')
       || guidanceFailureThreshold !== resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
+      || guidancePresentationMode !== resolveLevelGuidancePresentationMode(level.guidancePresentationMode)
+      || guidanceStickerPathChase !== resolveGuidanceStickerPathChase(level.guidanceStickerPathChase)
+      || successNextShortcutHint !== resolveSuccessNextShortcutHint(level.successNextShortcutHint)
       || JSON.stringify(startStateMatrix) !== JSON.stringify(level.startStateMatrix)
       || JSON.stringify(goalStateMatrix) !== JSON.stringify(level.goalStateMatrix)
       || JSON.stringify(goalStateMatrices ?? null) !== JSON.stringify(level.goalStateMatrices ?? null)
       || JSON.stringify(brightnessMatrix) !== JSON.stringify(level.brightnessMatrix)
+      || JSON.stringify(blinkMaskMatrix) !== JSON.stringify(level.blinkMaskMatrix ?? createEmptyBlinkMaskMatrix())
     );
   }, [
     level, titleText, descriptionText, hintText, maxMovesText, star3Text, star2Text,
     formulaText, formulaTarget, rotationTargetLabel, formulaOrientation, guidanceFormulaText, guidanceFailureThreshold,
-    startStateMatrix, goalStateMatrix, goalStateMatrices, brightnessMatrix,
+    guidancePresentationMode, guidanceStickerPathChase, successNextShortcutHint,
+    startStateMatrix, goalStateMatrix, goalStateMatrices, brightnessMatrix, blinkMaskMatrix,
   ]);
 
   const handleSave = async (mode: 'local' | 'remote' = 'local') => {
@@ -1275,7 +1521,16 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     const starThresholds = resolveStarThresholds(effectiveMaxMoves, [threeStar, twoStar]);
 
     const rotationFormula = formulaText.trim();
-    const guidanceFormula = guidanceFormulaText.trim();
+    const guidanceSource = guidanceFormulaText.trim();
+    const guidancePhysical = guidanceSource
+      ? (() => {
+        try {
+          return mapGuidanceFormulaToPhysicalTokens(guidanceSource, formulaOrientation).join(' ');
+        } catch {
+          return guidanceSource;
+        }
+      })()
+      : '';
     const warnings: string[] = [];
 
     if (rotationFormula) {
@@ -1300,6 +1555,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       startStateMatrix: cloneStateMatrix(startStateMatrix ?? level.startStateMatrix),
       ...normalizedGoals,
       brightnessMatrix: cloneBrightness(brightnessMatrix),
+      blinkMaskMatrix: sanitizeBlinkMaskMatrix(blinkMaskMatrix, brightnessMatrix),
       rotationFormula: rotationFormula || undefined,
       rotationTarget: (rotationFormula || goalStateMatrix) ? formulaTarget : undefined,
       rotationTargetLabel:
@@ -1308,16 +1564,20 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           : undefined,
       formulaOrientation: { ...formulaOrientation },
       stateDefinitionMode: rotationFormula ? 'formula' : 'brightness',
-      guidanceFormula: guidanceFormula || undefined,
+      guidanceSourceFormula: guidanceSource || undefined,
+      guidanceFormula: guidancePhysical || undefined,
       guidanceFailureThreshold,
+      guidancePresentationMode: guidancePresentationMode === 'arrow_chase' ? 'arrow_chase' : undefined,
+      guidanceStickerPathChase: guidanceStickerPathChase || undefined,
+      successNextShortcutHint: successNextShortcutHint || undefined,
     };
 
-    if (guidanceFailureThreshold >= 0 && !guidanceFormula) {
+    if (guidanceFailureThreshold >= 0 && !guidanceSource) {
       setSaveError('当前已设置指引开启条件，但推荐解法为空。请先填写并校验推荐解法，或改为“不启用”。');
       return;
     }
 
-    if (guidanceFormula) {
+    if (guidanceSource) {
       const summary = getLevelGuidanceSummary({ ...level, ...patch } as LevelDefinition);
       if (summary.status !== 'ready') {
         if (guidanceFailureThreshold >= 0) {
@@ -1363,8 +1623,12 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           : customTargetNames,
       );
       setFormulaOrientation({ ...(updatedLevel.formulaOrientation ?? DEFAULT_LEVEL_DEBUG_ORIENTATION) });
-      setGuidanceFormulaText(updatedLevel.guidanceFormula ?? '');
+      setGuidanceFormulaText(updatedLevel.guidanceSourceFormula ?? updatedLevel.guidanceFormula ?? '');
       setGuidanceFailureThreshold(resolveLevelGuidanceFailureThreshold(updatedLevel.guidanceFailureThreshold));
+      setGuidancePresentationMode(resolveLevelGuidancePresentationMode(updatedLevel.guidancePresentationMode));
+      setGuidanceStickerPathChase(resolveGuidanceStickerPathChase(updatedLevel.guidanceStickerPathChase));
+      setSuccessNextShortcutHint(resolveSuccessNextShortcutHint(updatedLevel.successNextShortcutHint));
+      setBlinkMaskMatrix(cloneBlinkMaskMatrix(updatedLevel.blinkMaskMatrix ?? createEmptyBlinkMaskMatrix()));
       setStartStateMatrix(cloneStateMatrix(updatedLevel.startStateMatrix));
       setGoalStateMatrix(cloneStateMatrix(updatedLevel.goalStateMatrix));
       setGoalStateMatrices(updatedLevel.goalStateMatrices?.map(cloneStateMatrix) ?? undefined);
@@ -1457,7 +1721,16 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         <div className="preview-hero" style={{ height: previewHeight }}>
           <div className="preview-hero-header">
             <span className="preview-hero-title">3D 预览</span>
-            <div className="preview-state-segmented" role="tablist" aria-label="预览状态切换">
+            <div className="field-row" style={{ gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={!startStateMatrix || !goalStateMatrix || !guidanceFormulaText.trim()}
+                onClick={() => (demoPlaying ? stopGuidanceDemo() : startGuidanceDemo())}
+              >
+                {demoPlaying ? '停止演示' : '演示指引'}
+              </button>
+              <div className="preview-state-segmented" role="tablist" aria-label="预览状态切换">
               <button
                 type="button"
                 role="tab"
@@ -1491,12 +1764,16 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                   目标
                 </button>
               )}
+              </div>
             </div>
           </div>
+          {demoStepLabel && <p className="hint-text preview-demo-label">{demoStepLabel}</p>}
           <CubePreview
             className="cube-preview cube-preview-editor cube-preview-resizable"
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
+            overlayBrightnessMatrix={demoOverlayBrightness}
+            guidanceArrow={demoArrow}
             orientation={formulaOrientation}
             dimUnlitWithFaceColor
             playRequest={playRequest}
@@ -1850,7 +2127,23 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             <div className="brightness-panel-title">点亮面编辑</div>
             <p className="brightness-panel-map">
               按上方 3D 当前预览态编辑。当前握持 {selectedGripFace} → 物理 {selectedPhysicalFaceLabel}。
+              开启「闪烁编辑」或按住 Shift 单击已亮格可标记闪烁。
             </p>
+            <BrightnessCrossPreview
+              brightnessMatrix={brightnessMatrix}
+              blinkMaskMatrix={blinkMaskMatrix}
+              selectedFace={selectedPhysicalFace}
+              onSelectFace={(faceIndex) => {
+                const name = FACE_NAMES.find((face) => {
+                  try {
+                    return gripFaceToPhysicalIndex(face, formulaOrientation) === faceIndex;
+                  } catch {
+                    return false;
+                  }
+                });
+                if (name) setSelectedGripFace(name);
+              }}
+            />
             <div className="brightness-face-row" role="group" aria-label="选择面（握持）">
               {FACE_NAMES.map((name) => (
                 <button
@@ -1863,22 +2156,34 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                   <span className="brightness-face-chip-main">{name}</span>
                 </button>
               ))}
+              <button
+                type="button"
+                className={`brightness-face-chip ${blinkEditMode ? 'is-active' : ''}`}
+                onClick={() => setBlinkEditMode((current) => !current)}
+              >
+                {blinkEditMode ? '闪烁编辑：开' : '闪烁编辑：关'}
+              </button>
             </div>
             <div className="brightness-grid brightness-pad" role="grid" aria-label="当前面贴纸点亮">
               {[0, 1, 2].map((row) => (
                 <div key={row} className="brightness-row" role="row">
                   {[0, 1, 2].map((col) => {
                     const value = readBrightnessAtPreviewCell(selectedPhysicalFace, row, col);
+                    const blink = readBlinkAtPreviewCell(selectedPhysicalFace, row, col);
                     return (
                       <button
                         key={col}
                         type="button"
                         role="gridcell"
-                        className={`brightness-cell ${value > 0 ? 'brightness-cell-on' : ''}`}
-                        aria-label={value > 0 ? '已点亮' : '已熄灭'}
-                        onClick={() => toggleBrightnessAtPreviewCell(selectedPhysicalFace, row, col)}
+                        className={[
+                          'brightness-cell',
+                          value > 0 ? 'brightness-cell-on' : '',
+                          blink ? 'brightness-cell-blink' : '',
+                        ].filter(Boolean).join(' ')}
+                        aria-label={blink ? '闪烁' : value > 0 ? '已点亮' : '已熄灭'}
+                        onClick={(event) => toggleBrightnessAtPreviewCell(selectedPhysicalFace, row, col, event.shiftKey)}
                       >
-                        <span className="brightness-cell-dot" aria-hidden />
+                        {blink ? '闪' : <span className="brightness-cell-dot" aria-hidden />}
                       </button>
                     );
                   })}
@@ -1925,12 +2230,74 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             <FormulaKeyboard value={guidanceFormulaText} onChange={setGuidanceFormulaText} />
             <div className="brightness-actions">
               <button type="button" className="btn" onClick={applyGuidanceValidation}>应用推荐解法</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!startStateMatrix || !goalStateMatrix || !guidanceFormulaText.trim()}
+                onClick={() => (demoPlaying ? stopGuidanceDemo() : startGuidanceDemo())}
+              >
+                {demoPlaying ? '停止演示' : '演示指引（箭头 + 流水灯）'}
+              </button>
             </div>
             <div className="preview-card brightness-preview-card">{guidancePreviewText}</div>
             <GuidanceThresholdBlock
               threshold={guidanceFailureThreshold}
               onChange={onGuidanceFailureThresholdChange}
             />
+            <div className="guidance-threshold-block">
+              <div className="guidance-threshold-title">指引呈现</div>
+              <div className="guidance-threshold-row" role="group" aria-label="指引呈现">
+                {([
+                  { value: 'full' as const, label: '完整指引' },
+                  { value: 'arrow_chase' as const, label: '箭头+流水灯' },
+                ]).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`guidance-threshold-chip ${guidancePresentationMode === option.value ? 'is-active' : ''}`}
+                    onClick={() => setGuidancePresentationMode(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="guidance-threshold-block">
+              <div className="guidance-threshold-title">流水灯路径</div>
+              <div className="guidance-threshold-row" role="group" aria-label="流水灯路径">
+                {([
+                  { value: false, label: '公式面转' },
+                  { value: true, label: '初始→目标' },
+                ] as const).map((option) => (
+                  <button
+                    key={String(option.value)}
+                    type="button"
+                    className={`guidance-threshold-chip ${guidanceStickerPathChase === option.value ? 'is-active' : ''}`}
+                    onClick={() => setGuidanceStickerPathChase(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="guidance-threshold-block">
+              <div className="guidance-threshold-title">通关下一关提示</div>
+              <div className="guidance-threshold-row" role="group" aria-label="通关下一关提示">
+                {([
+                  { value: false, label: '关闭' },
+                  { value: true, label: '开启' },
+                ] as const).map((option) => (
+                  <button
+                    key={String(option.value)}
+                    type="button"
+                    className={`guidance-threshold-chip ${successNextShortcutHint === option.value ? 'is-active' : ''}`}
+                    onClick={() => setSuccessNextShortcutHint(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </section>
         </div>
       )}

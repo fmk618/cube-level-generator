@@ -17,6 +17,7 @@ export type CloudLevel = {
   goalStateMatrix: unknown;
   goalStateMatrices?: unknown;
   brightnessMatrix: unknown;
+  blinkMaskMatrix?: unknown;
   maxMoves: number;
   starThresholds: [number, number];
   hint?: string;
@@ -24,8 +25,16 @@ export type CloudLevel = {
   rotationTarget?: string;
   formulaOrientation?: { topColor: number; frontColor: number };
   guidanceFormula?: string;
+  guidanceSourceFormula?: string;
   guidanceFailureThreshold?: number;
+  guidancePresentationMode?: 'full' | 'arrow_chase';
+  successNextShortcutHint?: boolean;
+  guidanceStickerPathChase?: boolean;
+  stateDefinitionMode?: 'formula' | 'brightness';
+  rotationTargetLabel?: string;
   hidden?: boolean;
+  extras?: Record<string, unknown>;
+  [key: string]: unknown;
 };
 
 export type CloudCatalogDocument = {

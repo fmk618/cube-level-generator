@@ -1,4 +1,5 @@
 import { deriveLevelFormulaPreset, DEFAULT_LEVEL_FORMULA_ORIENTATION } from './formulaPreset';
+import { deriveLevelDebugFormulaPreset, toPhysicalTokensFromGrip } from './debugFormulaOrientation';
 import type {
     LevelDefinition,
     LevelGuidanceFailureThreshold,
@@ -9,14 +10,29 @@ import { notationToFace } from '../formula/notationToFace';
 import { INITIAL_COLOR_MATRIX } from '../cube';
 import { isFormulaLevelGoalReachedForLevel } from './goalStates';
 import { resolveLevelGuidanceFailureThreshold } from './utils';
-import { toPhysicalTokensFromGrip } from './debugFormulaOrientation';
 
 export type LevelGuidanceStatus = 'ready' | 'missing' | 'invalid';
+
+export type LevelGuidanceExecutionStep = {
+    notation: string;
+    displayIndex: number;
+};
+
+export type LevelGuidancePresentationStep = {
+    notation: string;
+    displayIndex: number;
+    physicalMoves: string[];
+};
 
 export type LevelGuidanceSummary = {
     status: LevelGuidanceStatus;
     formula: string | null;
-    steps: string[];
+    /** JSON 中的握持视角公式，用于公式面板与演示节拍。 */
+    displayTokens: string[];
+    /** 每个演示 onset 对应的物理动作；x/y/z 没有物理动作。 */
+    presentationSteps: LevelGuidancePresentationStep[];
+    /** 智能魔方实际上报并由 Game 校验的物理面动作。 */
+    executionSteps: LevelGuidanceExecutionStep[];
     stepCount: number;
     message: string;
 };
@@ -27,18 +43,54 @@ export const getLevelGuidanceFailureThreshold = (
     resolveLevelGuidanceFailureThreshold(level.guidanceFailureThreshold)
 );
 
-/** -1 永不开启；0 进入即开；1-5 连续失败 N 次后解锁。解锁后均先音乐+演示再下发流水灯；0 次不重复创建 attempt。 */
+/** -1 永不开启；0 进入即开；1-5 连续失败 N 次后解锁。解锁后均先音乐+演示再下发流水灯；0 次不重复写入 attempt。 */
 export const getGuidanceFailuresRequiredToUnlock = (
     threshold: LevelGuidanceFailureThreshold,
 ): number | null => (
     threshold === -1 ? null : threshold
 );
 
-const expandGuidanceSteps = (tokens: string[]): string[] => tokens.flatMap((token) => {
+const expandQuarterTurns = (token: string): string[] => {
     if (!token.endsWith('2')) return [token];
     const base = token.slice(0, -1);
     return [base, base];
-});
+};
+
+const buildGuidanceSteps = (
+    normalizedDisplayTokens: string[],
+    displayTokens: string[],
+    mappedTokens: string[],
+    mappedSourceIndices: number[],
+): Pick<LevelGuidanceSummary, 'displayTokens' | 'presentationSteps' | 'executionSteps'> => {
+    const executionByDisplayIndex = normalizedDisplayTokens.map(() => [] as string[]);
+    mappedTokens.forEach((token, mappedIndex) => {
+        const displayIndex = mappedSourceIndices[mappedIndex];
+        if (displayIndex === undefined) return;
+        executionByDisplayIndex[displayIndex].push(...expandQuarterTurns(token));
+    });
+
+    const executionSteps = executionByDisplayIndex.flatMap((notations, displayIndex) => (
+        notations.map((notation) => ({ notation, displayIndex }))
+    ));
+    const presentationSteps = normalizedDisplayTokens.flatMap((token, displayIndex) => {
+        const displayOnsets = expandQuarterTurns(token);
+        const physicalMoves = executionByDisplayIndex[displayIndex];
+        if (displayOnsets.length === physicalMoves.length) {
+            return displayOnsets.map((notation, onsetIndex) => ({
+                notation,
+                displayIndex,
+                physicalMoves: [physicalMoves[onsetIndex]],
+            }));
+        }
+        return displayOnsets.map((notation, onsetIndex) => ({
+            notation,
+            displayIndex,
+            physicalMoves: onsetIndex === 0 ? [...physicalMoves] : [],
+        }));
+    });
+
+    return { displayTokens, presentationSteps, executionSteps };
+};
 
 /** 将含 x/y/z、切片、宽转的公式改写为硬件可提示的外层步骤；面字母按握持朝向映射到物理面 */
 export const mapGuidanceFormulaToPhysicalTokens = (
@@ -64,7 +116,9 @@ export const peekLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceS
         return {
             status: 'missing',
             formula: null,
-            steps: [],
+            displayTokens: [],
+            presentationSteps: [],
+            executionSteps: [],
             stepCount: 0,
             message: '缺少推荐解法',
         };
@@ -73,7 +127,9 @@ export const peekLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceS
     return {
         status: 'ready',
         formula,
-        steps: [],
+        displayTokens: [],
+        presentationSteps: [],
+        executionSteps: [],
         stepCount: 0,
         message: '解法校验中…',
     };
@@ -81,36 +137,71 @@ export const peekLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceS
 
 export const getLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceSummary => {
     const guidanceFormula = level.guidanceFormula?.trim();
-    const formula = guidanceFormula || level.rotationFormula?.trim();
+    const sourceFormula = level.guidanceSourceFormula?.trim()
+        || (level.stateDefinitionMode === 'formula' ? level.rotationFormula?.trim() : undefined)
+        || guidanceFormula;
+    const formula = sourceFormula || level.rotationFormula?.trim();
     if (!formula) {
         return {
             status: 'missing',
             formula: null,
-            steps: [],
+            displayTokens: [],
+            presentationSteps: [],
+            executionSteps: [],
             stepCount: 0,
             message: '缺少推荐解法',
         };
     }
 
     try {
-        // guidanceFormula：握持面→物理面，再吸收整转 x/y/z（硬件只能提示 6 个外层面）
-        const mappedTokens = guidanceFormula
-            ? mapGuidanceFormulaToPhysicalTokens(
-                guidanceFormula,
-                level.formulaOrientation ?? DEFAULT_LEVEL_FORMULA_ORIENTATION,
-            )
-            : deriveLevelFormulaPreset(
-                formula,
-                resolveBuiltinFormulaTarget(level.rotationTarget),
-            ).mappedTokens;
-        const steps = expandGuidanceSteps(mappedTokens);
-        if (steps.length === 0) {
-            throw new Error('推荐解法没有可执行步骤（整转/切片改写后为空）');
+        const orientation = level.formulaOrientation ?? DEFAULT_LEVEL_FORMULA_ORIENTATION;
+        const parsed = parseFormulaTokens(formula);
+        if (parsed.invalidTokens.length > 0) {
+            throw new Error(`无效动作：${parsed.invalidTokens.join(', ')}`);
+        }
+        let mappedTokens: string[];
+        let mappedSourceIndices: number[];
+        if (sourceFormula) {
+            const mapped = mapTokensByOrientationWithSource(
+                parsed.tokens,
+                orientation,
+                orientation,
+            );
+            mappedTokens = toPhysicalTokensFromGrip(mapped.mapped, orientation);
+            mappedSourceIndices = mapped.sourceIndices;
+        } else {
+            try {
+                const preset = deriveLevelDebugFormulaPreset(
+                    formula,
+                    resolveBuiltinFormulaTarget(level.rotationTarget ?? 'f2l'),
+                    orientation,
+                );
+                mappedTokens = preset.mappedTokens;
+                mappedSourceIndices = preset.mappedSourceIndices;
+            } catch {
+                const preset = deriveLevelFormulaPreset(
+                    formula,
+                    resolveBuiltinFormulaTarget(level.rotationTarget),
+                );
+                mappedTokens = preset.mappedTokens;
+                mappedSourceIndices = parsed.tokens.map((_, index) => index);
+            }
+        }
+        const guidanceSteps = buildGuidanceSteps(
+            parsed.tokens,
+            parsed.displayTokens,
+            mappedTokens,
+            mappedSourceIndices,
+        );
+        if (guidanceSteps.executionSteps.length === 0) {
+            throw new Error('推荐解法没有可执行步骤');
         }
 
-        const unsupportedStep = steps.find((step) => notationToFace(step) === null);
+        const unsupportedStep = guidanceSteps.executionSteps.find(
+            (step) => notationToFace(step.notation) === null,
+        );
         if (unsupportedStep) {
-            throw new Error(`步骤 ${unsupportedStep} 无法映射到硬件外层面`);
+            throw new Error(`步骤 ${unsupportedStep.notation} 无法映射到硬件外层面`);
         }
 
         const result = applyTokensToState(level.startStateMatrix, mappedTokens);
@@ -126,15 +217,17 @@ export const getLevelGuidanceSummary = (level: LevelDefinition): LevelGuidanceSu
         return {
             status: 'ready',
             formula,
-            steps,
-            stepCount: steps.length,
-            message: `推荐解法 ${steps.length} 步`,
+            ...guidanceSteps,
+            stepCount: guidanceSteps.executionSteps.length,
+            message: `推荐解法 ${guidanceSteps.executionSteps.length} 步`,
         };
     } catch (error) {
         return {
             status: 'invalid',
             formula,
-            steps: [],
+            displayTokens: [],
+            presentationSteps: [],
+            executionSteps: [],
             stepCount: 0,
             message: error instanceof Error ? error.message : '解法校验失败',
         };

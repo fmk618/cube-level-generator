@@ -1,4 +1,4 @@
-import type { StateMatrix, BrightnessMatrix } from '../cube/types';
+import type { StateMatrix, BrightnessMatrix, BlinkMaskMatrix } from '../cube/types';
 import type { DevCustomOrientation } from '../formula/types';
 
 export type LevelId = string;
@@ -26,8 +26,10 @@ export const formatLevelFormulaTargetLabel = (
     }
     return (target ?? 'f2l').toUpperCase();
 };
-/** -1=永不开启指引；0=进入即开；1-5=连续失败 N 次后开启。开启后 0/1/2… 共用同一流程：先音乐+3D转动/箭头/公式（不下发流水灯），音乐结束后再启动硬件流水灯；0 次自动开启不重复创建第二个关卡记录。 */
+/** -1=永不开启指引；0=进入即开；1-5=连续失败 N 次后开启。开启后 0/1/2… 共用同一流程：先音乐+3D转动/箭头/公式（不下发流水灯），音乐结束后再启动硬件流水灯；0 次自动开启不重复写入第二个关卡记录。 */
 export type LevelGuidanceFailureThreshold = -1 | 0 | 1 | 2 | 3 | 4 | 5;
+/** full=音乐+公式演示+箭头后流水灯；arrow_chase=跳过音乐/公式，直接箭头+流水灯。 */
+export type LevelGuidancePresentationMode = 'full' | 'arrow_chase';
 /** 与 App 对齐：一个关卡只能由其中一种编辑机制定义 start/goal/brightness */
 export type LevelStateDefinitionMode = 'formula' | 'brightness';
 
@@ -51,6 +53,7 @@ export interface LevelDefinition {
     /** 多个等效目标态（如绕 Y 轴四向）；命中任一即过关 */
     goalStateMatrices?: StateMatrix[];
     brightnessMatrix: BrightnessMatrix;
+    blinkMaskMatrix?: BlinkMaskMatrix;
     maxMoves: number;
     starThresholds: [number, number];
     hint?: string;
@@ -62,8 +65,13 @@ export interface LevelDefinition {
     formulaOrientation?: DevCustomOrientation;
     /** 与 App 对齐；缺省由有无 rotationFormula 推断 */
     stateDefinitionMode?: LevelStateDefinitionMode;
+    /** 亮度模式下的指引源公式（握持视角） */
+    guidanceSourceFormula?: string;
     guidanceFormula?: string;
     guidanceFailureThreshold?: LevelGuidanceFailureThreshold;
+    guidancePresentationMode?: LevelGuidancePresentationMode;
+    successNextShortcutHint?: boolean;
+    guidanceStickerPathChase?: boolean;
     hidden?: boolean;
 }
 

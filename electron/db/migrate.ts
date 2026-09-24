@@ -16,6 +16,9 @@ const COLUMN_MIGRATIONS = [
   'ALTER TABLE level_skill_bindings MODIFY COLUMN cfop_stage VARCHAR(64) NOT NULL',
   'ALTER TABLE levels ADD COLUMN goal_state_matrices JSON NULL',
   'ALTER TABLE levels ADD COLUMN formula_orientation JSON NULL',
+  'ALTER TABLE levels ADD COLUMN blink_mask_matrix JSON NULL',
+  'ALTER TABLE levels ADD COLUMN extras_json JSON NULL',
+  'ALTER TABLE chapters ADD COLUMN extras_json JSON NULL',
 ];
 
 function isIgnorableMigrationError(error: unknown): boolean {

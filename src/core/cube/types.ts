@@ -22,6 +22,9 @@ export type LocationMatrix = number[][][];
 /** BrightnessMatrix: LED 亮度 (6×3×3), 值 0-10, 按 home position 索引（与 ColorMatrix 一致） */
 export type BrightnessMatrix = number[][][];
 
+/** BlinkMaskMatrix: 目标提示闪烁掩码 (6×3×3), 值 0/1, 索引与 BrightnessMatrix 一致 */
+export type BlinkMaskMatrix = number[][][];
+
 /** BrightnessArray: LED 亮度 [54], 值 0-10, 按位置索引（兼容旧接口） */
 export type BrightnessArray = number[];
 

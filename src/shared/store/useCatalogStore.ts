@@ -92,6 +92,7 @@ const cloneCatalog = (catalog: LevelCatalogDocument): LevelCatalogDocument =>
                 ? cloneStateMatrices(level.goalStateMatrices)
                 : undefined,
             brightnessMatrix: level.brightnessMatrix.map((face) => face.map((row) => [...row])),
+            blinkMaskMatrix: level.blinkMaskMatrix?.map((face) => face.map((row) => [...row])),
         })),
     });
 
@@ -447,6 +448,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
                 ? cloneStateMatrices(sourceLevel.goalStateMatrices)
                 : undefined,
             brightnessMatrix: sourceLevel.brightnessMatrix.map((face) => face.map((row) => [...row])),
+            blinkMaskMatrix: sourceLevel.blinkMaskMatrix?.map((face) => face.map((row) => [...row])),
             starThresholds: [...sourceLevel.starThresholds],
         };
 

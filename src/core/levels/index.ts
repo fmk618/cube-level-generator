@@ -4,6 +4,7 @@ export type {
     LevelFormulaTarget,
     LevelFormulaBuiltinTarget,
     LevelGuidanceFailureThreshold,
+    LevelGuidancePresentationMode,
     LevelStateDefinitionMode,
     LevelChapterConfig,
     LevelDefinition,
@@ -33,6 +34,9 @@ export {
     importLevelsFromJSON,
     normalizeLevelCatalogDocument,
     resolveLevelGuidanceFailureThreshold,
+    resolveLevelGuidancePresentationMode,
+    resolveGuidanceStickerPathChase,
+    resolveSuccessNextShortcutHint,
     formatGuidanceFailureThresholdLabel,
     describeGuidanceFailureThreshold,
     GUIDANCE_UNLOCK_PLAYBACK_FLOW,
@@ -92,6 +96,8 @@ export {
     mapGuidanceFormulaToPhysicalTokens,
     type LevelGuidanceStatus,
     type LevelGuidanceSummary,
+    type LevelGuidanceExecutionStep,
+    type LevelGuidancePresentationStep,
 } from './guidance';
 
 export {
@@ -103,6 +109,14 @@ export {
     type LevelGroupSlot,
     type HiddenLevelGroupItem,
 } from './levelGroups';
+
+export {
+    hasAnyBlinkMask,
+    sanitizeBlinkMaskMatrix,
+    createEmptyBlinkMaskMatrix,
+    cloneBlinkMaskMatrix,
+    type BlinkMaskMatrix,
+} from '../cube';
 
 export {
     buildLevelManagerViewModel,
