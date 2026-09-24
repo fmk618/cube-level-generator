@@ -16,6 +16,7 @@ export {
     cloneStateMatrix, cloneColorMatrix, cloneLocationMatrix, cloneBrightnessMatrix,
     brightnessMatrixToArray, brightnessArrayToMatrix,
     createEmptyBlinkMaskMatrix, cloneBlinkMaskMatrix, hasAnyBlinkMask, sanitizeBlinkMaskMatrix,
+    faceRowColToCoord,
     qFromAxisAngle, qMul,
 } from './matrixOps';
 
