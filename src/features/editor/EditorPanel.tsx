@@ -1320,6 +1320,14 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     return (blinkMaskMatrix[home.face]?.[home.row]?.[home.col] ?? 0) > 0;
   }, [blinkMaskMatrix, previewStateMatrix]);
 
+  const ensureGoalPreviewForBlink = useCallback(() => {
+    if (previewMode === 'goal') return;
+    const matrix = allGoalVariants[selectedGoalVariantIndex] ?? goalStateMatrix;
+    if (!matrix) return;
+    setLiveStateMatrix(cloneStateMatrix(matrix));
+    setPreviewMode('goal');
+  }, [allGoalVariants, goalStateMatrix, previewMode, selectedGoalVariantIndex]);
+
   const toggleBrightnessAtPreviewCell = useCallback((face: number, row: number, col: number, shiftKey = false) => {
     const state = previewStateMatrix;
     if (!state) return;
@@ -1328,6 +1336,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     if (!home) return;
     const isLit = brightnessMatrix[home.face][home.row][home.col] > 0;
     if ((blinkEditMode || shiftKey) && isLit) {
+      ensureGoalPreviewForBlink();
       const nextBlink = cloneBlinkMaskMatrix(blinkMaskMatrix);
       nextBlink[home.face][home.row][home.col] = blinkMaskMatrix[home.face][home.row][home.col] > 0 ? 0 : 1;
       setBlinkMaskMatrix(nextBlink);
@@ -1341,7 +1350,13 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     }
     setBrightnessMatrix(next);
     setBlinkMaskMatrix(nextBlink);
-  }, [blinkEditMode, blinkMaskMatrix, brightnessMatrix, previewStateMatrix]);
+  }, [
+    blinkEditMode,
+    blinkMaskMatrix,
+    brightnessMatrix,
+    ensureGoalPreviewForBlink,
+    previewStateMatrix,
+  ]);
 
   const setPreviewFaceAllBrightness = useCallback((face: number, value: number) => {
     const state = previewStateMatrix;
@@ -1686,7 +1701,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             className="cube-preview cube-preview-editor cube-preview-resizable"
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
-            blinkMaskMatrix={blinkMaskMatrix}
+            blinkMaskMatrix={previewMode === 'goal' && !demoPlaying ? blinkMaskMatrix : null}
             orientation={formulaOrientation}
             dimUnlitWithFaceColor
             playRequest={playRequest}
@@ -2040,7 +2055,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             <div className="brightness-panel-title">点亮面编辑</div>
             <p className="brightness-panel-map">
               按上方 3D 当前预览态编辑。当前握持 {selectedGripFace} → 物理 {selectedPhysicalFaceLabel}。
-              开启「闪烁编辑」或按住 Shift 单击已亮格可标记闪烁。
+              闪烁属于目标态：仅在预览「目标」时 3D 会闪；开启「闪烁编辑」或 Shift 单击已亮格可标记。
             </p>
             <div className="brightness-edit-layout">
               <BrightnessCrossPreview
@@ -2076,7 +2091,13 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                   <button
                     type="button"
                     className={`brightness-blink-toggle ${blinkEditMode ? 'is-active' : ''}`}
-                    onClick={() => setBlinkEditMode((current) => !current)}
+                    onClick={() => {
+                      setBlinkEditMode((current) => {
+                        const next = !current;
+                        if (next) ensureGoalPreviewForBlink();
+                        return next;
+                      });
+                    }}
                   >
                     {blinkEditMode ? '闪烁编辑：开' : '闪烁编辑：关'}
                   </button>
