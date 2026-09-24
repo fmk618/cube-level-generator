@@ -31,7 +31,6 @@ const STEP = 0.54;
 const CUBELET_SIZE = STEP * 0.92;
 const BODY_COLOR = '#252A34';
 const LED_OFF_COLOR = '#A8A8B0';
-const BLINK_EMISSIVE = '#db2777';
 const TURN_DURATION_MS = 220;
 
 function getVisualFaceColors(
@@ -114,9 +113,8 @@ function CubeletMesh({
       blinkFlags.push(isBlink);
       const isChaseLit = Boolean(overlayBrightnessMatrix) && overlay >= chaseMark;
       const brightness = Math.min(1, Math.max(base, isChaseLit ? 10 : overlay) / 10);
-      const color = isBlink
-        ? blendByBrightness('#f472b6', Math.max(brightness, 0.55))
-        : blendByBrightness(visualFaceColors[faceIdx], brightness);
+      const faceColor = visualFaceColors[faceIdx];
+      const color = blendByBrightness(faceColor, brightness);
       return new THREE.MeshStandardMaterial({
         color,
         roughness: isChaseLit || isBlink ? 0.35 : 0.55,
@@ -124,11 +122,9 @@ function CubeletMesh({
         envMapIntensity: 0.5,
         emissive: isChaseLit
           ? new THREE.Color('#22d3ee')
-          : isBlink
-            ? new THREE.Color(BLINK_EMISSIVE)
-            : overlay > base
-              ? new THREE.Color(visualFaceColors[faceIdx])
-              : new THREE.Color('#000000'),
+          : isBlink || overlay > base
+            ? new THREE.Color(faceColor)
+            : new THREE.Color('#000000'),
         emissiveIntensity: isChaseLit ? 0.9 : isBlink ? 0.55 : overlay > base ? 0.25 : 0,
       });
     });
@@ -148,7 +144,7 @@ function CubeletMesh({
     const mats = meshRef.current?.material;
     if (!mats) return;
     const list = Array.isArray(mats) ? mats : [mats];
-    const pulse = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 5.2));
+    const pulse = 0.25 + 0.7 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 5.2));
     list.forEach((mat, index) => {
       if (!flags[index] || !(mat instanceof THREE.MeshStandardMaterial)) return;
       mat.emissiveIntensity = pulse;
