@@ -82,7 +82,7 @@ function CubeletMesh({
   progress,
 }: CubeletMeshProps) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const blinkFlagsRef = useRef<boolean[]>([]);
+  const blinkMetaRef = useRef<Array<{ blink: boolean; faceColor: string }>>([]);
 
   const visualFaceColors = useMemo(
     () => getVisualFaceColors(cubelet, colorMatrix, brightnessMatrix, dimUnlitWithFaceColor),
@@ -92,11 +92,11 @@ function CubeletMesh({
   const materials = useMemo(() => {
     const order = [2, 3, 0, 1, 4, 5];
     const chaseMark = 11;
-    const blinkFlags: boolean[] = [];
+    const blinkMeta: Array<{ blink: boolean; faceColor: string }> = [];
     const next = order.map((faceIdx) => {
       const stickerId = cubelet.stickerIds[faceIdx];
       if (stickerId < 0) {
-        blinkFlags.push(false);
+        blinkMeta.push({ blink: false, faceColor: BODY_COLOR });
         return new THREE.MeshStandardMaterial({
           color: BODY_COLOR,
           roughness: 0.8,
@@ -107,10 +107,11 @@ function CubeletMesh({
       const overlay = overlayBrightnessMatrix
         ? findBrightnessByStateId(stickerId, overlayBrightnessMatrix)
         : 0;
+      const faceHex = colorIndexToHex(findColorByStateId(stickerId, colorMatrix));
       const isBlink = Boolean(blinkMaskMatrix)
         && findBrightnessByStateId(stickerId, blinkMaskMatrix) > 0
         && base > 0;
-      blinkFlags.push(isBlink);
+      blinkMeta.push({ blink: isBlink, faceColor: faceHex });
       const isChaseLit = Boolean(overlayBrightnessMatrix) && overlay >= chaseMark;
       const brightness = Math.min(1, Math.max(base, isChaseLit ? 10 : overlay) / 10);
       const faceColor = visualFaceColors[faceIdx];
@@ -122,13 +123,15 @@ function CubeletMesh({
         envMapIntensity: 0.5,
         emissive: isChaseLit
           ? new THREE.Color('#22d3ee')
-          : isBlink || overlay > base
-            ? new THREE.Color(faceColor)
-            : new THREE.Color('#000000'),
-        emissiveIntensity: isChaseLit ? 0.9 : isBlink ? 0.55 : overlay > base ? 0.25 : 0,
+          : isBlink
+            ? new THREE.Color(faceHex)
+            : overlay > base
+              ? new THREE.Color(faceColor)
+              : new THREE.Color('#000000'),
+        emissiveIntensity: isChaseLit ? 0.9 : isBlink ? 0.4 : overlay > base ? 0.25 : 0,
       });
     });
-    blinkFlagsRef.current = blinkFlags;
+    blinkMetaRef.current = blinkMeta;
     return next;
   }, [
     visualFaceColors,
@@ -136,18 +139,29 @@ function CubeletMesh({
     brightnessMatrix,
     overlayBrightnessMatrix,
     blinkMaskMatrix,
+    colorMatrix,
   ]);
 
   useFrame(({ clock }) => {
-    const flags = blinkFlagsRef.current;
-    if (!flags.some(Boolean)) return;
+    const meta = blinkMetaRef.current;
+    if (!meta.some((item) => item.blink)) return;
     const mats = meshRef.current?.material;
     if (!mats) return;
     const list = Array.isArray(mats) ? mats : [mats];
-    const pulse = 0.25 + 0.7 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 5.2));
+    // 约 2Hz 方波：本色全亮 ↔ 熄灭，避免只剩「一直变暗」
+    const lit = Math.sin(clock.elapsedTime * Math.PI * 2) >= 0;
     list.forEach((mat, index) => {
-      if (!flags[index] || !(mat instanceof THREE.MeshStandardMaterial)) return;
-      mat.emissiveIntensity = pulse;
+      const item = meta[index];
+      if (!item?.blink || !(mat instanceof THREE.MeshStandardMaterial)) return;
+      if (lit) {
+        mat.color.set(item.faceColor);
+        mat.emissive.set(item.faceColor);
+        mat.emissiveIntensity = 0.45;
+      } else {
+        mat.color.set(LED_OFF_COLOR);
+        mat.emissive.set('#000000');
+        mat.emissiveIntensity = 0;
+      }
     });
   });
 
