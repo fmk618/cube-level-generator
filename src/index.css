@@ -119,14 +119,15 @@ select {
 .studio-titlebar {
   position: relative;
   z-index: 10;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   height: 48px;
   flex: 0 0 48px;
   padding: 0 var(--page-pad);
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--border);
+  column-gap: 12px;
 }
 
 [data-platform="darwin"] .studio-titlebar {
@@ -143,18 +144,19 @@ select {
 }
 
 .titlebar-identity {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+  position: static;
+  z-index: 0;
   width: max-content;
   max-width: 240px;
   min-width: 0;
-  transform: translate(-50%, -50%);
   gap: 8px;
+  justify-self: center;
+  pointer-events: none;
 }
 
 .titlebar-nav {
   flex: 0 1 auto;
+  justify-self: start;
   justify-content: flex-start;
   min-width: 0;
   overflow: hidden;
@@ -162,8 +164,9 @@ select {
 
 .titlebar-actions {
   flex: 0 1 auto;
+  justify-self: end;
   justify-content: flex-end;
-  margin-left: auto;
+  z-index: 1;
   gap: 8px;
   min-width: 0;
   white-space: nowrap;
@@ -3905,6 +3908,12 @@ textarea.text-input--sm {
   }
 }
 
+@media (max-width: 1200px) {
+  .titlebar-identity {
+    display: none;
+  }
+}
+
 @media (max-width: 1100px) {
   .titlebar-action-secondary {
     display: none;
@@ -3922,10 +3931,6 @@ textarea.text-input--sm {
 
   .titlebar-actions {
     min-width: 0;
-  }
-
-  .titlebar-identity {
-    max-width: calc(100% - 300px);
   }
 
   .titlebar-copy .titlebar-divider,
@@ -3996,10 +4001,6 @@ textarea.text-input--sm {
     max-width: 150px;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .titlebar-identity {
-    max-width: calc(100% - 220px);
   }
 
   .titlebar-save {
