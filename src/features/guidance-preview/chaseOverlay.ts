@@ -15,7 +15,7 @@ export const buildChaseOverlayBrightness = (
   base: BrightnessMatrix,
   face: HintFace,
   litCount: number,
-  peakBrightness = 10,
+  peakBrightness = 12,
 ): BrightnessMatrix => {
   const next = cloneBrightness(base);
   const ring = FLOWING_LIGHT_MATRIX_INDICES[face as Exclude<FlowingLightFace, null>] as MatrixIndex[];
@@ -36,7 +36,7 @@ export const buildChaseOverlayFromPath = (
   base: BrightnessMatrix,
   path: readonly MatrixIndex[],
   litCount: number,
-  peakBrightness = 10,
+  peakBrightness = 12,
 ): BrightnessMatrix => {
   const next = cloneBrightness(base);
   const count = Math.max(0, Math.min(path.length, Math.floor(litCount)));

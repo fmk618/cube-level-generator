@@ -4265,6 +4265,15 @@ textarea.text-input--sm {
 .preview-demo-label {
   margin: 0;
   color: var(--preview-accent, #0f766e);
+  font-weight: 700;
+}
+
+.guidance-demo-hint {
+  margin: 0;
+  max-width: none;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
 }
 
 .brightness-cell-blink {

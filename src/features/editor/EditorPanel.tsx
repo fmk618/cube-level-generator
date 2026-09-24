@@ -1187,7 +1187,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     };
 
     const showFormulaCue = guidancePresentationMode === 'full';
-    let cursorMs = 200;
+    let cursorMs = 280;
+    setDemoStepLabel('演示开始…');
+    setSaveNotice('正在 3D 预览中演示指引：箭头 → 流水灯 → 转体。可点「停止演示」中断。');
     summary.executionSteps.forEach((step, stepIndex) => {
       const notation = step.notation;
       const faceHint = notationToFace(notation);
@@ -1214,7 +1216,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         setDemoArrow(arrow);
         setDemoOverlayBrightness(null);
       });
-      cursorMs += showFormulaCue ? 320 : 200;
+      cursorMs += showFormulaCue ? 520 : 360;
 
       if (ringLen > 0) {
         for (let lit = 1; lit <= ringLen; lit += 1) {
@@ -1226,11 +1228,11 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               setDemoOverlayBrightness(buildChaseOverlayBrightness(brightnessMatrix, faceHint.face, count));
             }
           });
-          cursorMs += 70;
+          cursorMs += 110;
         }
-        cursorMs += 180;
+        cursorMs += 280;
       } else {
-        cursorMs += 400;
+        cursorMs += 520;
       }
 
       schedule(cursorMs, () => {
@@ -1239,7 +1241,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
         setDemoOverlayBrightness(null);
         setDemoArrow(null);
       });
-      cursorMs += 420;
+      cursorMs += 560;
     });
 
     schedule(cursorMs, () => {
@@ -1247,9 +1249,9 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
       setDemoOverlayBrightness(null);
       setDemoArrow(null);
     });
-    schedule(cursorMs + 900, () => {
+    schedule(cursorMs + 1200, () => {
       stopGuidanceDemo();
-      setSaveNotice('指引演示已结束。');
+      setSaveNotice('指引演示已结束。若流水灯路径不对，可改「流水灯路径」后再点演示。');
     });
   }, [
     allGoalVariants,
@@ -1726,7 +1728,10 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                 type="button"
                 className="btn btn-sm"
                 disabled={!startStateMatrix || !goalStateMatrix || !guidanceFormulaText.trim()}
-                onClick={() => (demoPlaying ? stopGuidanceDemo() : startGuidanceDemo())}
+                onClick={() => {
+                  if (demoPlaying) stopGuidanceDemo();
+                  else startGuidanceDemo();
+                }}
               >
                 {demoPlaying ? '停止演示' : '演示指引'}
               </button>
@@ -2240,11 +2245,18 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                 type="button"
                 className="btn btn-primary"
                 disabled={!startStateMatrix || !goalStateMatrix || !guidanceFormulaText.trim()}
-                onClick={() => (demoPlaying ? stopGuidanceDemo() : startGuidanceDemo())}
+                onClick={() => {
+                  document.querySelector('.preview-hero')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  if (demoPlaying) stopGuidanceDemo();
+                  else startGuidanceDemo();
+                }}
               >
                 {demoPlaying ? '停止演示' : '演示指引（箭头 + 流水灯）'}
               </button>
             </div>
+            <p className="guidance-demo-hint">
+              改「指引呈现 / 流水灯路径」不会立刻动 3D。先填推荐解法并校验通过，再点「演示指引」，上方预览会依次出现箭头、青色流水灯、转体。
+            </p>
             <div className="preview-card brightness-preview-card">{guidancePreviewText}</div>
             <div className="guidance-config-card">
               <GuidanceThresholdBlock

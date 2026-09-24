@@ -85,6 +85,7 @@ function CubeletMesh({
 
   const materials = useMemo(() => {
     const order = [2, 3, 0, 1, 4, 5];
+    const chaseMark = 11;
     return order.map((faceIdx) => {
       const stickerId = cubelet.stickerIds[faceIdx];
       if (stickerId < 0) {
@@ -97,16 +98,21 @@ function CubeletMesh({
       const base = findBrightnessByStateId(stickerId, brightnessMatrix);
       const overlay = overlayBrightnessMatrix
         ? findBrightnessByStateId(stickerId, overlayBrightnessMatrix)
-        : base;
-      const brightness = Math.max(base, overlay) / 10;
+        : 0;
+      const isChaseLit = Boolean(overlayBrightnessMatrix) && overlay >= chaseMark;
+      const brightness = Math.min(1, Math.max(base, isChaseLit ? 10 : overlay) / 10);
       const color = blendByBrightness(visualFaceColors[faceIdx], brightness);
       return new THREE.MeshStandardMaterial({
         color,
-        roughness: 0.55,
-        metalness: 0.04,
+        roughness: isChaseLit ? 0.35 : 0.55,
+        metalness: isChaseLit ? 0.12 : 0.04,
         envMapIntensity: 0.5,
-        emissive: overlay > base ? new THREE.Color(visualFaceColors[faceIdx]) : new THREE.Color('#000000'),
-        emissiveIntensity: overlay > base ? 0.25 : 0,
+        emissive: isChaseLit
+          ? new THREE.Color('#22d3ee')
+          : overlay > base
+            ? new THREE.Color(visualFaceColors[faceIdx])
+            : new THREE.Color('#000000'),
+        emissiveIntensity: isChaseLit ? 0.9 : overlay > base ? 0.25 : 0,
       });
     });
   }, [visualFaceColors, cubelet.stickerIds, brightnessMatrix, overlayBrightnessMatrix]);
