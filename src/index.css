@@ -140,35 +140,33 @@ select {
 .titlebar-actions {
   display: flex;
   align-items: center;
+  min-width: 0;
   -webkit-app-region: no-drag;
 }
 
+.titlebar-nav {
+  grid-column: 1;
+  justify-self: start;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
 .titlebar-identity {
-  position: static;
+  grid-column: 2;
   z-index: 0;
   width: max-content;
-  max-width: 240px;
-  min-width: 0;
+  max-width: 220px;
   gap: 8px;
   justify-self: center;
   pointer-events: none;
 }
 
-.titlebar-nav {
-  flex: 0 1 auto;
-  justify-self: start;
-  justify-content: flex-start;
-  min-width: 0;
-  overflow: hidden;
-}
-
 .titlebar-actions {
-  flex: 0 1 auto;
+  grid-column: 3;
   justify-self: end;
   justify-content: flex-end;
   z-index: 1;
   gap: 8px;
-  min-width: 0;
   white-space: nowrap;
 }
 
@@ -3910,13 +3908,47 @@ textarea.text-input--sm {
 
 @media (max-width: 1200px) {
   .titlebar-identity {
-    display: none;
+    visibility: hidden;
+    width: 0;
+    max-width: 0;
+    overflow: hidden;
+    pointer-events: none;
   }
 }
 
+/* 高于 .btn 优先级，否则 display:none 会被盖掉 */
 @media (max-width: 1100px) {
-  .titlebar-action-secondary {
-    display: none;
+  .titlebar-actions .btn.titlebar-action-secondary {
+    display: none !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .studio-titlebar {
+    padding-right: 10px;
+    column-gap: 8px;
+  }
+
+  .titlebar-actions {
+    gap: 6px;
+  }
+
+  .titlebar-actions .btn.titlebar-action-default {
+    display: none !important;
+  }
+
+  .titlebar-save {
+    min-width: 72px;
+    padding: 0 8px;
+  }
+
+  .titlebar-actions .ob-help-trigger {
+    padding: 0 8px;
+  }
+
+  .editor-mode-tabs .mode-tab {
+    padding: 0 8px;
+    font-size: 12px;
   }
 }
 

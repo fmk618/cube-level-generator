@@ -338,7 +338,7 @@ export default function App() {
           <HelpOnboardingMenu />
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-sm titlebar-action-default"
             disabled={!canWriteBundledDefault || writingBundledDefault || hasUnsavedChanges || busySync}
             title={
               !canWriteBundledDefault
