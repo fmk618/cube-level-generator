@@ -148,7 +148,7 @@ function CubeletMesh({
     const mats = meshRef.current?.material;
     if (!mats) return;
     const list = Array.isArray(mats) ? mats : [mats];
-    // 约 2Hz 方波：本色全亮 ↔ 熄灭，避免只剩「一直变暗」
+    // 约 2Hz 方波：本色全亮 ↔ 熄灭
     const lit = Math.sin(clock.elapsedTime * Math.PI * 2) >= 0;
     list.forEach((mat, index) => {
       const item = meta[index];

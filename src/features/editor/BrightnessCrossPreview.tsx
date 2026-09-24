@@ -1,10 +1,11 @@
-import type { BlinkMaskMatrix, BrightnessMatrix } from '@/core/cube';
+import { createEmptyBlinkMaskMatrix, type BlinkMaskMatrix, type BrightnessMatrix } from '@/core/cube';
 
 const FACE_NAMES = ['U', 'L', 'F', 'R', 'B', 'D'];
+const EMPTY_BLINK = createEmptyBlinkMaskMatrix();
 
 type Props = {
   brightnessMatrix: BrightnessMatrix;
-  blinkMaskMatrix: BlinkMaskMatrix;
+  blinkMaskMatrix?: BlinkMaskMatrix | null;
   selectedFace: number;
   onSelectFace: (face: number) => void;
 };
@@ -56,15 +57,16 @@ function MiniFace({
 
 export function BrightnessCrossPreview({
   brightnessMatrix,
-  blinkMaskMatrix,
+  blinkMaskMatrix = null,
   selectedFace,
   onSelectFace,
 }: Props) {
+  const blink = blinkMaskMatrix ?? EMPTY_BLINK;
   const renderFace = (faceIndex: number) => (
     <MiniFace
       faceIndex={faceIndex}
       brightnessRow={brightnessMatrix[faceIndex]}
-      blinkRow={blinkMaskMatrix[faceIndex]}
+      blinkRow={blink[faceIndex]}
       isSelected={faceIndex === selectedFace}
       onPress={() => onSelectFace(faceIndex)}
     />

@@ -623,6 +623,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     if (!startStateMatrix) return;
     setLiveStateMatrix(cloneStateMatrix(startStateMatrix));
     setPreviewMode('start');
+    setBlinkEditMode(false);
   }, [startStateMatrix]);
 
   const handlePreviewGoal = useCallback((index: number) => {
@@ -1604,6 +1605,8 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
     );
   }
 
+  const showGoalBlink = previewMode === 'goal' && !demoPlaying;
+
   return (
     <>
       {headerActionsHost && createPortal(
@@ -1698,10 +1701,11 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
           </div>
           {demoStepLabel && <p className="hint-text preview-demo-label">{demoStepLabel}</p>}
           <CubePreview
+            key={`editor-preview-${previewMode}-${selectedGoalVariantIndex}-${showGoalBlink ? 'blink' : 'noblink'}`}
             className="cube-preview cube-preview-editor cube-preview-resizable"
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
-            blinkMaskMatrix={previewMode === 'goal' && !demoPlaying ? blinkMaskMatrix : null}
+            blinkMaskMatrix={showGoalBlink ? blinkMaskMatrix : null}
             orientation={formulaOrientation}
             dimUnlitWithFaceColor
             playRequest={playRequest}
@@ -2060,7 +2064,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             <div className="brightness-edit-layout">
               <BrightnessCrossPreview
                 brightnessMatrix={brightnessMatrix}
-                blinkMaskMatrix={blinkMaskMatrix}
+                blinkMaskMatrix={showGoalBlink ? blinkMaskMatrix : null}
                 selectedFace={selectedPhysicalFace}
                 onSelectFace={(faceIndex) => {
                   const name = FACE_NAMES.find((face) => {
@@ -2107,7 +2111,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
                     <div key={row} className="brightness-row" role="row">
                       {[0, 1, 2].map((col) => {
                         const value = readBrightnessAtPreviewCell(selectedPhysicalFace, row, col);
-                        const blink = readBlinkAtPreviewCell(selectedPhysicalFace, row, col);
+                        const blink = showGoalBlink && readBlinkAtPreviewCell(selectedPhysicalFace, row, col);
                         return (
                           <button
                             key={col}
