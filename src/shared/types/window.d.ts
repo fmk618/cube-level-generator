@@ -10,6 +10,8 @@ declare global {
         getRuntimePath: () => Promise<string>;
         importFromDisk: () => Promise<{ filePath: string; content: string } | null>;
         exportToDisk: (json: string, suggestedName: string) => Promise<string | null>;
+        canWriteBundledDefault: () => Promise<boolean>;
+        writeBundledDefault: (json: string) => Promise<{ srcPath: string; publicPath: string }>;
       };
       skillGraph: {
         loadDefault: () => Promise<string>;

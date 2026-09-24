@@ -162,6 +162,19 @@ ipcMain.handle('catalog:loadDefault', async () => {
   return content;
 });
 
+ipcMain.handle('catalog:canWriteBundledDefault', () => Boolean(VITE_DEV_SERVER_URL && process.env.APP_ROOT));
+
+ipcMain.handle('catalog:writeBundledDefault', async (_event, json: string) => {
+  if (!VITE_DEV_SERVER_URL || !process.env.APP_ROOT) {
+    throw new Error('仅开发环境可「保存为默认情况」');
+  }
+  const srcPath = path.join(process.env.APP_ROOT, 'src/core/levels/game_levels_english.json');
+  const publicPath = path.join(process.env.APP_ROOT, 'public/game_levels_english.json');
+  await writeFileAtomically(srcPath, json);
+  await writeFileAtomically(publicPath, json);
+  return { srcPath, publicPath };
+});
+
 ipcMain.handle('catalog:loadRuntime', async () => {
   return readJsonFileIfExists(CATALOG_FILE());
 });

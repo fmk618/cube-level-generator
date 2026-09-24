@@ -27,6 +27,9 @@ const api = {
     importFromDisk: (): Promise<ImportResult> => ipcRenderer.invoke('catalog:importFromDisk'),
     exportToDisk: (json: string, suggestedName: string): Promise<string | null> =>
       ipcRenderer.invoke('catalog:exportToDisk', json, suggestedName),
+    canWriteBundledDefault: (): Promise<boolean> => ipcRenderer.invoke('catalog:canWriteBundledDefault'),
+    writeBundledDefault: (json: string): Promise<{ srcPath: string; publicPath: string }> =>
+      ipcRenderer.invoke('catalog:writeBundledDefault', json),
   },
   skillGraph: {
     loadDefault: (): Promise<string> => ipcRenderer.invoke('skillGraph:loadDefault'),

@@ -63,12 +63,16 @@ export default function App() {
   const [savingLocal, setSavingLocal] = useState(false);
   const [pushingRemote, setPushingRemote] = useState(false);
   const [pullingRemote, setPullingRemote] = useState(false);
+  const [writingBundledDefault, setWritingBundledDefault] = useState(false);
+  const [canWriteBundledDefault, setCanWriteBundledDefault] = useState(false);
+  const [writeDefaultNotice, setWriteDefaultNotice] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState<'catalog' | 'skills' | 'levelSkillMap'>('catalog');
   const [migrationOpen, setMigrationOpen] = useState(false);
   const selectedLevelId = useUiStore((state) => state.selectedLevelId);
   const selectLevel = useUiStore((state) => state.selectLevel);
   const hasUnsavedChanges = useCatalogStore((state) => state.hasUnsavedChanges);
+  const writeBundledDefault = useCatalogStore((state) => state.writeBundledDefault);
   const skillsUnsaved = useSkillGraphStore((state) => state.hasUnsavedChanges);
   const mapUnsaved = useLevelSkillMapStore((state) => state.hasUnsavedChanges);
   const anyUnsaved = hasUnsavedChanges || skillsUnsaved || mapUnsaved;
@@ -88,6 +92,12 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.platform = window.platform;
+  }, []);
+
+  useEffect(() => {
+    void window.api.catalog.canWriteBundledDefault().then(setCanWriteBundledDefault).catch(() => {
+      setCanWriteBundledDefault(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -185,18 +195,42 @@ export default function App() {
     document.addEventListener('mouseup', onUp);
   }, [assistantWidth, catalogWidth, llmCollapsed]);
 
-  const busySync = syncPhase === 'local' || syncPhase === 'cloud' || savingLocal || pushingRemote || pullingRemote;
+  const busySync =
+    syncPhase === 'local'
+    || syncPhase === 'cloud'
+    || savingLocal
+    || pushingRemote
+    || pullingRemote
+    || writingBundledDefault;
 
   const handleSaveLocal = async () => {
     if (savingLocal || pushingRemote) return;
     setSavingLocal(true);
     setSaveError(null);
+    setWriteDefaultNotice(null);
     try {
       await saveAllLocal();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
       setSavingLocal(false);
+    }
+  };
+
+  const handleWriteBundledDefault = async () => {
+    if (!window.confirm('将用当前关卡目录完整替换内置默认关卡（保存为默认情况）。确定继续？')) {
+      return;
+    }
+    setWritingBundledDefault(true);
+    setSaveError(null);
+    setWriteDefaultNotice(null);
+    try {
+      const result = await writeBundledDefault();
+      setWriteDefaultNotice(`已保存为默认情况：${result.srcPath}`);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWritingBundledDefault(false);
     }
   };
 
@@ -287,17 +321,36 @@ export default function App() {
         <div className="titlebar-actions" id="global-editor-actions">
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-sm titlebar-action-secondary"
             disabled={busySync}
             onClick={() => void handlePullRemote()}
             title="从云端拉取关卡、能力标签与推荐配置，并覆盖本地缓存"
           >
             {pullingRemote ? <><span className="spinner" />拉取中</> : '拉取远程'}
           </button>
-          <button type="button" className="btn btn-sm" onClick={() => setMigrationOpen(true)}>
+          <button
+            type="button"
+            className="btn btn-sm titlebar-action-secondary"
+            onClick={() => setMigrationOpen(true)}
+          >
             从 App 迁移
           </button>
           <HelpOnboardingMenu />
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={!canWriteBundledDefault || writingBundledDefault || hasUnsavedChanges || busySync}
+            title={
+              !canWriteBundledDefault
+                ? '仅开发环境可保存为默认情况'
+                : hasUnsavedChanges
+                  ? '请先「本地保存」再保存为默认情况'
+                  : '把当前关卡目录保存为内置默认，打包后他人可直接使用'
+            }
+            onClick={() => void handleWriteBundledDefault()}
+          >
+            {writingBundledDefault ? '保存中…' : '保存为默认情况'}
+          </button>
           <div className="titlebar-save-slot">
             {!(selectedLevelId && editMode === 'catalog') ? (
               <>
@@ -341,6 +394,7 @@ export default function App() {
         </div>
       )}
       {saveError && <div className="global-save-error">{saveError}</div>}
+      {writeDefaultNotice && <div className="global-save-ok">{writeDefaultNotice}</div>}
       <main
         className="studio-columns"
         style={{

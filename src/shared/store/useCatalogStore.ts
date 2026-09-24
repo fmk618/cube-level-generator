@@ -53,6 +53,7 @@ type CatalogState = {
     importCatalogFromJSON: (json: string) => void;
     importFromDisk: () => Promise<boolean>;
     exportToDisk: () => Promise<string | null>;
+    writeBundledDefault: () => Promise<{ srcPath: string; publicPath: string }>;
     saveCatalog: () => Promise<string>;
     /** 仅写本地 runtime，不推远程 */
     saveLocal: (options?: { manageSync?: boolean }) => Promise<string>;
@@ -272,6 +273,20 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
         if (!catalog) return null;
         const json = exportLevelsToJSON(catalog);
         return window.api.catalog.exportToDisk(json, 'game_levels_english.json');
+    },
+
+    writeBundledDefault: async () => {
+        const catalog = get().catalog;
+        if (!catalog) throw new Error('关卡目录尚未加载。');
+        if (get().hasUnsavedChanges) {
+            throw new Error('还有未保存草稿，请先「本地保存」再「保存为默认情况」。');
+        }
+        const canWrite = await window.api.catalog.canWriteBundledDefault();
+        if (!canWrite) {
+            throw new Error('仅开发环境可「保存为默认情况」。');
+        }
+        const json = exportLevelsToJSON(catalog);
+        return window.api.catalog.writeBundledDefault(json);
     },
 
     saveCatalog: async () => get().saveLocal(),
