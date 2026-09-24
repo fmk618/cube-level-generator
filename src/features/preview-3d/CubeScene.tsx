@@ -15,6 +15,7 @@ import {
   qMul,
   type ActiveTurn,
   type Axis,
+  type BlinkMaskMatrix,
   type BrightnessMatrix,
   type ColorMatrix,
   type Cubelet,
@@ -30,6 +31,7 @@ const STEP = 0.54;
 const CUBELET_SIZE = STEP * 0.92;
 const BODY_COLOR = '#252A34';
 const LED_OFF_COLOR = '#A8A8B0';
+const BLINK_EMISSIVE = '#db2777';
 const TURN_DURATION_MS = 220;
 
 function getVisualFaceColors(
@@ -54,6 +56,7 @@ type CubeletMeshProps = {
   colorMatrix: ColorMatrix;
   brightnessMatrix: BrightnessMatrix;
   overlayBrightnessMatrix?: BrightnessMatrix | null;
+  blinkMaskMatrix?: BlinkMaskMatrix | null;
   dimUnlitWithFaceColor?: boolean;
   activeTurn: ActiveTurn | null;
   progress: number;
@@ -74,10 +77,14 @@ function CubeletMesh({
   colorMatrix,
   brightnessMatrix,
   overlayBrightnessMatrix = null,
+  blinkMaskMatrix = null,
   dimUnlitWithFaceColor = false,
   activeTurn,
   progress,
 }: CubeletMeshProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const blinkFlagsRef = useRef<boolean[]>([]);
+
   const visualFaceColors = useMemo(
     () => getVisualFaceColors(cubelet, colorMatrix, brightnessMatrix, dimUnlitWithFaceColor),
     [cubelet, colorMatrix, brightnessMatrix, dimUnlitWithFaceColor],
@@ -86,9 +93,11 @@ function CubeletMesh({
   const materials = useMemo(() => {
     const order = [2, 3, 0, 1, 4, 5];
     const chaseMark = 11;
-    return order.map((faceIdx) => {
+    const blinkFlags: boolean[] = [];
+    const next = order.map((faceIdx) => {
       const stickerId = cubelet.stickerIds[faceIdx];
       if (stickerId < 0) {
+        blinkFlags.push(false);
         return new THREE.MeshStandardMaterial({
           color: BODY_COLOR,
           roughness: 0.8,
@@ -99,23 +108,52 @@ function CubeletMesh({
       const overlay = overlayBrightnessMatrix
         ? findBrightnessByStateId(stickerId, overlayBrightnessMatrix)
         : 0;
+      const isBlink = Boolean(blinkMaskMatrix)
+        && findBrightnessByStateId(stickerId, blinkMaskMatrix) > 0
+        && base > 0;
+      blinkFlags.push(isBlink);
       const isChaseLit = Boolean(overlayBrightnessMatrix) && overlay >= chaseMark;
       const brightness = Math.min(1, Math.max(base, isChaseLit ? 10 : overlay) / 10);
-      const color = blendByBrightness(visualFaceColors[faceIdx], brightness);
+      const color = isBlink
+        ? blendByBrightness('#f472b6', Math.max(brightness, 0.55))
+        : blendByBrightness(visualFaceColors[faceIdx], brightness);
       return new THREE.MeshStandardMaterial({
         color,
-        roughness: isChaseLit ? 0.35 : 0.55,
-        metalness: isChaseLit ? 0.12 : 0.04,
+        roughness: isChaseLit || isBlink ? 0.35 : 0.55,
+        metalness: isChaseLit || isBlink ? 0.12 : 0.04,
         envMapIntensity: 0.5,
         emissive: isChaseLit
           ? new THREE.Color('#22d3ee')
-          : overlay > base
-            ? new THREE.Color(visualFaceColors[faceIdx])
-            : new THREE.Color('#000000'),
-        emissiveIntensity: isChaseLit ? 0.9 : overlay > base ? 0.25 : 0,
+          : isBlink
+            ? new THREE.Color(BLINK_EMISSIVE)
+            : overlay > base
+              ? new THREE.Color(visualFaceColors[faceIdx])
+              : new THREE.Color('#000000'),
+        emissiveIntensity: isChaseLit ? 0.9 : isBlink ? 0.55 : overlay > base ? 0.25 : 0,
       });
     });
-  }, [visualFaceColors, cubelet.stickerIds, brightnessMatrix, overlayBrightnessMatrix]);
+    blinkFlagsRef.current = blinkFlags;
+    return next;
+  }, [
+    visualFaceColors,
+    cubelet.stickerIds,
+    brightnessMatrix,
+    overlayBrightnessMatrix,
+    blinkMaskMatrix,
+  ]);
+
+  useFrame(({ clock }) => {
+    const flags = blinkFlagsRef.current;
+    if (!flags.some(Boolean)) return;
+    const mats = meshRef.current?.material;
+    if (!mats) return;
+    const list = Array.isArray(mats) ? mats : [mats];
+    const pulse = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 5.2));
+    list.forEach((mat, index) => {
+      if (!flags[index] || !(mat instanceof THREE.MeshStandardMaterial)) return;
+      mat.emissiveIntensity = pulse;
+    });
+  });
 
   const isAffected = Boolean(activeTurn?.affectedIds.includes(cubelet.id));
   let position: Vec3 = cubelet.pos;
@@ -133,7 +171,7 @@ function CubeletMesh({
 
   return (
     <group position={position} quaternion={quaternion}>
-      <mesh material={materials} castShadow receiveShadow>
+      <mesh ref={meshRef} material={materials} castShadow receiveShadow>
         <boxGeometry args={[CUBELET_SIZE, CUBELET_SIZE, CUBELET_SIZE]} />
       </mesh>
     </group>
@@ -150,6 +188,7 @@ export type CubeSceneProps = {
   brightnessMatrix: BrightnessMatrix;
   colorMatrix?: ColorMatrix;
   overlayBrightnessMatrix?: BrightnessMatrix | null;
+  blinkMaskMatrix?: BlinkMaskMatrix | null;
   guidanceArrow?: GuidanceArrowMove | null;
   /** 编辑器：熄灭格用本色压暗，便于认出顶/前色 */
   dimUnlitWithFaceColor?: boolean;
@@ -162,6 +201,7 @@ export function CubeScene({
   brightnessMatrix,
   colorMatrix,
   overlayBrightnessMatrix = null,
+  blinkMaskMatrix = null,
   guidanceArrow = null,
   dimUnlitWithFaceColor = false,
   playRequest = null,
@@ -305,6 +345,7 @@ export function CubeScene({
           colorMatrix={resolvedColorMatrix}
           brightnessMatrix={brightnessMatrix}
           overlayBrightnessMatrix={overlayBrightnessMatrix}
+          blinkMaskMatrix={blinkMaskMatrix}
           dimUnlitWithFaceColor={dimUnlitWithFaceColor}
           activeTurn={activeTurn}
           progress={progress}

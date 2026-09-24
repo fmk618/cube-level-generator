@@ -2,7 +2,7 @@ import { Suspense, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { TrackballControls } from '@react-three/drei';
 import { CubeScene, type CubePlayRequest } from './CubeScene';
-import type { BrightnessMatrix, ColorMatrix, StateMatrix } from '@/core/cube';
+import type { BlinkMaskMatrix, BrightnessMatrix, ColorMatrix, StateMatrix } from '@/core/cube';
 import type { GuidanceArrowMove } from '@/core/formula';
 import {
   DEFAULT_LEVEL_DEBUG_ORIENTATION,
@@ -15,6 +15,7 @@ export type CubePreviewProps = {
   brightnessMatrix: BrightnessMatrix;
   colorMatrix?: ColorMatrix;
   overlayBrightnessMatrix?: BrightnessMatrix | null;
+  blinkMaskMatrix?: BlinkMaskMatrix | null;
   guidanceArrow?: GuidanceArrowMove | null;
   /** 握持朝向：3D 将顶色朝上、前色朝前 */
   orientation?: DevCustomOrientation;
@@ -31,6 +32,7 @@ function SceneContent({
   brightnessMatrix,
   colorMatrix,
   overlayBrightnessMatrix = null,
+  blinkMaskMatrix = null,
   guidanceArrow = null,
   orientation = DEFAULT_LEVEL_DEBUG_ORIENTATION,
   dimUnlitWithFaceColor = false,
@@ -62,6 +64,7 @@ function SceneContent({
           brightnessMatrix={brightnessMatrix}
           colorMatrix={colorMatrix}
           overlayBrightnessMatrix={overlayBrightnessMatrix}
+          blinkMaskMatrix={blinkMaskMatrix}
           guidanceArrow={guidanceArrow}
           dimUnlitWithFaceColor={dimUnlitWithFaceColor}
           playRequest={playRequest}
@@ -93,6 +96,7 @@ export function CubePreview({
   brightnessMatrix,
   colorMatrix,
   overlayBrightnessMatrix = null,
+  blinkMaskMatrix = null,
   guidanceArrow = null,
   orientation = DEFAULT_LEVEL_DEBUG_ORIENTATION,
   dimUnlitWithFaceColor = false,
@@ -138,6 +142,7 @@ export function CubePreview({
             brightnessMatrix={brightnessMatrix}
             colorMatrix={colorMatrix}
             overlayBrightnessMatrix={overlayBrightnessMatrix}
+            blinkMaskMatrix={blinkMaskMatrix}
             guidanceArrow={guidanceArrow}
             orientation={orientation}
             dimUnlitWithFaceColor={dimUnlitWithFaceColor}

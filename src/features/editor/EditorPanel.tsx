@@ -1777,6 +1777,7 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
             className="cube-preview cube-preview-editor cube-preview-resizable"
             stateMatrix={previewStateMatrix!}
             brightnessMatrix={brightnessMatrix}
+            blinkMaskMatrix={blinkMaskMatrix}
             overlayBrightnessMatrix={demoOverlayBrightness}
             guidanceArrow={demoArrow}
             orientation={formulaOrientation}
