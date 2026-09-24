@@ -35,7 +35,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^10.0.4",
     "cross-env": "^10.1.0",
-    "electron": "^43.2.0",
+    "electron": "43.2.0",
     "electron-builder": "^26.15.3",
     "oxlint": "^1.71.0",
     "typescript": "~6.0.2",
@@ -46,6 +46,7 @@
   "build": {
     "appId": "com.libercube.cube-level-generator",
     "productName": "cube-level-generator",
+    "electronVersion": "43.2.0",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",

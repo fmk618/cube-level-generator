@@ -109,7 +109,7 @@ function CubeletMesh({
         : 0;
       const faceHex = colorIndexToHex(findColorByStateId(stickerId, colorMatrix));
       const isBlink = Boolean(blinkMaskMatrix)
-        && findBrightnessByStateId(stickerId, blinkMaskMatrix) > 0
+        && findBrightnessByStateId(stickerId, blinkMaskMatrix!) > 0
         && base > 0;
       blinkMeta.push({ blink: isBlink, faceColor: faceHex });
       const isChaseLit = Boolean(overlayBrightnessMatrix) && overlay >= chaseMark;
