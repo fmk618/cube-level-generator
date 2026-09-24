@@ -226,21 +226,21 @@ function GuidanceThresholdBlock({
   onChange: (next: LevelGuidanceFailureThreshold) => void;
 }) {
   return (
-    <div className="guidance-threshold-block">
-      <div className="guidance-threshold-title">指引开启条件</div>
-      <div className="guidance-threshold-row" role="group" aria-label="指引开启条件">
+    <div className="guidance-option-section">
+      <div className="guidance-option-label">指引开启条件</div>
+      <div className="guidance-option-row is-dense" role="group" aria-label="指引开启条件">
         {LEVEL_GUIDANCE_FAILURE_THRESHOLD_OPTIONS.map((option) => (
           <button
             key={option}
             type="button"
-            className={`guidance-threshold-chip ${threshold === option ? 'is-active' : ''}`}
+            className={`guidance-option-chip ${threshold === option ? 'is-active' : ''}`}
             onClick={() => onChange(option)}
           >
             {option === -1 ? '不开启' : `${option} 次`}
           </button>
         ))}
       </div>
-      <p className="guidance-threshold-summary">
+      <p className="guidance-option-summary">
         {threshold === -1
           ? '不开启：本关永不播放音乐/箭头/公式演示，也不下发流水灯指引。'
           : threshold === 0
@@ -257,7 +257,7 @@ function GuidanceThresholdBlock({
           )}
         </ul>
       )}
-      <p className="guidance-threshold-current">
+      <p className="guidance-option-current">
         当前：{formatGuidanceFailureThresholdLabel(threshold)}
       </p>
     </div>
@@ -2129,70 +2129,76 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               按上方 3D 当前预览态编辑。当前握持 {selectedGripFace} → 物理 {selectedPhysicalFaceLabel}。
               开启「闪烁编辑」或按住 Shift 单击已亮格可标记闪烁。
             </p>
-            <BrightnessCrossPreview
-              brightnessMatrix={brightnessMatrix}
-              blinkMaskMatrix={blinkMaskMatrix}
-              selectedFace={selectedPhysicalFace}
-              onSelectFace={(faceIndex) => {
-                const name = FACE_NAMES.find((face) => {
-                  try {
-                    return gripFaceToPhysicalIndex(face, formulaOrientation) === faceIndex;
-                  } catch {
-                    return false;
-                  }
-                });
-                if (name) setSelectedGripFace(name);
-              }}
-            />
-            <div className="brightness-face-row" role="group" aria-label="选择面（握持）">
-              {FACE_NAMES.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className={`brightness-face-chip ${selectedGripFace === name ? 'is-active' : ''}`}
-                  title={`握持 ${name} → 物理 ${gripFacePhysicalLabels[name]}`}
-                  onClick={() => setSelectedGripFace(name)}
-                >
-                  <span className="brightness-face-chip-main">{name}</span>
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`brightness-face-chip ${blinkEditMode ? 'is-active' : ''}`}
-                onClick={() => setBlinkEditMode((current) => !current)}
-              >
-                {blinkEditMode ? '闪烁编辑：开' : '闪烁编辑：关'}
-              </button>
-            </div>
-            <div className="brightness-grid brightness-pad" role="grid" aria-label="当前面贴纸点亮">
-              {[0, 1, 2].map((row) => (
-                <div key={row} className="brightness-row" role="row">
-                  {[0, 1, 2].map((col) => {
-                    const value = readBrightnessAtPreviewCell(selectedPhysicalFace, row, col);
-                    const blink = readBlinkAtPreviewCell(selectedPhysicalFace, row, col);
-                    return (
+            <div className="brightness-edit-layout">
+              <BrightnessCrossPreview
+                brightnessMatrix={brightnessMatrix}
+                blinkMaskMatrix={blinkMaskMatrix}
+                selectedFace={selectedPhysicalFace}
+                onSelectFace={(faceIndex) => {
+                  const name = FACE_NAMES.find((face) => {
+                    try {
+                      return gripFaceToPhysicalIndex(face, formulaOrientation) === faceIndex;
+                    } catch {
+                      return false;
+                    }
+                  });
+                  if (name) setSelectedGripFace(name);
+                }}
+              />
+              <div className="brightness-edit-main">
+                <div className="brightness-face-toolbar">
+                  <div className="brightness-face-row" role="group" aria-label="选择面（握持）">
+                    {FACE_NAMES.map((name) => (
                       <button
-                        key={col}
+                        key={name}
                         type="button"
-                        role="gridcell"
-                        className={[
-                          'brightness-cell',
-                          value > 0 ? 'brightness-cell-on' : '',
-                          blink ? 'brightness-cell-blink' : '',
-                        ].filter(Boolean).join(' ')}
-                        aria-label={blink ? '闪烁' : value > 0 ? '已点亮' : '已熄灭'}
-                        onClick={(event) => toggleBrightnessAtPreviewCell(selectedPhysicalFace, row, col, event.shiftKey)}
+                        className={`brightness-face-chip ${selectedGripFace === name ? 'is-active' : ''}`}
+                        title={`握持 ${name} → 物理 ${gripFacePhysicalLabels[name]}`}
+                        onClick={() => setSelectedGripFace(name)}
                       >
-                        {blink ? '闪' : <span className="brightness-cell-dot" aria-hidden />}
+                        <span className="brightness-face-chip-main">{name}</span>
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className={`brightness-blink-toggle ${blinkEditMode ? 'is-active' : ''}`}
+                    onClick={() => setBlinkEditMode((current) => !current)}
+                  >
+                    {blinkEditMode ? '闪烁编辑：开' : '闪烁编辑：关'}
+                  </button>
                 </div>
-              ))}
-            </div>
-            <div className="brightness-actions">
-              <button type="button" className="btn" onClick={() => setPreviewFaceAllBrightness(selectedPhysicalFace, 8)}>全亮</button>
-              <button type="button" className="btn" onClick={() => setPreviewFaceAllBrightness(selectedPhysicalFace, 0)}>全灭</button>
+                <div className="brightness-grid brightness-pad" role="grid" aria-label="当前面贴纸点亮">
+                  {[0, 1, 2].map((row) => (
+                    <div key={row} className="brightness-row" role="row">
+                      {[0, 1, 2].map((col) => {
+                        const value = readBrightnessAtPreviewCell(selectedPhysicalFace, row, col);
+                        const blink = readBlinkAtPreviewCell(selectedPhysicalFace, row, col);
+                        return (
+                          <button
+                            key={col}
+                            type="button"
+                            role="gridcell"
+                            className={[
+                              'brightness-cell',
+                              value > 0 ? 'brightness-cell-on' : '',
+                              blink ? 'brightness-cell-blink' : '',
+                            ].filter(Boolean).join(' ')}
+                            aria-label={blink ? '闪烁' : value > 0 ? '已点亮' : '已熄灭'}
+                            onClick={(event) => toggleBrightnessAtPreviewCell(selectedPhysicalFace, row, col, event.shiftKey)}
+                          >
+                            {blink ? '闪' : <span className="brightness-cell-dot" aria-hidden />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+                <div className="brightness-actions">
+                  <button type="button" className="btn" onClick={() => setPreviewFaceAllBrightness(selectedPhysicalFace, 8)}>全亮</button>
+                  <button type="button" className="btn" onClick={() => setPreviewFaceAllBrightness(selectedPhysicalFace, 0)}>全灭</button>
+                </div>
+              </div>
             </div>
             <EditorMovePad onMove={applyManualToken} orientation={formulaOrientation} />
           </section>
@@ -2240,62 +2246,64 @@ export function EditorPanel({ onOpenAiRecommend }: { onOpenAiRecommend?: () => v
               </button>
             </div>
             <div className="preview-card brightness-preview-card">{guidancePreviewText}</div>
-            <GuidanceThresholdBlock
-              threshold={guidanceFailureThreshold}
-              onChange={onGuidanceFailureThresholdChange}
-            />
-            <div className="guidance-threshold-block">
-              <div className="guidance-threshold-title">指引呈现</div>
-              <div className="guidance-threshold-row" role="group" aria-label="指引呈现">
-                {([
-                  { value: 'full' as const, label: '完整指引' },
-                  { value: 'arrow_chase' as const, label: '箭头+流水灯' },
-                ]).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`guidance-threshold-chip ${guidancePresentationMode === option.value ? 'is-active' : ''}`}
-                    onClick={() => setGuidancePresentationMode(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+            <div className="guidance-config-card">
+              <GuidanceThresholdBlock
+                threshold={guidanceFailureThreshold}
+                onChange={onGuidanceFailureThresholdChange}
+              />
+              <div className="guidance-option-section">
+                <div className="guidance-option-label">指引呈现</div>
+                <div className="guidance-option-row is-binary" role="group" aria-label="指引呈现">
+                  {([
+                    { value: 'full' as const, label: '完整指引' },
+                    { value: 'arrow_chase' as const, label: '箭头+流水灯' },
+                  ]).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`guidance-option-chip ${guidancePresentationMode === option.value ? 'is-active' : ''}`}
+                      onClick={() => setGuidancePresentationMode(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="guidance-threshold-block">
-              <div className="guidance-threshold-title">流水灯路径</div>
-              <div className="guidance-threshold-row" role="group" aria-label="流水灯路径">
-                {([
-                  { value: false, label: '公式面转' },
-                  { value: true, label: '初始→目标' },
-                ] as const).map((option) => (
-                  <button
-                    key={String(option.value)}
-                    type="button"
-                    className={`guidance-threshold-chip ${guidanceStickerPathChase === option.value ? 'is-active' : ''}`}
-                    onClick={() => setGuidanceStickerPathChase(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+              <div className="guidance-option-section">
+                <div className="guidance-option-label">流水灯路径</div>
+                <div className="guidance-option-row is-binary" role="group" aria-label="流水灯路径">
+                  {([
+                    { value: false, label: '公式面转' },
+                    { value: true, label: '初始→目标' },
+                  ] as const).map((option) => (
+                    <button
+                      key={String(option.value)}
+                      type="button"
+                      className={`guidance-option-chip ${guidanceStickerPathChase === option.value ? 'is-active' : ''}`}
+                      onClick={() => setGuidanceStickerPathChase(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="guidance-threshold-block">
-              <div className="guidance-threshold-title">通关下一关提示</div>
-              <div className="guidance-threshold-row" role="group" aria-label="通关下一关提示">
-                {([
-                  { value: false, label: '关闭' },
-                  { value: true, label: '开启' },
-                ] as const).map((option) => (
-                  <button
-                    key={String(option.value)}
-                    type="button"
-                    className={`guidance-threshold-chip ${successNextShortcutHint === option.value ? 'is-active' : ''}`}
-                    onClick={() => setSuccessNextShortcutHint(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+              <div className="guidance-option-section">
+                <div className="guidance-option-label">通关下一关提示</div>
+                <div className="guidance-option-row is-binary" role="group" aria-label="通关下一关提示">
+                  {([
+                    { value: false, label: '关闭' },
+                    { value: true, label: '开启' },
+                  ] as const).map((option) => (
+                    <button
+                      key={String(option.value)}
+                      type="button"
+                      className={`guidance-option-chip ${successNextShortcutHint === option.value ? 'is-active' : ''}`}
+                      onClick={() => setSuccessNextShortcutHint(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </section>
